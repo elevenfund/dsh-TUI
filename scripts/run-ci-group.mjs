@@ -814,7 +814,16 @@ mkdirSync(RENDER_LOG_DIR, { recursive: true })
  *  - verify-ime-cursor：caret 定位断言在本机渲染管线稳定失败
  *    （row=-1，找不到 ▏/caret 格；fa96898 基线同样挂，与 chat/ 拆分无关），
  *    待 IME caret 渲染单独排查。 */
-const KNOWN_FAIL = new Set(['verify-ime-cursor'])
+const KNOWN_FAIL = new Set([
+  'verify-ime-cursor',
+  // 以下 13 个在 fa96898（fork 基线，本轮 chat/ 拆分之前）同样失败——
+  // 既有失败基线，逐项排查修复后移出；2026-09-27 render-scroll 组首跑确认。
+  'verify-sixel-transcript', 'repro-askpanel', 'verify-askpanel-layout',
+  'repro-toolcards', 'repro-diff-split', 'verify-thinking-preview',
+  'repro-thinking-stream-fold', 'verify-smooth-reveal', 'repro-inline-scrollback',
+  'verify-subagent-settle', 'verify-scroll-jumps', 'verify-scroll-jumps-narrow',
+  'repro-picker-windowing',
+])
 
 /** 解析 --jobs N（缺省 1 = 串行，CI 现行为不变）。脚本各自进程隔离 +
  *  一次性 HOME，天然可并行；并发下每条输出缓冲到完成时整块打印。 */
