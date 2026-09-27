@@ -776,9 +776,21 @@ if (!wholeGroup) {
 const flags = process.argv.slice(3)
 let shard = { index: 1, count: 1 }
 let listOnly = false
+let jobs = 1
 for (let i = 0; i < flags.length; i++) {
   const flag = flags[i]
   if (flag === '--list') { listOnly = true; continue }
+  const jobm = /^--jobs(?:=(\d+))?$/.exec(flag)
+  if (jobm) {
+    const v = jobm[1] ?? flags[++i]
+    const n = Number(v)
+    if (!Number.isInteger(n) || n < 1 || n > 32) {
+      console.error('[run-ci-group] --jobs 须为 1..32，收到: ' + String(v))
+      process.exit(2)
+    }
+    jobs = n
+    continue
+  }
   const value = flag === '--shard' ? flags[++i] : flag.startsWith('--shard=') ? flag.slice('--shard='.length) : undefined
   const m = value === undefined ? null : /^([1-9]\d*)\/([1-9]\d*)$/.exec(value)
   if (flag !== '--shard' && !flag.startsWith('--shard=')) {
@@ -825,22 +837,6 @@ const KNOWN_FAIL = new Set([
   'repro-picker-windowing',
 ])
 
-/** 解析 --jobs N（缺省 1 = 串行，CI 现行为不变）。脚本各自进程隔离 +
- *  一次性 HOME，天然可并行；并发下每条输出缓冲到完成时整块打印。 */
-let jobs = 1
-for (let i = 0; i < flags.length; i++) {
-  const m = /^--jobs(?:=(\d+))?$/.exec(flags[i])
-  if (!m) continue
-  flags.splice(i--, 1)
-  const v = m[1] ?? flags[i + 1]
-  if (m[1] === undefined) { flags.splice(i + 1, 1) }
-  const n = Number(v)
-  if (!Number.isInteger(n) || n < 1 || n > 32) {
-    console.error('[run-ci-group] --jobs 须为 1..32，收到: ' + String(v))
-    process.exit(2)
-  }
-  jobs = n
-}
 
 console.log('::group::' + label + '（' + group.length + ' 项，失败不中断，jobs=' + jobs + '）')
 const results = []
