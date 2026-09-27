@@ -272,6 +272,55 @@ try {
   stdin.write('\x1b')
   await sleep(250)
 
+  // T10: vim l/h 定向折叠——l 只展开（并 pin 行首），h 只收起，幂等。
+  stdin.write('\t')
+  await sleep(300)
+  check('T10-pre 选择模式已激活', await settled(() => screenHas('esc to return to input')))
+  stdin.write('g')
+  await sleep(250)
+  const user10 = findText('user line alpha')
+  check('T10a g 跳首行并高亮', user10 !== null && bgKey(user10.col, user10.row) !== defaultBg)
+  stdin.write('j')
+  await sleep(200)
+  stdin.write('j')
+  await sleep(250)
+  const bash10 = findText('Bash(')
+  check('T10b j j 选中 tool 行', bash10 !== null && bgKey(bash10.col, bash10.row) !== defaultBg)
+  stdin.write('l')
+  await sleep(400)
+  check(
+    'T10c l 展开并 pin 首行',
+    await settled(() => screenHas('result-line-0') && !screenHas('result-line-59')),
+  )
+  stdin.write('h')
+  await sleep(400)
+  check('T10d h 收起', await settled(() => !screenHas('result-line-0') && !screenHas('result-line-59')))
+  stdin.write('h') // 已收起：幂等无操作
+  await sleep(250)
+  const bash10b = findText('Bash(')
+  check('T10e h 幂等（仍收起、仍选中）', bash10b !== null && bgKey(bash10b.col, bash10b.row) !== defaultBg)
+
+  // T12: nearest 光标滚动——视口内移动只动光标、页面纹丝不动（旧
+  // top-align 行为会把光标行钉到屏幕顶，页面每次跳变）。
+  const topOf = (): string => viewportLines().find(line => line.trim() !== '') ?? ''
+  const before12 = topOf()
+  stdin.write('k') // reasoning 行在屏内：光标上移，页面不动
+  await sleep(300)
+  const thought12 = findText('Thought')
+  check(
+    'T12a 视口内 k 光标上移、页面不动',
+    thought12 !== null && bgKey(thought12.col, thought12.row) !== defaultBg && topOf() === before12,
+  )
+  stdin.write('j') // 回 tool 行，同样在屏内
+  await sleep(300)
+  const bash12 = findText('Bash(')
+  check(
+    'T12b 视口内 j 光标下移、页面不动',
+    bash12 !== null && bgKey(bash12.col, bash12.row) !== defaultBg && topOf() === before12,
+  )
+  stdin.write('\x1b')
+  await sleep(250)
+
 
 
   // T7: 滚动跟随——追加大量行后，Tab 进入选择模式会 findLast 末行并
@@ -300,6 +349,38 @@ try {
   // 一路 ↑ 走到第一个可选行（user，在 60 行 filler 之上、视口之外）。
   for (let i = 0; i < 70; i++) stdin.write('\x1b[A')
   check('T7b ↑ 走到顶行时 seekRow 滚入视口', await settled(() => screenHas('user line alpha')))
+
+  // T11: G/g 跳尾行/首行（G 是 vim 习惯，单按 g 兼容 less；gg 第二按幂等）。
+  // 跳首行后 isSticky=false，屏顶会叠出 PinnedTurnHeader（同文本、无高亮），
+  // 所以断言必须找"文本匹配且该行带选中背景"的那一行。
+  const lineHighlighted = (s: string): boolean => {
+    const lines = viewportLines()
+    for (let r = 0; r < lines.length; r++) {
+      if (!lines[r]!.includes(s)) continue
+      if (JSON.stringify(buf().getLine(buf().baseY + r)?.getCell(3)?.getBgColor() ?? null) !== defaultBg) return true
+    }
+    return false
+  }
+  stdin.write('G')
+  await sleep(400)
+  const tail11 = findText('tail-check')
+  check(
+    'T11a G 跳末行并滚入（高亮）',
+    tail11 !== null && bgKey(tail11.col, tail11.row) !== defaultBg,
+  )
+  stdin.write('g')
+  const ok11b = await settled(() => lineHighlighted('user line alpha'))
+  check(
+    'T11b g 跳首行并滚入（高亮）',
+    ok11b,
+    `visible=${screenHas('user line alpha')}`,
+  )
+  stdin.write('g')
+  await sleep(250)
+  check(
+    'T11c gg 第二按幂等（仍首行仍高亮）',
+    lineHighlighted('user line alpha'),
+  )
 
 } finally {
   app.unmount()

@@ -19,8 +19,13 @@ export type ScrollBoxHandle = {
    * render fires, this defers the position read to render time —
    * render-node-to-output reads `el.yogaNode.getComputedTop()` in the
    * SAME Yoga pass that computes scrollHeight. Deterministic. One-shot.
+   *
+   * mode 'nearest' (cursor navigation): scroll only the minimal distance
+   * that brings `el` inside the viewport; an element already visible
+   * leaves scrollTop untouched, so the cursor walks the screen instead of
+   * the page jumping under it.
    */
-  scrollToElement: (el: DOMElement, offset?: number) => void;
+  scrollToElement: (el: DOMElement, offset?: number, mode?: 'top' | 'nearest') => void;
   scrollToBottom: () => void;
   getScrollTop: () => number;
   getPendingDelta: () => number;
@@ -179,14 +184,15 @@ function ScrollBox({
       el.scrollTop = Math.max(0, Math.floor(y));
       scrollMutated(el);
     },
-    scrollToElement(el: DOMElement, offset = 0) {
+    scrollToElement(el: DOMElement, offset = 0, mode: 'top' | 'nearest' = 'top') {
       const box = domRef.current;
       if (!box) return;
       box.stickyScroll = false;
       box.pendingScrollDelta = undefined;
       box.scrollAnchor = {
         el,
-        offset
+        offset,
+        mode
       };
       scrollMutated(box);
     },

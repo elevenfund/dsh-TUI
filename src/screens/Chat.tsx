@@ -2731,16 +2731,28 @@ export function Chat({
 
   // Row seeking under layout virtualization: a mounted row seeks directly;
   // an unmounted one is force-mounted first, then sought by the completion
-  // effect below once its ref lands.
+  // effect below once its ref lands. The seek mode travels with the
+  // deferred seek so the completion effect replays the same alignment.
   const [forceMountRowId, setForceMountRowId] = React.useState<number | null>(null)
-  const seekRow = (rowId: number): void => {
+  const forceMountSeekModeRef = React.useRef<'top' | 'nearest'>('top')
+  const seekRowAligned = (rowId: number, mode: 'top' | 'nearest'): void => {
     const el = rowRefsRef.current.get(rowId)
     if (el) {
-      handle?.scrollToElement(el)
+      handle?.scrollToElement(el, 0, mode)
       return
     }
+    forceMountSeekModeRef.current = mode
     setForceMountRowId(rowId)
   }
+  /** Top-align seek: the row's head becomes the viewport's top line. */
+  const seekRow = (rowId: number): void => seekRowAligned(rowId, 'top')
+  /**
+   * Minimal seek (grok-style cursor navigation): a row already on screen
+   * leaves the page in place — the cursor moves, the viewport doesn't;
+   * only an off-screen row scrolls, by the shortest distance that
+   * reveals it at the near edge.
+   */
+  const seekRowIntoView = (rowId: number): void => seekRowAligned(rowId, 'nearest')
   /**
    * Reveal-and-seek for a row folded behind the recent-rows window (the
    * rail's tick for an old turn, the doc's revealAndSeekRow): expand the
@@ -2757,7 +2769,7 @@ export function Chat({
     if (forceMountRowId === null) return
     const el = rowRefsRef.current.get(forceMountRowId)
     if (el) {
-      handle?.scrollToElement(el)
+      handle?.scrollToElement(el, 0, forceMountSeekModeRef.current)
       // Clear deferred to a macrotask: clearing here would let React's
       // synchronous re-render narrow the virtualization window and unmount
       // the row BEFORE the renderer's deferred pass reads its Yoga top
@@ -2812,7 +2824,10 @@ export function Chat({
     const last = channel.rows.findLast(row => SELECTABLE_KINDS.has(row.kind))
     if (last) {
       setSelectedId(last.id)
-      seekRow(last.id)
+      // Minimal alignment: entering selection from the (sticky-bottom)
+      // composer leaves the last row exactly where it is — no viewport
+      // jump on mode entry.
+      seekRowIntoView(last.id)
     } else {
       setSelectedId(null)
     }
@@ -2825,10 +2840,11 @@ export function Chat({
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index
     if (next) {
       setSelectedId(next.id)
-      // Keep the cursor on screen: a selection walk off the viewport seeks
-      // the ScrollBox to the newly selected row (force-mounting folded
-      // window rows through the same path as history search).
-      seekRow(next.id)
+      // Minimal alignment (grok-style browsing): a step inside the
+      // viewport moves only the cursor; the page starts scrolling when
+      // the cursor reaches the edge, one row per step (force-mounting
+      // folded window rows through the same path as history search).
+      seekRowIntoView(next.id)
     }
   }
   // useCallback: these feed MessageList → MemoRow's shallow compare; fresh
@@ -3554,6 +3570,34 @@ export function Chat({
         moveSelection(-1)
       } else if (key.downArrow || (!isMod(key) && !key.meta && input === 'j')) {
         moveSelection(1)
+      } else if (!isMod(key) && !key.meta && input === 'l' && selectedId !== null) {
+        // l expands (vim right = open). Same expanding-edge seek as Enter:
+        // the row's head is pinned to the viewport top so the revealed
+        // body reads top-down.
+        if (!expandedRows.has(selectedId)) {
+          toggleRowExpanded(selectedId)
+          seekRow(selectedId)
+        }
+      } else if (!isMod(key) && !key.meta && input === 'h' && selectedId !== null) {
+        // h collapses (vim left = close). No seek: the shrink leaves the
+        // cursor row where it is.
+        if (expandedRows.has(selectedId)) toggleRowExpanded(selectedId)
+      } else if (!isMod(key) && !key.meta && input === 'g') {
+        // g / gg → first selectable row (single g is the less habit,
+        // double gg the vim one; the second press re-selects an
+        // already-first cursor and the minimal seek no-ops).
+        const first = selectableRows[0]
+        if (first) {
+          setSelectedId(first.id)
+          seekRowIntoView(first.id)
+        }
+      } else if (!isMod(key) && !key.meta && input === 'G') {
+        // G → last selectable row, bottom-aligned by the minimal seek.
+        const last = selectableRows[selectableRows.length - 1]
+        if (last) {
+          setSelectedId(last.id)
+          seekRowIntoView(last.id)
+        }
       } else if (plainReturn && selectedId !== null) {
         // Seek only on the expanding edge: a collapse shrinks content (the
         // follow leaves scrollTop alone) and re-seeking would yank the row

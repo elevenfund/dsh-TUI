@@ -1269,7 +1269,29 @@ function renderNodeToOutput(
         if (node.scrollAnchor) {
           const anchorTop = node.scrollAnchor.el.yogaNode?.getComputedTop()
           if (anchorTop != null) {
-            node.scrollTop = anchorTop + node.scrollAnchor.offset
+            if (node.scrollAnchor.mode === 'nearest') {
+              // Minimal scroll-into-view (cursor navigation): an element
+              // already inside the viewport leaves scrollTop untouched so
+              // the cursor walks the screen while the page stays still;
+              // only an off-screen element scrolls, by the exact distance
+              // that brings it to the near edge. Yoga heights are fresh in
+              // this same pass, so the visibility check is exact. An
+              // element taller than the viewport bottom-aligns to its
+              // middle; CSS nearest degrades that case to start so a tall
+              // block is read from its head.
+              const anchorHeight = node.scrollAnchor.el.yogaNode?.getComputedHeight() ?? 0
+              const top = node.scrollTop ?? 0
+              if (anchorTop < top) {
+                node.scrollTop = anchorTop + node.scrollAnchor.offset
+              } else if (anchorTop + anchorHeight > top + innerHeight) {
+                node.scrollTop =
+                  anchorHeight >= innerHeight
+                    ? anchorTop + node.scrollAnchor.offset
+                    : anchorTop + anchorHeight - innerHeight
+              }
+            } else {
+              node.scrollTop = anchorTop + node.scrollAnchor.offset
+            }
             node.pendingScrollDelta = undefined
             anchorConsumed = true
           }

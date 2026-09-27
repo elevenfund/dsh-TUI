@@ -127,7 +127,11 @@ export type DOMElement = {
   // imperative scrollTo(N) which bakes in a number that's stale by the
   // time the throttled render fires, the element ref defers the position
   // read to paint time. One-shot.
-  scrollAnchor?: { el: DOMElement; offset: number }
+  // mode 'top' (default): align the element's top with the viewport top.
+  // mode 'nearest': scroll only the minimal distance that brings the
+  // element back inside the viewport — an element already visible leaves
+  // scrollTop untouched (cursor-keeps-relative-position navigation).
+  scrollAnchor?: { el: DOMElement; offset: number; mode?: 'top' | 'nearest' }
   // Only set on ink-root. The document owns focus — any node can
   // reach it by walking parentNode, like browser getRootNode().
   focusManager?: FocusManager
