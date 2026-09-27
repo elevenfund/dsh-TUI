@@ -17,9 +17,8 @@ import { stringWidth } from '../ink/stringWidth.js'
  *  signal (community feedback — the old `s`/`p`/`t` letters read as noise on
  *  a row that is already decorative). `labels` therefore belongs to the hover
  *  breakdown only: index 0 is the readable name, index 1 the short form the
- *  supplemental row falls back to on a narrow terminal. Exported for the
- *  hoverable JSX bar (ContextBarView), which re-derives the same column split
- *  this module's ANSI path renders. */
+ *  supplemental row falls back to on a narrow terminal. Callers re-derive
+ *  the same column split this module's ANSI path renders. */
 export const USED_SEGMENTS = [
   { key: 'system', color: '#22305F', labels: ['system', 'sys'] }, // deep navy
   { key: 'prompt', color: '#2B3D78', labels: ['prompt', 'pr'] }, // navy
@@ -31,9 +30,8 @@ export const USED_SEGMENTS = [
 /** Used tokens per context content type (system, prompt, assistant, thinking, tools). */
 export type ContextSegments = Record<(typeof USED_SEGMENTS)[number]['key'], number>
 
-/** Free-segment colors: light grey fill, dark grey readout. Exported so the
- *  JSX bar (ContextBarView) and the hover chip paint the same free color the
- *  ANSI path does instead of re-declaring the hex. */
+/** Free-segment colors: light grey fill, dark grey readout. Callers paint
+ *  the same free color the ANSI path does instead of re-declaring the hex. */
 export const FREE_SEGMENT_FILL = '#E8E8E8'
 export const FREE_SEGMENT_TEXT = '#4A4A4A'
 
@@ -104,8 +102,8 @@ export function contextBarReadout(
 
 /**
  * Blank-pad to `width` cells and right-align the first readout option that
- * fits. Shared by the ANSI string path (renderContextBar) and the hoverable
- * JSX bar (ContextBarView) so both render identical readouts.
+ * fits. Shared by every context-bar renderer so all paths render identical
+ * readouts.
  */
 export function rightAlignBarText(
   options: readonly string[],

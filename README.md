@@ -138,6 +138,8 @@ Other arguments go to `dsh --profile dsh-tui`. Safe mode: [Getting started](docs
 
 While the model is working: `Enter` steers, `Tab` queues a follow-up, `Ctrl+Enter` interrupts and sends.
 
+Browsing the transcript: `Shift+Up` or idle `Tab` enters selection mode — `k/j` move the cursor, `l/h` expand/collapse, `Enter` opens the detail card, `g/G` jump to either end, `Ctrl+F/B` page, `Ctrl+C` interrupts from anywhere.
+
 Mouse (fullscreen): drag to select and copy, double/triple click to select a word or line, click tool cards, timeline ticks and `[Image #N]` previews.
 
 Full reference: [Interaction and commands](docs/interaction.en.md).

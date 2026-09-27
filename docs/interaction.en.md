@@ -20,7 +20,7 @@
 | `Esc` / `Ctrl+C` / `Enter` while an image preview is open | Close the preview and restore the surface underneath; other keys are not passed through |
 | `Left` / `Right` in the image modal | Previous / next image, no wrapping; caret peeks keep arrows with the prompt |
 | `←` (empty input) | Background this session and open the session-management screen (same as `/bg`) |
-| `Ctrl+C` | Interrupt while working; press again while the interrupt is still settling to force-exit<br>clear non-empty idle input; **while idle with a selection in the prompt input, copy it to the clipboard (selection kept for editing)**; press twice on empty input to exit |
+| `Ctrl+C` | Interrupt while working (from the composer, the transcript, or an open card alike; a card stays open after the interrupt); press again while the interrupt is still settling to force-exit<br>clear non-empty idle input; **while idle with a selection in the prompt input, copy it to the clipboard (selection kept for editing)**; press twice on empty input to exit; in selection mode, one idle press leaves the mode (same as `Esc`) |
 | `Ctrl+D` | Same ladder as `Ctrl+C`: interrupt while working (press again to force-exit if the interrupt stalls); press twice while idle to exit |
 | `Ctrl+O` | Toggle transcript/verbose detail, including full reasoning and tool arguments/output; also the escape hatch for the **long-line fold** (a single line over 1000 chars is clipped to 1000 with a `… N chars folded` marker — see the user guide §5). Clicking the folded row (or the tool card face) toggles it too |
 | `Ctrl+P` | Toggle the loaded-context panel shown at startup (while it is on screen) |
@@ -30,7 +30,8 @@
 | `?` | Open shortcut and command help when the input is empty |
 | In Help: `↑/↓`, `PgUp/PgDn`, `Home/End` | Scroll by line, page, or jump to either end; `Esc` closes |
 | Transcript: `PgUp` / `PgDn` | Page the fullscreen transcript (one viewport minus one row per press); yielded to Help and open overlays, which page their own lists<br>inline mode does not claim them — history lives in the terminal's native scrollback there, and paging belongs to the terminal |
-| `Shift+Up` | Enter message selection; arrows move, `Enter` expands one row, `Esc` exits |
+| `Shift+Up` | Enter message selection (idle `Tab` works too; `Tab`/`Esc` or clicking the input cluster returns to the composer, draft preserved). Inside: `↑/↓`/`k/j` move the cursor (the page stays put while the cursor is on screen, grok-style), `l`/`h` expand/collapse the row, `Enter` opens the full-content detail card, `g`/`G` jump to the first/last selectable row, `Ctrl+F`/`Ctrl+B` page down/up (same page size as `PgUp/PgDn`, cursor stays), `Ctrl+O` toggles global expand, `Ctrl+C` interrupts while working (staying in the mode) and leaves the mode when idle |
+| While the detail card is open | `j/k`/`↑/↓` scroll by line, `u/d`/`PgUp/PgDn`/`Ctrl+B/F` half a page, `g`/`G`/`Home`/`End` jump to either end, `Esc`/`Enter`/`q` close back into selection mode (cursor stays on the row); `Ctrl+C` interrupts a running turn and the card stays open |
 
 **Remapping shortcuts**: paste, history search, external editor, `Ctrl+O/T/P/R/L`,
 subagent dashboard, show-all, and todo fold are remappable in `/settings` → `dsh-tui` →

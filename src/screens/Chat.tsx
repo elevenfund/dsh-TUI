@@ -197,9 +197,9 @@ function clonePermissionPresetSnapshot(snapshot: PermissionPresetSnapshot): Perm
  *  row reads as an accident, not an affordance). */
 const SELECTABLE_KINDS = new Set<ChatRow['kind']>([
   'user',
+  'assistant',
   'tool',
   'reasoning',
-  'assistant',
   'interrupt',
   'local',
   'local-output',
