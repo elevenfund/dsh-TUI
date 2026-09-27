@@ -98,6 +98,14 @@ export type ChatOverlay =
    */
   | { kind: 'image-preview'; image: TranscriptImage; title?: string;
       gallery?: readonly { image: TranscriptImage; title?: string }[]; index?: number }
+  /**
+   * Full-content viewer for the transcript row under the selection cursor
+   * (selection-mode Enter — grok's "Enter details"). A centered card over a
+   * dim catcher showing the row's complete content: tool args + full
+   * output, the full reasoning text, or the user message. j/k scroll,
+   * Esc/Enter close back into selection mode with the cursor intact.
+   */
+  | { kind: 'row-detail'; rowId: number }
 
 export const NO_OVERLAY: ChatOverlay = { kind: 'none' }
 

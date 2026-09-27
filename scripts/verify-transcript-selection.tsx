@@ -227,11 +227,12 @@ try {
   // T3c: 选中点亮的 tool 头 fg 与 rest 态不同（dim → lit）。
   const bash3 = findText('Bash(')
   check('T3c 选中后 tool 头点亮（fg 变化）', bash3 !== null && fgKey(bash3.col, bash3.row) !== dimFg)
-  stdin.write('\r')
+  stdin.write('l')
   // 60 行正文 > 40 行视口：展开后视口必须 pin 在被展开行的顶部——首行
   // 可见、末行被推出视口（pin 末行方向的回归即在此暴露）。
+  // （Enter 已改为 grok 的 "Enter details" 浮窗，展开折叠归 l/h——T13。）
   check(
-    'T4 Enter 展开后视口 pin 首行',
+    'T4 l 展开后视口 pin 首行',
     await settled(() => screenHas('result-line-0') && !screenHas('result-line-59')),
     `line0=${screenHas('result-line-0')} line59=${screenHas('result-line-59')}`,
   )
@@ -349,6 +350,11 @@ try {
   // 一路 ↑ 走到第一个可选行（user，在 60 行 filler 之上、视口之外）。
   for (let i = 0; i < 70; i++) stdin.write('\x1b[A')
   check('T7b ↑ 走到顶行时 seekRow 滚入视口', await settled(() => screenHas('user line alpha')))
+  // T7b 最后一个 forceMount 的清除宏任务（setTimeout 0）此刻可能尚未排空：
+  // 窗口还带着旧扩窗、末行 el 仍挂载；紧按 G 会让 scrollToElement 的 anchor
+  // 在清除触发的收窄 re-render 里随行一起卸载，anchorTop 读不到、seek 静默
+  // 丢失（HEAD 既有竞态，与被测行为无关；真实按键间隔远大于该宏任务）。
+  await sleep(150) // 固定窗:pacing 等待 forceMount 清除宏任务排空，无可观测锚点
 
   // T11: G/g 跳尾行/首行（G 是 vim 习惯，单按 g 兼容 less；gg 第二按幂等）。
   // 跳首行后 isSticky=false，屏顶会叠出 PinnedTurnHeader（同文本、无高亮），
@@ -381,6 +387,42 @@ try {
     'T11c gg 第二按幂等（仍首行仍高亮）',
     lineHighlighted('user line alpha'),
   )
+
+  // T13: Enter 打开 row-detail 浮窗（grok "Enter details" 语义）——全文在
+  // 卡片内滚动阅读；折叠展开归 l/h；Esc/Enter 关闭回选择模式且光标不动。
+  stdin.write('j')
+  await sleep(200)
+  stdin.write('j')
+  await sleep(250)
+  check('T13a jj 光标到 tool 行', lineHighlighted('Bash('))
+  stdin.write('\r')
+  await sleep(500)
+  const okTitle = await settled(() => screenHas('bash(seq 1 30)'))
+  const okArgs = screenHas('$ {"command"')
+  const okHead = screenHas('result-line-0')
+  const okHint = screenHas('j/k scroll')
+  check(
+    'T13b Enter 打开浮窗（标题+参数+输出头部+hint）',
+    okTitle && okArgs && okHead && okHint,
+    `title=${okTitle} args=${okArgs} head=${okHead} hint=${okHint} top=${JSON.stringify((viewportLines().find(l => l.trim() !== '') ?? '').slice(0, 70))}`,
+  )
+  check('T13c 60 行输出尾部初始在浮窗外', !screenHas('result-line-59'))
+  stdin.write('G')
+  await sleep(400)
+  check('T13d 浮窗内 G 滚到输出尾部', await settled(() => screenHas('result-line-59') && !screenHas('result-line-0')))
+  stdin.write('\x1b')
+  await sleep(300)
+  check(
+    'T13e Esc 关闭浮窗、光标仍在 tool 行',
+    !screenHas('j/k scroll') && screenHas('esc to return to input') && lineHighlighted('Bash('),
+  )
+  stdin.write('\r')
+  await sleep(400)
+  stdin.write('\r')
+  await sleep(300)
+  check('T13f Enter 关闭浮窗', !screenHas('j/k scroll') && screenHas('esc to return to input'))
+  stdin.write('\x1b')
+  await sleep(250)
 
 } finally {
   app.unmount()

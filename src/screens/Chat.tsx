@@ -70,6 +70,7 @@ import { ModelPicker } from '../components/ModelPicker.js'
 import { PluginSceneBoundary } from '../components/PluginSceneBoundary.js'
 import { PluginStatusViewBoundary } from '../components/PluginStatusViewBoundary.js'
 import { ImagePreviewOverlay } from '../components/ImagePreviewOverlay.js'
+import { RowDetailOverlay } from '../components/RowDetailOverlay.js'
 import { SkillsPicker, SkillsPickerLoading } from '../components/SkillsPicker.js'
 import { SessionSupervisor } from './SessionSupervisor.js'
 import { SessionTree } from './SessionTree.js'
@@ -451,6 +452,8 @@ export function Chat({
   const [expanded, setExpanded] = React.useState(false)
   const [helpOpen, setHelpOpen] = React.useState(false)
   const [handle, setHandle] = React.useState<ScrollBoxHandle | null>(null)
+  /** ScrollBox of the open row-detail card (key routing lives in Chat's input chain). */
+  const rowDetailScrollRef = React.useRef<ScrollBoxHandle | null>(null)
   /**
    * Conversation timeline snapshot (reported by MessageList): one entry
    * per user turn plus the viewport-derived navigation targets. The
@@ -2755,15 +2758,18 @@ export function Chat({
   const seekRowIntoView = (rowId: number): void => seekRowAligned(rowId, 'nearest')
   /**
    * Reveal-and-seek for a row folded behind the recent-rows window (the
-   * rail's tick for an old turn, the doc's revealAndSeekRow): expand the
-   * fold first, then the ordinary seek takes over — the completion effect
-   * below force-mounts the row and scrollToElement lands it once its ref
-   * (and Yoga top) exist. The fold toggle is idempotent, so calling this
-   * for an already-revealed row is harmless.
+   * rail's tick for an old turn, the doc's revealAndSeekRow, selection
+   * mode's g): expand the fold first, then the ordinary seek takes over —
+   * the completion effect below force-mounts the row and scrollToElement
+   * lands it once its ref (and Yoga top) exist. The fold toggle is
+   * idempotent, so calling this for an already-revealed row is harmless.
+   * Without the reveal, forceMount only widens within MessageList's
+   * visibleRows — a row sliced off by RENDERED_ROW_CAP never mounts and
+   * the seek silently no-ops (long-session g-to-top bug).
    */
-  const revealAndSeekRow = (rowId: number): void => {
+  const revealAndSeekRow = (rowId: number, mode: 'top' | 'nearest' = 'top'): void => {
     if (!showAllMessages) setShowAllMessages(true)
-    seekRow(rowId)
+    seekRowAligned(rowId, mode)
   }
   React.useLayoutEffect(() => {
     if (forceMountRowId === null) return
@@ -3025,6 +3031,30 @@ export function Chat({
         dispatchOverlay({ type: 'close' })
       } else if (!key.ctrl && !key.meta && !key.shift && (key.leftArrow || key.rightArrow)) {
         dispatchOverlay({ type: 'image-step', delta: key.leftArrow ? -1 : 1 })
+      }
+      event.stopImmediatePropagation()
+      return
+    }
+    if (overlay.kind === 'row-detail') {
+      // The detail card owns the keyboard while up: scroll keys go to its
+      // ScrollBox, Esc/Enter/q close back into selection mode (the cursor
+      // stays on the row that opened the card). Same vim set as selection
+      // mode so the hands never switch rows.
+      const detail = rowDetailScrollRef.current
+      if (key.escape || (key.ctrl && input === 'c') || plainReturn || (!isMod(key) && !key.meta && input === 'q')) {
+        dispatchOverlay({ type: 'close' })
+      } else if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) {
+        detail?.scrollBy(-1)
+      } else if (key.downArrow || (!isMod(key) && !key.meta && input === 'j')) {
+        detail?.scrollBy(1)
+      } else if (key.pageUp || (isMod(key) && input === 'b') || (!isMod(key) && !key.meta && input === 'u')) {
+        detail?.scrollBy(-Math.max(1, Math.floor((detail?.getViewportHeight() ?? 20) / 2)))
+      } else if (key.pageDown || (isMod(key) && input === 'f') || (!isMod(key) && !key.meta && input === 'd')) {
+        detail?.scrollBy(Math.max(1, Math.floor((detail?.getViewportHeight() ?? 20) / 2)))
+      } else if (key.home || (!isMod(key) && !key.meta && input === 'g')) {
+        detail?.scrollTo(0)
+      } else if (key.end || (!isMod(key) && !key.meta && input === 'G')) {
+        detail?.scrollTo(Math.max(0, detail?.getScrollHeight() ?? 0))
       }
       event.stopImmediatePropagation()
       return
@@ -3585,11 +3615,13 @@ export function Chat({
       } else if (!isMod(key) && !key.meta && input === 'g') {
         // g / gg → first selectable row (single g is the less habit,
         // double gg the vim one; the second press re-selects an
-        // already-first cursor and the minimal seek no-ops).
+        // already-first cursor and the minimal seek no-ops). In a long
+        // session the first row sits behind the recent-rows fold — the
+        // reveal opens it so forceMount can actually mount the row.
         const first = selectableRows[0]
         if (first) {
           setSelectedId(first.id)
-          seekRowIntoView(first.id)
+          revealAndSeekRow(first.id, 'nearest')
         }
       } else if (!isMod(key) && !key.meta && input === 'G') {
         // G → last selectable row, bottom-aligned by the minimal seek.
@@ -3599,13 +3631,11 @@ export function Chat({
           seekRowIntoView(last.id)
         }
       } else if (plainReturn && selectedId !== null) {
-        // Seek only on the expanding edge: a collapse shrinks content (the
-        // follow leaves scrollTop alone) and re-seeking would yank the row
-        // to the viewport top; an expansion grows it below the cursor and
-        // needs the row pinned as the viewport's top anchor.
-        const expanding = !expandedRows.has(selectedId)
-        toggleRowExpanded(selectedId)
-        if (expanding) seekRow(selectedId)
+        // grok semantics ("Enter details"): Enter opens the full-content
+        // viewer for the row under the cursor; fold/unfold is l/h's job
+        // (grok's → / ←). The viewport can never hold a 500-line output,
+        // so full reading lives in the card, not in the scroll.
+        dispatchOverlay({ type: 'open', overlay: { kind: 'row-detail', rowId: selectedId } })
       } else if ((key.tab && !key.shift) || key.escape) {
         // Tab mirrors grok's focus rotation: the same key that handed the
         // keyboard to the transcript hands it back to the composer. Esc
@@ -4174,6 +4204,16 @@ export function Chat({
           )
         })()}
         {!promptEditorOpen && imagePreviewNode}
+        {overlay.kind === 'row-detail' && (() => {
+          const detailRow = channel.rows.find(r => r.id === overlay.rowId)
+          return detailRow !== undefined ? (
+            <RowDetailOverlay
+              row={detailRow}
+              scrollRef={rowDetailScrollRef}
+              onClose={() => dispatchOverlay({ type: 'close-if', kind: 'row-detail' })}
+            />
+          ) : null
+        })()}
       </Box>
       {/* Bottom chrome (pill, spinners, dialogs, prompt, statusline): never
           let flex shrink squeeze these fixed-height rows — the ScrollBox

@@ -894,6 +894,9 @@ const dict = {
   'hint-fill-exit': { zh: '**Enter** 填入命令 · Esc 退出', en: '**Enter** to insert · Esc to exit' },
   'hint-rewind-back': { zh: '**Enter** 回退 · Esc 返回', en: '**Enter** to rewind · Esc to back' },
   'statusline-hint-select': { zh: 'esc 返回输入', en: 'esc to return to input' },
+  'row-detail-thinking': { zh: '思考过程', en: 'Thinking' },
+  'row-detail-user': { zh: '用户消息', en: 'User message' },
+  'row-detail-hint': { zh: 'j/k 滚动 · g/G 首尾 · Esc 关闭', en: 'j/k scroll · g/G top/bottom · Esc close' },
   'statusline-hint-working': { zh: 'esc 中断', en: 'esc to interrupt' },
   'statusline-hint-shortcuts': { zh: '? 查看快捷键', en: '? for shortcuts' },
   // ── 底栏字段 hover 明细（补充行读出；技术标签 ctx/free/read 等保持不译）──
