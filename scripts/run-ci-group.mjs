@@ -10,9 +10,17 @@
  *   - run: node scripts/run-ci-group.mjs render-scroll
  *   - run: node scripts/run-ci-group.mjs render-scroll --shard 1/2
  *
+ * 分层模式（测试金字塔，层级派生见 scripts/lib/tier.mjs）：
+ *   - run: node scripts/run-ci-group.mjs --tier t0 --jobs 16
+ *       跨全部组聚合派生为该层的条目（按 name+argv+env 去重）并行跑。
+ *   - run: node scripts/run-ci-group.mjs --cascade --jobs 16
+ *       t0 → t1 → t2 逐层跑；任一层出现未知失败（非 KNOWN_FAIL）即停，
+ *       后续层不再跑——低层红时高层的结果没有诊断价值，先修低层。
+ *
  * --shard i/n：只跑本组按登记顺序 round-robin 取到第 i 片的条目（第 i、
  * i+n、i+2n… 项），ci.yml 用 matrix 把大组拆成并行 job；不带 --shard 即整组。
- * 新增测试只登记 GROUPS，不必改分片。--list 只打印本片条目不运行。
+ * 新增测试只登记 GROUPS，不必改分片。--list 只打印本片条目不运行
+ * （--tier 模式下打印该层命中清单）。
  *
  * 组定义在下方 GROUPS 表：名称 + 完整 argv + 可选附加 env。所有条目默认
  * NODE_ENV=production：产品入口本就强制生产版 React，dev 版 reconciler 每次
@@ -35,6 +43,7 @@ import { spawn } from 'node:child_process'
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { TIERS, tierOf } from './lib/tier.mjs'
 
 const env = { NODE_ENV: 'production', ...process.env }
 
@@ -190,7 +199,20 @@ const GROUPS = {
 // l/h 折叠、g/G 跳转、Ctrl+F/B 翻页）、Enter 详情卡、浮窗与选择模式内
 // Ctrl+C 三态（working 打断 / idle 退出或关闭）、G 重粘 sticky、浏览态
 // 提交回底、图片浮窗经缩略图点击打开的打断链、鼠标点击输入簇退出。
-    ['verify-transcript-selection', ['node', '--import', 'tsx/esm', 'scripts/verify-transcript-selection.tsx']],
+// chat/ 拆分模块的同步单测（T0：构造按键对象直接派发，无挂载无 sleep）
+// 与分层派生规则的单测（scripts/lib/tier.mjs，--tier/--cascade 的依据）。
+    ['verify-chat-split', ['node', '--import', 'tsx/esm', 'scripts/verify-chat-split.ts']],
+    ['verify-tier', ['node', 'scripts/verify-tier.mjs']],
+// 选择模式全景回归（原 verify-transcript-selection 1109 行/38 case 按
+// feature 拆 7 份，共享 harness 在 scripts/lib/transcript-scene.mjs；
+// 断言与原 case 一一对应零遗漏，S0 冒烟每份 3 条）：
+    ['verify-selection-nav', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-nav.tsx']],
+    ['verify-selection-scroll', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-scroll.tsx']],
+    ['verify-selection-overlay', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-overlay.tsx']],
+    ['verify-selection-interrupt', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-interrupt.tsx']],
+    ['verify-selection-subagents', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-subagents.tsx']],
+    ['verify-selection-stream', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-stream.tsx']],
+    ['verify-selection-narration', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-narration.tsx']],
 // 长会话下的浏览区回归：RENDERED_ROW_CAP 折叠区外的 g/G 跳转（forceMount
 // 扩窗）、sticky 底部姿态与折叠生效。
     ['verify-transcript-selection-long', ['node', '--import', 'tsx/esm', 'scripts/verify-transcript-selection-long.tsx']],
@@ -764,16 +786,33 @@ const GROUPS = {
   ],
 }
 
-const groupName = process.argv[2]
-const wholeGroup = GROUPS[groupName]
-if (!wholeGroup) {
+// ---- 模式解析：组名 / --tier X / --cascade ----
+const args = process.argv.slice(2)
+const modeArg = args[0] ?? ''
+const isTierMode = modeArg === '--tier'
+const isCascadeMode = modeArg === '--cascade'
+if (!isTierMode && !isCascadeMode && modeArg.startsWith('-')) {
+  console.error('[run-ci-group] 未知参数: ' + modeArg + '（可用：组名 / --tier t0|t1|t2 / --cascade）')
+  process.exit(2)
+}
+let tierFilter = null
+if (isTierMode) {
+  tierFilter = args[1]
+  if (!TIERS.includes(tierFilter)) {
+    console.error('[run-ci-group] --tier 须为 ' + TIERS.join('|') + '，收到: ' + String(tierFilter))
+    process.exit(2)
+  }
+}
+const groupName = isTierMode || isCascadeMode ? null : modeArg
+const wholeGroup = groupName ? GROUPS[groupName] : null
+if (groupName && !wholeGroup) {
   console.error('[run-ci-group] 未知组名: ' + groupName)
   console.error('可用组: ' + Object.keys(GROUPS).join(', '))
   process.exit(2)
 }
 
 /** 解析 --shard i/n（缺省 1/1）与 --list。参数非法一律 exit 2，不能静默跑整组。 */
-const flags = process.argv.slice(3)
+const flags = args.slice(isTierMode ? 2 : 1)
 let shard = { index: 1, count: 1 }
 let listOnly = false
 let jobs = 1
@@ -803,18 +842,37 @@ for (let i = 0; i < flags.length; i++) {
   }
   shard = { index: Number(m[1]), count: Number(m[2]) }
 }
-const group = wholeGroup.filter((_, i) => i % shard.count === shard.index - 1)
-const label = shard.count === 1 ? groupName : groupName + ' ' + shard.index + '/' + shard.count
+if ((isTierMode || isCascadeMode) && shard.count > 1) {
+  console.error('[run-ci-group] --shard 只适用于组模式（分层模式自带跨组聚合）')
+  process.exit(2)
+}
+
+/** 分层聚合：跨全部组取派生为指定层的条目，按 name+argv+env 去重保登记序。 */
+function tierEntries(wanted) {
+  const seen = new Set()
+  const out = []
+  for (const entry of Object.values(GROUPS).flat()) {
+    if (!wanted.includes(tierOf(entry))) continue
+    const key = entry[0] + '\u0000' + entry[1].join(' ') + '\u0000' + JSON.stringify(entry[2] ?? null)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(entry)
+  }
+  return out
+}
+
+const group = isTierMode || isCascadeMode ? tierEntries(isTierMode ? [tierFilter] : TIERS) : wholeGroup.filter((_, i) => i % shard.count === shard.index - 1)
+const label = isTierMode ? 'tier-' + tierFilter : isCascadeMode ? 'cascade' : shard.count === 1 ? groupName : groupName + ' ' + shard.index + '/' + shard.count
 // 分片数超过组内条目数时后面的片是空的：exit 0 会报"全部 0 项通过"，ci.yml 里
 // 一个写错的 matrix 就能让整片静默变绿。空片判配置错误，与非法参数同级。
 if (group.length === 0) {
-  console.error('[run-ci-group] ' + label + ' 没有任何条目（组内共 ' + wholeGroup.length + ' 项）——分片数超过条目数')
+  console.error('[run-ci-group] ' + label + ' 没有任何条目' + (wholeGroup ? '（组内共 ' + wholeGroup.length + ' 项）——分片数超过条目数' : ''))
   process.exit(2)
 }
 
 if (listOnly) {
-  console.log(label + '（' + group.length + '/' + wholeGroup.length + ' 项）')
-  for (const [name] of group) console.log('  ' + name)
+  console.log(label + '（' + group.length + ' 项）')
+  for (const [name] of group) console.log('  ' + name + (isTierMode ? '  [' + tierFilter + ']' : ''))
   process.exit(0)
 }
 
@@ -850,8 +908,6 @@ const KNOWN_FAIL = new Set([
 ])
 
 
-console.log('::group::' + label + '（' + group.length + ' 项，失败不中断，jobs=' + jobs + '）')
-const results = []
 const runEntryWithStatus = async (entry) => {
   const [name, argv, extraEnv] = entry
   const renderLog = join(RENDER_LOG_DIR, name + '.log')
@@ -887,8 +943,14 @@ const runEntryWithStatus = async (entry) => {
   rmSync(scriptHome, { recursive: true, force: true })
   return { name, status, chunks, seconds: (performance.now() - startedAt) / 1000, renderLog }
 }
-const queue = [...group]
-const worker = async () => {
+
+/** 跑一批条目（worker pool 并行，失败不中断），汇总后返回未知失败数。
+ *  KNOWN_FAIL 语义不变：已知失败只记名，不计入停级/exit 判断。 */
+async function runBatch(batch, batchLabel) {
+  console.log('::group::' + batchLabel + '（' + batch.length + ' 项，失败不中断，jobs=' + jobs + '）')
+  const results = []
+  const queue = [...batch]
+  const worker = async () => {
   while (queue.length > 0) {
     const entry = queue.shift()
     const done = await runEntryWithStatus(entry)
@@ -897,7 +959,7 @@ const worker = async () => {
     const failed = done.status !== 0
     if (failed) {
       if (!KNOWN_FAIL.has(done.name)) {
-        console.log('::error title=' + label + '::测试 ' + done.name + ' 失败（exit ' + done.status + '）——已记录，继续跑同组其余测试')
+        console.log('::error title=' + batchLabel + '::测试 ' + done.name + ' 失败（exit ' + done.status + '）——已记录，继续跑同组其余测试')
       } else {
         console.log('[run-ci-group] ' + done.name + ' 失败但属 KNOWN_FAIL——记录不红，请跟进修复后从名单移除')
       }
@@ -913,41 +975,66 @@ const worker = async () => {
     results.push({ name: done.name, failed, status: done.status, seconds: done.seconds })
   }
 }
-await Promise.all(Array.from({ length: Math.min(jobs, group.length) }, worker))
-// restore registration order for the summary
-results.sort((a, b) => group.findIndex(e => e[0] === a.name) - group.findIndex(e => e[0] === b.name))
-console.log('::endgroup::')
+  await Promise.all(Array.from({ length: Math.min(jobs, batch.length) }, worker))
+  // restore registration order for the summary
+  results.sort((a, b) => batch.findIndex(e => e[0] === a.name) - batch.findIndex(e => e[0] === b.name))
+  console.log('::endgroup::')
 
-const fmt = seconds => seconds.toFixed(1) + 's'
-const total = results.reduce((sum, r) => sum + r.seconds, 0)
-console.log('\n' + label + ' 汇总（共 ' + fmt(total) + '）：')
-for (const { name, failed, status, seconds } of results) {
-  console.log('  ' + (failed ? '✗' : '✓') + ' ' + name + '  ' + fmt(seconds) + (failed ? '（exit ' + status + '）' : ''))
-}
-
-// GitHub Actions step summary：按耗时降序，给分片/拆组提供数据。
-if (process.env.GITHUB_STEP_SUMMARY) {
-  const rows = [...results].sort((a, b) => b.seconds - a.seconds)
-  appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
-    '### ' + label + '：' + results.length + ' 项，共 ' + fmt(total),
-    '',
-    '| 结果 | 测试 | 耗时 |',
-    '| --- | --- | ---: |',
-    ...rows.map(r => '| ' + (r.failed ? '✗ exit ' + r.status : '✓') + ' | ' + r.name + ' | ' + fmt(r.seconds) + ' |'),
-    '',
-  ].join('\n'))
-}
-
-const failedList = results.filter(r => r.failed && !KNOWN_FAIL.has(r.name))
-const knownFailed = results.filter(r => r.failed && KNOWN_FAIL.has(r.name))
-for (const r of results) {
-  if (KNOWN_FAIL.has(r.name)) {
-    console.log('  ' + (r.failed ? '◍' : '⚠✓') + ' ' + r.name + '  ' + fmt(r.seconds) + (r.failed ? '（known-fail）' : '（known-fail 已通过，请移出名单）'))
+  const fmt = seconds => seconds.toFixed(1) + 's'
+  const total = results.reduce((sum, r) => sum + r.seconds, 0)
+  console.log('\n' + batchLabel + ' 汇总（共 ' + fmt(total) + '）：')
+  for (const { name, failed, status, seconds } of results) {
+    console.log('  ' + (failed ? '✗' : '✓') + ' ' + name + '  ' + fmt(seconds) + (failed ? '（exit ' + status + '）' : ''))
   }
+
+  // GitHub Actions step summary：按耗时降序，给分片/拆组提供数据。
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const rows = [...results].sort((a, b) => b.seconds - a.seconds)
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+      '### ' + batchLabel + '：' + results.length + ' 项，共 ' + fmt(total),
+      '',
+      '| 结果 | 测试 | 耗时 |',
+      '| --- | --- | ---: |',
+      ...rows.map(r => '| ' + (r.failed ? '✗ exit ' + r.status : '✓') + ' | ' + r.name + ' | ' + fmt(r.seconds) + ' |'),
+      '',
+    ].join('\n'))
+  }
+
+  const failedList = results.filter(r => r.failed && !KNOWN_FAIL.has(r.name))
+  const knownFailed = results.filter(r => r.failed && KNOWN_FAIL.has(r.name))
+  for (const r of results) {
+    if (KNOWN_FAIL.has(r.name)) {
+      console.log('  ' + (r.failed ? '◍' : '⚠✓') + ' ' + r.name + '  ' + fmt(r.seconds) + (r.failed ? '（known-fail）' : '（known-fail 已通过，请移出名单）'))
+    }
+  }
+  if (knownFailed.length > 0) console.log('[run-ci-group] known-fail 未通过 ' + knownFailed.length + ' 项（见名单注释），不计入失败')
+  if (failedList.length > 0) {
+    console.error('\n' + batchLabel + '：' + failedList.length + '/' + results.length + ' 项失败——' + failedList.map(f => f.name).join(', '))
+  } else {
+    console.log('\n' + batchLabel + '：全部 ' + results.length + ' 项通过')
+  }
+  return { results, unknownFailures: failedList.length }
 }
-if (knownFailed.length > 0) console.log('[run-ci-group] known-fail 未通过 ' + knownFailed.length + ' 项（见名单注释），不计入失败')
-if (failedList.length > 0) {
-  console.error('\n' + label + '：' + failedList.length + '/' + results.length + ' 项失败——' + failedList.map(f => f.name).join(', '))
-  process.exit(1)
+
+// ---- 编排：cascade 逐层停级 / 单层 / 单组 ----
+if (isCascadeMode) {
+  let stoppedAt = null
+  for (const tier of TIERS) {
+    const batch = tierEntries([tier])
+    if (batch.length === 0) {
+      console.log('[run-ci-group] cascade-' + tier + '：无条目，跳过')
+      continue
+    }
+    const { unknownFailures } = await runBatch(batch, 'cascade-' + tier)
+    if (unknownFailures > 0) { stoppedAt = tier; break }
+  }
+  if (stoppedAt) {
+    console.error('\n[cascade] 在 ' + stoppedAt + ' 层停止——低层红了，高层未跑（低层红时高层结果没有诊断价值，先修低层）')
+    process.exit(1)
+  }
+  console.log('\n[cascade] t0 → t1 → t2 全部通过')
+  process.exit(0)
 }
-console.log('\n' + label + '：全部 ' + results.length + ' 项通过')
+
+const { unknownFailures } = await runBatch(group, label)
+process.exit(unknownFailures > 0 ? 1 : 0)
