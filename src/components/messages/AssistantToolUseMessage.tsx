@@ -291,7 +291,7 @@ function clipHeaderArgs(args: string): string {
 
 /** Clip a single-line header string to a DISPLAY-width budget (cells, not
  *  chars — CJK counts 2). Used by the grok-style one-line terminal header:
- *  the model summary (or the command's first line) must never wrap. */
+ *  the command's first line must never wrap. */
 function clipToWidth(text: string, width: number): string {
   if (width <= 1) return '…'
   if (stringWidth(text) <= width) return text
@@ -378,16 +378,12 @@ function toolCardMetaTooltip(tool: ToolRow, isRunning: boolean, isError: boolean
   return parts.join(' · ')
 }
 
-function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, displayArgs, argsLanguage, nameColor, filePath, onOpenFile, metaTooltip, headerTextBudget, lit }: {
+function HeaderTitle({ name, title, isTerminal, folded, collapsed, displayArgs, argsLanguage, nameColor, filePath, onOpenFile, metaTooltip, headerTextBudget, lit }: {
   name: string
   title: string | undefined
   isTerminal: boolean
   /** Terminal-card fold result (multi-line title, folding on, not verbose). */
   folded: FoldedTitle | undefined
-  /** Model-authored one-line summary from the tool call args (`description`
-   *  parameter): shown in place of the command while collapsed (grok-style
-   *  step title); the command stays reachable via verbose/expand + hover. */
-  summary: string | undefined
   /** True while the card is collapsed (not verbose/expanded) — gates the
    *  one-line terminal header. */
   collapsed: boolean
@@ -428,7 +424,6 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
   const headerTooltip = useTooltip(() => {
     const meta = metaTooltip()
     const withMeta = (full: string): string => (meta === '' ? full : `${full}\n${meta}`)
-    if (summary !== undefined) return withMeta(title ?? '')
     if (folded !== undefined) return withMeta(title ?? '')
     if (title === undefined && clipHeaderArgs(displayArgs) !== displayArgs) return withMeta(displayArgs)
     // Width truncation: only the non-terminal title Text is truncate-end —
@@ -458,16 +453,14 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
     )
   }
   if (isTerminal) {
-    // Collapsed terminal header is ALWAYS one line (grok-style): the model
-    // summary when present, otherwise the command's first line, both clipped
-    // to the row budget — the full command wraps only in verbose/expanded.
+    // Collapsed terminal header is ALWAYS one line (grok-style): the
+    // command's first line, clipped to the row budget — the full command
+    // wraps only in verbose/expanded.
     if (collapsed) {
       const first = title === undefined ? '' : title.split('\n')[0] ?? title
       const moreLines = title !== undefined && title.includes('\n')
       const budget = Math.max(8, headerTextBudget - stringWidth(name) - 2)
-      const text = summary !== undefined
-        ? ` ${clipToWidth(summary, budget + 1)}`
-        : `(${clipToWidth(`${first}${moreLines ? ' …' : ''}`, budget)})`
+      const text = `(${clipToWidth(`${first}${moreLines ? ' …' : ''}`, budget)})`
       return (
         <>
           <Box flexShrink={0}>
@@ -584,17 +577,6 @@ export function AssistantToolUseMessage({
   // command) — then the call view's title stands.
   const headerTitle = tool.resultView?.title ?? tool.callView?.title
   const headerIsTerminal = view?.card === 'terminal'
-  // grok-style step summary: the bash tool lets the model attach a
-  // `description` argument (one sentence, user's language). Prefer it over
-  // the raw command in the collapsed header; the command stays a click away.
-  const modelSummary = (() => {
-    if (!headerIsTerminal) return undefined
-    const parsed = parseJsonArgs(tool.argsFull ?? tool.argsText)
-    if (parsed === null || typeof parsed !== 'object') return undefined
-    const record = parsed as Record<string, unknown>
-    const value = record['description']
-    return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
-  })()
   // Fold the terminal header: multi-line command script (setting-gated) plus
   // the always-on long-line clip, both off once the card is verbose/expanded
   // (Ctrl+O and the row click both land in `verbose`, so expansion reuses the
@@ -700,7 +682,7 @@ export function AssistantToolUseMessage({
   // No layout change: the indicator is a fixed column on the header line, the
   // body never moves.
   const [hovered, setHovered] = React.useState(false)
-  // Grok-style rest state: a settled folded header dims (name, summary,
+  // Grok-style rest state: a settled folded header dims (name, command,
   // args, elapsed); selection, hover, expansion, a running call, or an error
   // lights it back to full color. The expanded body always renders lit.
   const headerLit = isSelected || hovered || isExpanded || isRunning || isError
@@ -728,7 +710,7 @@ export function AssistantToolUseMessage({
             isError={isError}
             toolName={tool.name}
           />
-          <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} summary={verbose ? undefined : modelSummary} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} lit={headerLit} />
+          <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} lit={headerLit} />
           {!isRunning && (
             <Box flexWrap="nowrap">
               <Text dimColor={!headerLit}>{elapsedText}</Text>
