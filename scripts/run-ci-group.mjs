@@ -839,6 +839,9 @@ const KNOWN_FAIL = new Set([
   'verify-keymap', 'verify-session-color-recap',
   // flaky 观察组成员：单跑稳定过、组内/并行下时序抖动（组名即语义）。
   'verify-resize-temporal',
+  // 挂起型（基线 fa96898 同样死等 20min+）：纯逻辑断言全过，渲染段等一个
+  // 永不 resolve 的 promise；待修脚本本身，per-entry timeout 会兜底杀掉。
+  'verify-balance',
 ])
 
 
@@ -851,6 +854,10 @@ const runEntryWithStatus = async (entry) => {
   const scriptHome = mkdtempSync(join(tmpdir(), 'dsh-tui-group-home-'))
   const chunks = []
   const startedAt = performance.now()
+  // Per-entry timeout: a HUNG script (awaiting a promise that never
+  // resolves) must not block the whole group — kill after PER_ENTRY_TIMEOUT
+  // seconds and report as a failure with exit code 124.
+  const PER_ENTRY_TIMEOUT_MS = Number(env.DSH_TUI_GROUP_TIMEOUT_MS ?? '240000')
   const status = await new Promise((resolve) => {
     const child = spawn(argv[0], argv.slice(1), {
       env: {
@@ -862,10 +869,15 @@ const runEntryWithStatus = async (entry) => {
       },
       shell: false,
     })
+    const timer = setTimeout(() => {
+      chunks.push('\n[run-ci-group] per-entry timeout (' + Math.round(PER_ENTRY_TIMEOUT_MS / 1000) + 's) — killing hung script\n')
+      try { child.kill('SIGKILL') } catch { /* already gone */ }
+      resolve(124)
+    }, PER_ENTRY_TIMEOUT_MS)
     child.stdout.on('data', d => chunks.push(d))
     child.stderr.on('data', d => chunks.push(d))
-    child.on('error', (error) => { chunks.push(String(error)); resolve(1) })
-    child.on('close', code => resolve(code ?? 1))
+    child.on('error', (error) => { clearTimeout(timer); chunks.push(String(error)); resolve(1) })
+    child.on('close', code => { clearTimeout(timer); resolve(code ?? 1) })
   })
   rmSync(scriptHome, { recursive: true, force: true })
   return { name, status, chunks, seconds: (performance.now() - startedAt) / 1000, renderLog }
