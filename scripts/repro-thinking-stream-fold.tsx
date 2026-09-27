@@ -17,7 +17,7 @@ process.env.FORCE_COLOR = '3'
 process.env.DSH_TUI_THEME = 'dark'
 process.env.DSH_TUI_LANG = 'zh'
 
-const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen, Text }, { Chat }, { QuestionStore }, { LOCAL_COMMANDS }, { settled }, { THINKING_SPINNER_FRAMES }, { t }] = await Promise.all([
+const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen, Text }, { Chat }, { QuestionStore }, { LOCAL_COMMANDS }, { settled }, { THINKING_SETTLED_MARKER }, { t }] = await Promise.all([
   import('node:stream'),
   import('react'),
   import('@xterm/headless'),
@@ -112,8 +112,10 @@ const lines = () => {
   return Array.from({ length: ROWS }, (_, y) => buf.getLine(buf.baseY + y)?.translateToString(true) ?? '')
 }
 const bodyLines = (ls: string[]) => ls.filter(l => l.includes('推理第')).length
-// Match the whole streaming header, not a startup tip that mentions thinking.
-const thinkingHeaders = new Set(THINKING_SPINNER_FRAMES.map(frame => `${frame} ${t('thinking-label')}…`.trim()))
+// The streaming header is now a single settled-marker line (grok-style):
+// `◆ <thinking-running-label>…` — the multi-frame spinner this script
+// matched was removed upstream, which crashed here on undefined.map.
+const thinkingHeaders = new Set([`${THINKING_SETTLED_MARKER} ${t('thinking-running-label')}…`])
 const headerRow = (ls: string[]) => ls.findIndex(line => thinkingHeaders.has(line.trim()))
 // 点击后的重绘在高负载（CI、并行回归）下可能晚于任何固定等待：按结果轮询，
 // 超时才判失败（term-test 的 settled 就是这条语义）。

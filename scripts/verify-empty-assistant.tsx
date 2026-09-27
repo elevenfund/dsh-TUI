@@ -116,7 +116,12 @@ const inst = await render(
   const dotAboveTool = toolRow >= 0 && lines.slice(0, toolRow).some(l => /^●\s*$/.test(l))
   check('空 settled assistant 行被过滤（工具卡上方无孤立 ●）', !dotAboveTool,
     `toolRow=${toolRow}`)
-  check('叙述-only settled 行被过滤（⏵ 行不渲染、上方无孤立 ●）', !screen.includes('⏵') && !dotAboveTool, '')
+  // ⏵ 叙述行现为 turn 的 step title（assistantDisplayText 有意渲染，
+  // MessageList "a narration-only step shows real content"）——断言语义
+  // 更新为「渲染为步骤行且上方无孤立 ●」。
+  const stepTitleVisible = screen.includes('⏵ 正在跑测试')
+  check('叙述-only settled 行渲染为步骤行（上方无孤立 ●）', stepTitleVisible && !dotAboveTool,
+    `stepTitle=${stepTitleVisible}`)
 }
 
 // 落定翻转：streaming true → false 原地写（rows 身份/长度不变）。

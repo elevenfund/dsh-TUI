@@ -104,6 +104,9 @@ const listeners = new Set<() => void>()
 const channel: any = {
   // 探针确定性：鲸鱼欢迎期闲置动画（默认开）不进本探针的测量窗口。
   whaleIdle: false,
+  // tool 卡 body 预算：Chat 默认 0（grok 式 header-only），本探针的
+  // 「结果恰好一份」断言针对 body 文本，给它 3 行余量。
+  toolBodyLines: 3,
   version: 0,
   rows: [] as any[],
   status: 'idle',
@@ -324,7 +327,9 @@ for (const t of ['五、代码结构']) {
 }
 
 const rowOf = (needle: string) => lines.findIndex(line => line.includes(needle))
-const thinkingRow = lines.findLastIndex(line => line.includes('思考 ·'))
+// thinking 块头现行形态：`◆ 思考 <时长> <hint>`（settled marker + thought-label），
+// 旧的「思考 ·」工作行式分隔符不再出现在转录块头。
+const thinkingRow = lines.findLastIndex(line => line.includes('◆ 思考'))
 const toolRow = rowOf('TOOL_CALL_ONCE_7F31')
 const bodyRow = rowOf('ASSISTANT_BODY_ONCE_7F31')
 const inputRow = rowOf(INPUT_MARKER)

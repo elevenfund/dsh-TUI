@@ -142,8 +142,9 @@ check('预备: transcript 历史消息可见', await settled(() => screenHas('tr
 stdinObj.write('什么是cordis')
 check('预备: 草稿已入输入框', await settled(() => screenHas('什么是cordis')))
 
-// Ctrl+G → 假编辑器（600ms 后写盘退出）
-stdinObj.write('\x07')
+// Alt+G → 假编辑器（600ms 后写盘退出）。editor 键已从 ctrl+g 迁到 alt+g
+// （ctrl+g 现在开任务中心，keymap.ts editor 条目注释）。
+stdinObj.write('\x1bg')
 // 固定窗:墙钟 注入必须落在假编辑器 600ms 会话窗口内；交接期间界面无变化，
 // 没有可轮询的完成条件。
 await sleep(250)

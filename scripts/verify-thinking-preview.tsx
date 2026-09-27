@@ -69,7 +69,9 @@ async function renderCase(thinking: string): Promise<string[]> {
 
 for (const [name, thinking] of cases) {
   const lines = await renderCase(thinking)
-  const header = lines.findIndex(line => line.includes('Thinking'))
+  // settled header is `◆ Thought (ctrl+o to expand)` — the preview mode
+  // renders the settled-form header (thought-label), not the streaming one.
+  const header = lines.findIndex(line => line.includes('Thought'))
   const sentinel = lines.findIndex(line => line.includes('preview-sentinel'))
   const distance = sentinel - header
   if (header < 0 || sentinel < 0 || distance !== EXPECTED_HEADER_TO_SENTINEL) {

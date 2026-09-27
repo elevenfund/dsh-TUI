@@ -54,11 +54,11 @@ const GROUPS = {
     ['verify-sixel-transcript', ['node', '--import', 'tsx/esm', 'scripts/verify-sixel-transcript.tsx']],
 // 带断言的回归：提问面板内联输入（issue #9）+ 工具卡排版
 // （⎿ 缩进、diff 红绿行、信封剥离），失败即非零退出。
-    ["repro-askpanel", ['node', '--import', 'tsx/esm', 'scripts/repro-askpanel.tsx']],
+    ["repro-askpanel", ['node', '--import', 'tsx/esm', 'scripts/repro-askpanel.tsx'], { DSH_TUI_LANG: 'zh' }],
 // 问卷回退回归：答案按题覆盖、草稿恢复、Esc 分层语义与最终摘要。
     ["verify-question-backtrack", ['node', '--import', 'tsx/esm', 'scripts/verify-question-backtrack.tsx']],
 // 提问面板全应用布局回归：短/长高录、activity tick 差分、resize 风暴。
-    ["verify-askpanel-layout", ['node', '--import', 'tsx/esm', 'scripts/verify-askpanel-layout.tsx']],
+    ["verify-askpanel-layout", ['node', '--import', 'tsx/esm', 'scripts/verify-askpanel-layout.tsx'], { DSH_TUI_LANG: 'zh' }],
     ["repro-toolcards", ['node', '--import', 'tsx/esm', 'scripts/repro-toolcards.tsx']],
     ["repro-diff-split", ['node', '--import', 'tsx/esm', 'scripts/repro-diff-split.tsx']],
 // 代码块 tab 缩进背景回归（issue #606）：tab 展开须继承单元格样式，否则
@@ -216,6 +216,10 @@ const GROUPS = {
 // 长会话下的浏览区回归：RENDERED_ROW_CAP 折叠区外的 g/G 跳转（forceMount
 // 扩窗）、sticky 底部姿态与折叠生效。
     ['verify-transcript-selection-long', ['node', '--import', 'tsx/esm', 'scripts/verify-transcript-selection-long.tsx']],
+// IME/组合输入下原生光标必须停在输入行 caret（▏ 非聚焦 / 反色格聚焦）。
+// 断言按 zh 文案定位输入行（"自定义回答"标签），登记即带 zh env——
+// 之前挂 KNOWN_FAIL 却从未登记进组，测试实际没在跑（2026-09-27 修复）。
+    ['verify-ime-cursor', ['node', '--import', 'tsx/esm', 'scripts/verify-ime-cursor.tsx'], { DSH_TUI_LANG: 'zh' }],
 // zellij 兼容回归（DECSTBM 硬件滚动撤回）：zellij 的 CSI T 只在光标位于
 // 滚动区内时移动行，而渲染器把光标停在整屏最后一行（每个 ScrollBox 之下），
 // 位移被静默吞掉而差分引擎仍当作已发生 → 上滚时旧行残留/错行；zellij 实现了
@@ -506,7 +510,7 @@ const GROUPS = {
     ["verify-channel-composition", ['node', '--import', 'tsx/esm', 'scripts/verify-channel-composition.ts']],
 // 状态行的读侧：会话键控、变更通知、宿主发布值的防御性收窄、绑定时的基线读取
 // （投影只在变化时推送，恢复/重连的会话必须自己读一次当前值）。
-    ["verify-activity-store", ['node', '--import', 'tsx/esm', 'scripts/verify-activity-store.ts']],
+    ["verify-activity-store", ['node', '--import', 'tsx/esm', 'scripts/verify-activity-store.ts'], { DSH_TUI_LANG: 'zh' }],
 // 状态行的渲染面：投影值经 hook 到达屏幕、后台会话不得抢当前行、清空即消失、
 // 两个接缝同时有值时以投影为准（读侧迁移对显示是零变化）。
     ["verify-activity-store-render", ['node', '--import', 'tsx/esm', 'scripts/verify-activity-store-render.tsx']],
@@ -529,7 +533,7 @@ const GROUPS = {
     ['verify-preset-startup', ['node', 'scripts/verify-preset-startup.mjs']],
     ['verify-message-compat', ['node', 'scripts/verify-message-compat.mjs']],
     ['verify-settings-compat', ['node', '--import', 'tsx/esm', 'scripts/verify-settings-compat.mjs']],
-    ["verify-compact", ['node', '--import', 'tsx/esm', 'scripts/verify-compact.mjs']],
+    ["verify-compact", ['node', '--import', 'tsx/esm', 'scripts/verify-compact.mjs'], { DSH_TUI_LANG: 'zh' }],
     ["verify-context-warning", ['node', '--import', 'tsx/esm', 'scripts/verify-context-warning.mjs']],
     ["verify-channel-goal-todo", ['node', '--import', 'tsx/esm', 'scripts/verify-channel-goal-todo.mjs']],
 // IDE 选区通道回归（PR #562）：纯函数（env 直连/lock 扫描与 workspace
@@ -574,7 +578,7 @@ const GROUPS = {
 // 压缩 × 会话切换生命周期：压缩进行中 /model、/resume、/rewind 等必须先
 // abort 并等压缩落定再 fork 快照（后台提交 checkpoint = "压缩失败后换模型
 // 丢上下文"事故根因）；persistence 类失败与通用失败分开提示。
-    ["verify-compact-switch", ['node', '--import', 'tsx/esm', 'scripts/verify-compact-switch.tsx']],
+    ["verify-compact-switch", ['node', '--import', 'tsx/esm', 'scripts/verify-compact-switch.tsx'], { DSH_TUI_LANG: 'zh' }],
     ["verify-live-session", ['node', '--import', 'tsx/esm', 'scripts/verify-live-session.ts']],
     ["verify-session-v3", ['node', '--import', 'tsx/esm', 'scripts/verify-session-v3.ts']],
     ["verify-session-tree-generations", ['node', '--import', 'tsx/esm', 'scripts/verify-session-tree-generations.ts']],
@@ -712,13 +716,13 @@ const GROUPS = {
     ["verify-login-credentials", ['node', '--import', 'tsx/esm', 'scripts/verify-login-credentials.tsx']],
 // 提问面板 hideCustomInput 行为回归：纯选择题隐藏输入行且 Tab/打字
 // 不劫持焦点，纯文本题忽略 hide 标记，多选题默认行为不回退。
-    ["verify-askpanel-hide-custom-input", ['node', '--import', 'tsx/esm', 'scripts/verify-askpanel-hide-custom-input.tsx']],
+    ["verify-askpanel-hide-custom-input", ['node', '--import', 'tsx/esm', 'scripts/verify-askpanel-hide-custom-input.tsx'], { DSH_TUI_LANG: 'zh' }],
 // 问卷面板粘贴回归：bracketed paste 压平插入（纯换行块不得提交、ANSI/
 // OSC 剥净）、Ctrl+V/Alt+V 异步剪贴板插入到实时光标（读期间打字真竞态
 // 臂、busy 去重）、选项行粘贴追加+附加标签、plan-review 粘贴绝不快选/
 // 批准、隐藏输入题粘贴惰性、超长粘贴上限报错、同 chunk 批量按键经同步
 // ref 依序编辑、emoji 码点步进。
-    ["verify-question-paste", ['node', '--import', 'tsx/esm', 'scripts/verify-question-paste.tsx']],
+    ["verify-question-paste", ['node', '--import', 'tsx/esm', 'scripts/verify-question-paste.tsx'], { DSH_TUI_LANG: 'zh' }],
 // 问卷折叠：真实 Chat + stores 验证审批/对话框优先、整屏中断层恢复、
 // abort 后 FIFO 请求身份隔离，以及改键和草稿保持（inline/fullscreen）。
     ["verify-question-fold", ['node', '--import', 'tsx/esm', 'scripts/verify-question-fold.tsx']],
@@ -884,28 +888,12 @@ mkdirSync(RENDER_LOG_DIR, { recursive: true })
  *  - verify-ime-cursor：caret 定位断言在本机渲染管线稳定失败
  *    （row=-1，找不到 ▏/caret 格；fa96898 基线同样挂，与 chat/ 拆分无关），
  *    待 IME caret 渲染单独排查。 */
-const KNOWN_FAIL = new Set([
-  'verify-ime-cursor',
-  // 以下 13 个在 fa96898（fork 基线，本轮 chat/ 拆分之前）同样失败——
-  // 既有失败基线，逐项排查修复后移出；2026-09-27 render-scroll 组首跑确认。
-  'verify-sixel-transcript', 'repro-askpanel', 'verify-askpanel-layout',
-  'repro-toolcards', 'repro-diff-split', 'verify-thinking-preview',
-  'repro-thinking-stream-fold', 'verify-smooth-reveal', 'repro-inline-scrollback',
-  'verify-subagent-settle', 'verify-scroll-jumps', 'verify-scroll-jumps-narrow',
-  'repro-picker-windowing',
-  // 跨组既有失败（同法定责，fa96898 基线 exit=1）：
-  'verify-keymap', 'verify-session-color-recap',
-  // flaky 观察组成员：单跑稳定过、组内/并行下时序抖动（组名即语义）。
-  'verify-resize-temporal',
-  // 挂起型（基线 fa96898 同样死等 20min+）：纯逻辑断言全过，渲染段等一个
-  // 永不 resolve 的 promise；待修脚本本身，per-entry timeout 会兜底杀掉。
-  'verify-balance',
-  // channel-ui 组既有失败（fa96898 基线 checkout 对照全部 exit≠0，2026-09-27）：
-  'verify-activity-store', 'verify-compact', 'verify-compact-switch',
-  'verify-empty-assistant', 'repro-external-editor', 'verify-thinking-display',
-  'verify-text-background', 'verify-effort-ignition', 'verify-effort-accent',
-  'verify-askpanel-hide-custom-input', 'verify-question-paste', 'verify-long-line-fold',
-])
+/** 显式已知失败（本地稳定复现、上游基线同样挂）：照跑、失败只记名不红，
+ *  通过则要求从名单移出（名单不是免死金牌）。
+ *  2026-09-27 深夜清零：原 30 项全部修复（根因：宿主 tmux 泄漏降色 ×7、
+ *  i18n 语言漂移 ×8、断言未跟 UI 改版 ×11、脚本基建 ×3、产品 bug
+ *  AgentStrip 空闲时钟 ×1）。名单保留为空——新失败先修或记名，不静默。 */
+const KNOWN_FAIL = new Set([])
 
 
 const runEntryWithStatus = async (entry) => {
@@ -920,10 +908,14 @@ const runEntryWithStatus = async (entry) => {
   // seconds and report as a failure with exit code 124.
   const PER_ENTRY_TIMEOUT_MS = Number(env.DSH_TUI_GROUP_TIMEOUT_MS ?? '240000')
   const status = await new Promise((resolve) => {
+    // Strip the host's tmux session marker: colorize.ts clamps chalk to
+    // 256 colors under $TMUX, which rewrites truecolor assertions into
+    // palette-index ones when the suite is launched from inside tmux.
+    const { TMUX: _hostTmux, ...childEnv } = env
     const child = spawn(argv[0], argv.slice(1), {
       env: {
         DSH_TUI_RENDER_LOG: renderLog,
-        ...env,
+        ...childEnv,
         HOME: scriptHome,
         USERPROFILE: scriptHome,
         ...(extraEnv ?? {}),

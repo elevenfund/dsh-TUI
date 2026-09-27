@@ -179,6 +179,10 @@ const listProps = {
   model: 'deepseek-chat',
   showAll: true,
   onToggleAll: () => {},
+  // MessageList defaults toolBodyLines to 0 (grok-style header-only steps);
+  // this suite pins the reveal animation's body semantics, so give the
+  // pending diff room to stream (same rationale as verify-scroll-jumps).
+  toolBodyLines: 8,
 }
 
 // ---------------------------------------------------------------------------

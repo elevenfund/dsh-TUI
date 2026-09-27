@@ -50,6 +50,15 @@
  * 乘数压缩（0.2 ≈ 快 4~5 倍且断言仍过）。默认 1.0 = 现行为。
  */
 const PACE = Math.max(0.05, Number(process.env.DSH_TUI_TEST_PACE ?? '1') || 1)
+
+// Headless tests must not inherit the host terminal's tmux session:
+// src/ink/colorize.ts deliberately clamps chalk to 256 colors when $TMUX is
+// set (tmux truecolor passthrough), so running the suite from inside tmux
+// silently rewrites every truecolor assertion into a palette-index one —
+// this masqueraded as a dozen "pre-existing" render failures that were
+// really environment leakage. Tests that exercise the tmux clamp itself
+// set the variable explicitly after this import.
+delete process.env.TMUX
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms < 60 ? ms : Math.round(ms * PACE)))
 
 // CI 共享 runner 有负载抖动，条件成立即返回，加大上限只影响真失败的耗时。

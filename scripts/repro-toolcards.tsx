@@ -204,15 +204,24 @@ show('running-diff', {
 })
 check('运行中展示待定 diff', await settled(() => rowOf('- old') >= 0 && rowOf('+ new') >= 0))
 
-// 10. 状态点：分类定色、失败红 ✗。
+// 10. 状态 marker：统一 ◆ 单信号（ToolUseLoader）——running 闪烁、settled
+// success 绿、error 玫红。分类色 • 小点（toolDotExec 鼠尾草绿等）已随
+// grok 式卡头改版废弃（theme.ts toolDot* 已无消费者）。
+const SUCCESS_DIAMOND = 0x82b89d // theme success #82B89D (Mist green)
+const ERROR_DIAMOND = 0xda8a93 // theme error #DA8A93 (Soft rose)
+const diamondFg = (r: number): number | undefined => {
+  const line = lines()[r] ?? ''
+  const x = line.indexOf('◆')
+  return x >= 0 ? fgAt(x, r) : undefined
+}
 show('dot-bash', { name: 'bash', argsText: '{"command":"ls"}' })
-check('bash 点为鼠尾草绿小点', await settled(() => { const r = rowOf('Bash'); return r >= 0 && lines()[r]!.includes('•') && fgAt(lines()[r]!.indexOf('•'), r) === 0x7fae99 }))
+check('bash settled 头 ◆ 为 success 绿', await settled(() => { const r = rowOf('Bash'); return r >= 0 && diamondFg(r) === SUCCESS_DIAMOND }))
 show('dot-read', { name: 'read' })
-check('read 点为青蓝小点', await settled(() => { const r = rowOf('Read'); return r >= 0 && lines()[r]!.includes('•') && fgAt(lines()[r]!.indexOf('•'), r) === 0x82b8c7 }))
+check('read settled 头 ◆ 为 success 绿', await settled(() => { const r = rowOf('Read'); return r >= 0 && diamondFg(r) === SUCCESS_DIAMOND }))
 show('dot-edit', { name: 'edit' })
-check('edit 点为雾紫小点', await settled(() => { const r = rowOf('Edit'); return r >= 0 && lines()[r]!.includes('•') && fgAt(lines()[r]!.indexOf('•'), r) === 0xb3a0d4 }))
+check('edit settled 头 ◆ 为 success 绿', await settled(() => { const r = rowOf('Edit'); return r >= 0 && diamondFg(r) === SUCCESS_DIAMOND }))
 show('dot-error', { name: 'bash', status: 'error', errorText: 'boom' })
-check('失败点变红 ✗', await settled(() => { const r = rowOf('Bash'); return r >= 0 && lines()[r]!.includes('✗') && fgAt(lines()[r]!.indexOf('✗'), r) === 0xda8a93 }))
+check('失败头 ◆ 变 error 玫红', await settled(() => { const r = rowOf('Bash'); return r >= 0 && diamondFg(r) === ERROR_DIAMOND }))
 
 // 10. 多 hunk 编辑（settled contextual diff）：同文件相邻 hunk 用 ⋯ 分隔。
 show('multi-hunk', {
@@ -273,8 +282,10 @@ const pwshTool = {
   resultFull: '',
 }
 await show('fold-on', pwshTool, false, true)
-check('折叠时标题仅保留命令首行', await settled(() => screen().includes('PowerShell($items = Get-ChildItem -Recurse)')))
-check('折叠时显示 +N 行提示', await settled(() => screen().includes('… +3 lines') && screen().includes('ctrl+o')))
+// grok 式单行卡头：多行脚本折叠为「首行 …」（clip 省略号收尾），+N lines
+// 报告移入 hover tooltip（foldedHeader），不再上屏。
+check('折叠时标题仅保留命令首行（… 收尾）', await settled(() => screen().includes('PowerShell($items = Get-ChildItem -Recurse') && screen().includes('…')))
+check('折叠提示不再上屏（+N lines 属 tooltip）', await settled(() => !screen().includes('+3 lines') && !screen().includes('ctrl+o')))
 check('折叠时后续脚本行不出现', await settled(() => rowOf('Sort-Object') === -1 && rowOf('Select-Object') === -1))
 
 // 13b. 尾随换行是终止符不是行（sideLines 同规则）：'cd /tmp\nls\n' 计 +1 不 +2。
@@ -284,7 +295,7 @@ await show('fold-trailing', {
   resultView: { card: 'terminal', output: '', exitCode: 0 },
   resultFull: '',
 }, false, true)
-check('尾随换行不计入折叠行数', await settled(() => screen().includes('… +1 lines') && screen().includes('Bash(cd /tmp)')))
+check('尾随换行不计入折叠行数（隐藏行不上屏）', await settled(() => screen().includes('Bash(cd /tmp …)') && rowOf('ls') === -1))
 
 // 14. Ctrl+O（verbose）在折叠开启时仍展开完整脚本。
 await show('fold-open', pwshTool, true, true)

@@ -409,7 +409,7 @@ let balanceResult: import('../src/deepseekBalance.js').BalanceResult = {
 const channel = makeChannel()
 const questionStore = { subscribe: () => () => {}, getSnapshot: () => null, answerCurrent: () => {} }
 const approvalStore = { subscribe: () => () => {}, getSnapshot: () => null }
-await render(
+const instance = await render(
   <AlternateScreen>
     <Chat
       fullscreen
@@ -510,6 +510,10 @@ check('刷新后摘要仍在', screenHas(term, 'DeepSeek 余额 ¥110.00'))
   // 收尾：鼠标移开，避免残留 hover。
   hover(1, 1)
 }
+
+// 收尾：unmount 释放渲染实例，否则事件循环挂着进程不退（曾在 CI 挂起
+// 20min+，靠 per-entry timeout 兜底杀——漏 unmount 是根因）。
+await instance.unmount()
 
 if (failures > 0) {
   console.error(`\n${failures} failure(s)`)

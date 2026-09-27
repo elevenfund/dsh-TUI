@@ -80,6 +80,10 @@ function makeChannel() {
     agentId: 'thinking-display-repro',
     model: 'deepseek-v4-flash',
     provider: 'deepseek',
+    // 'fold' is the shipped default and hides the streaming trace behind
+    // the single-line ◆ header; this suite pins the trace-visible contract
+    // of the thinkingVisible toggle, so run it in full mode.
+    thinkingFold: 'full',
     tokens: { input: 20, output: 10 },
     cwd: '/tmp',
     displayCwd: '/tmp',

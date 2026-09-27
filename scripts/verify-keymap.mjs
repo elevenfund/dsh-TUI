@@ -67,7 +67,9 @@ resetKeymapOverrides()
 check('default paste matches ctrl+v', actionMatches('paste', 'v', { ctrl: true }))
 check('default paste matches alt+v (meta)', actionMatches('paste', 'v', { meta: true }))
 check('ctrl+shift+v does NOT match paste (native terminal paste)', !actionMatches('paste', 'v', { ctrl: true, shift: true }))
-check('default editor matches ctrl+g', actionMatches('editor', 'g', { ctrl: true }))
+// editor moved off ctrl+g (alt+g keeps the mnemonic) — ctrl+g now opens
+// the unified task center; see the editor entry comment in utils/keymap.ts.
+check('default editor matches alt+g', actionMatches('editor', 'g', { meta: true }))
 check('default trajectory matches ctrl+t', actionMatches('trajectory', 't', { ctrl: true }))
 check('default history matches ctrl+r', actionMatches('history', 'r', { ctrl: true }))
 check('default paste display string', effectiveComboString('paste') === 'ctrl+v, alt+v', effectiveComboString('paste'))
@@ -76,7 +78,7 @@ check('default paste display string', effectiveComboString('paste') === 'ctrl+v,
 // (ctrl+shift+insert is deliberately NOT valid grammar — "insert" is not a
 // named key — and must be dropped so paste keeps its defaults.)
 setKeymapOverrides({ paste: 'ctrl+shift+insert', editor: 'wat??', history: 'alt+r, ctrl+shift+r' })
-check('invalid override entry falls back to default', actionMatches('editor', 'g', { ctrl: true }))
+check('invalid override entry falls back to default', actionMatches('editor', 'g', { meta: true }))
 check('other invalid entry keeps paste default', actionMatches('paste', 'v', { ctrl: true }))
 setKeymapOverrides({ paste: 'ctrl+shift+v', editor: 'wat??', history: 'alt+r, ctrl+shift+r' })
 check('override moves the paste binding', actionMatches('paste', 'v', { ctrl: true, shift: true }))

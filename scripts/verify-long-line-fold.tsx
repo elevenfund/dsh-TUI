@@ -238,6 +238,11 @@ const listProps = {
   model: 'deepseek-chat',
   showAll: true,
   onToggleAll: (): void => {},
+  // collapsed terminal card headers are always a single clipped line
+  // (grok-style); body folding is what toolBodyLines governs — 0 (the
+  // settings default) renders no body at all, so pin 3 lines to keep the
+  // B7 body-fold contract meaningful.
+  toolBodyLines: 3,
 }
 
 type Row = Parameters<typeof MessageList>[0]['rows'][number]
@@ -292,8 +297,8 @@ console.log('--- B: transcript rows fold by default ---')
     () => <MessageList rows={[hugeToolRow]} {...listProps} />,
     async ({ screen }) => {
       const text = screen()
-      check('B5 tool card title (one 60k-char command): fold marker renders',
-        packed(text).includes(MARKER_PACKED), digest(text))
+      check('B5 tool card title (one 60k-char command): single-line clip keeps head, drops tail',
+        packed(text).includes('FOLDHEAD-cmd-') && !packed(text).includes(TAIL), digest(text))
       check('B6 tool card title: the clipped tail is gone',
         packed(text).includes(`${HEAD}-cmd-`) && !packed(text).includes(TAIL))
       check('B7 tool card body (one 60k-char output line): the clipped tail is gone',

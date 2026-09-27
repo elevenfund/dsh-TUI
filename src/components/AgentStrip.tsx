@@ -47,11 +47,14 @@ function subagentTokens(sub: SubagentState): number {
  * Renders nothing when the session is idle.
  */
 export function AgentStrip({ jobs, subagents, onOpenCenter, onOpenSubagent }: AgentStripProps): React.ReactNode {
-  // 1s tick keeps elapsed counters alive.
-  const [clockRef] = useAnimationFrame(1000)
   const liveJobs = jobs.filter(job => job.status === 'running' || job.status === 'stopping')
   const liveSubagents = subagents.filter(sub => sub.status === 'running' || sub.status === 'starting')
   const total = liveJobs.length + liveSubagents.length
+  // 1s tick keeps elapsed counters alive; parks at null once nothing is
+  // live — the strip itself stays mounted (return null below), so an
+  // always-on clock would keep the settled session rendering a frame every
+  // second forever (the idle-frame leak verify-subagent-settle pins).
+  const [clockRef] = useAnimationFrame(total > 0 ? 1000 : null)
   if (total === 0) return null
   const lines: Array<{ key: string; node: React.ReactNode; onClick?: () => void }> = []
   const pushJob = (job: BackgroundJobState): void => {

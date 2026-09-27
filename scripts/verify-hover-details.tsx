@@ -339,8 +339,9 @@ try {
   )
   check('I 高压占用读数在屏（84%）', await settled(() => screenHas(barTerm, '84%')))
   {
-    // 84.375% → 17 格实填；填充随压力转琥珀（#D8B270 的 256 色近似 180）。
-    check('I 高压量表填充转琥珀（warning 256=180）', blockRunFg(barTerm, 17) === 180,
+    // 84.375% → 17 格实填；填充随压力转琥珀（warning #D8B270 的 truecolor
+    // 直出——runner 已剥宿主 $TMUX，不再走 256 色降级近似）。
+    check('I 高压量表填充转琥珀（warning #D8B270）', blockRunFg(barTerm, 17) === 0xD8B270,
       `fg=${blockRunFg(barTerm, 17)}`)
   }
   barInstance.unmount()

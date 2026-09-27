@@ -113,6 +113,21 @@ function doResize(app: { stdout: any; term: typeof XTerm.prototype }, w: number,
   app.stdout.emit('resize')
 }
 
+/** 确定性落定锚：连续两次采样（隔一个渲染节拍）画面完全相同才算静默。
+ *  固定时长等待在并行 runner 的 CPU 竞争下不可靠——落定前采样会把旧帧
+ *  当作不变量基线（组内并行 flaky 的根因）。时间不变量采样前先等静默，
+ *  采样窗本身保持不变。 */
+async function awaitQuiet(a: { term: typeof XTerm.prototype; flush: () => void }) {
+  let last: string | null = null
+  await settle(() => {
+    a.flush()
+    const cur = screenLines(a.term).join('\n')
+    const quiet = last !== null && cur === last
+    last = cur
+    return quiet
+  }, { timeoutMs: 8000, stepMs: 50 })
+}
+
 // ================= 1+2. 时间稳定性 & 往返循环 =================
 const app = await mountChat(makeRows())
 const composerY = (lines: string[]) => lines.findIndex(l => l.includes('╭'))
@@ -137,6 +152,7 @@ check('基线含 composer 与 sentinel', baselineReady, `composer=${composerY(ba
 
 // ---- 1. resize 落定后不得继续漂 ----
 doResize(app, 90, ROWS)
+await awaitQuiet(app) // 确定性落定锚：静默后才开始不变量采样（并行竞争保险）
 // 固定窗:探针 250ms 与 1000ms 两个采样点的对比本身是被测语义（「状态不得
 // 再改变」），轮询会在首个成立帧立即返回，等于没测。
 await sleep(250); await app.flush()
@@ -153,6 +169,7 @@ for (let i = 0; i < 20; i++) {
 }
 doResize(app, BASE_COLS, ROWS)
 const roundTripSettled = await settled(() => screenLines(app.term).join('\n') === baseline.join('\n'))
+await awaitQuiet(app) // 确定性落定锚：收敛且静默后再开稳定窗（并行竞争保险）
 // 固定窗:探针 收敛后的稳定窗：迟到的 resize repaint 可能在首个相等帧之后才漂移，
 // 轮询在首帧相等即返回，盖不住「之后不得再漂」的时间语义——终态再比对一次。
 await sleep(250); await app.flush()
@@ -183,6 +200,9 @@ streamRow.text = STREAM_TEXT
 streamRow.streaming = false
 doResize(app2, BASE_COLS, ROWS)
 app2.bump()
+await awaitQuiet(app2) // 确定性落定锚：静默即全量切片（含 TAILMARK）已上屏
+// 固定窗:探针 静默后的稳定窗：终帧语义由冷渲染比对把关，此处只再证
+// 「静默之后不得再有迟到 repaint」的时间不变量。
 // 固定窗:探针 尾标记在 finalize 前的流式帧里已上屏（末次切片即全文），
 // 轮询 tail 计数会对已成立条件立即返回、抓到旧宽度的中间帧；这里等的是
 // 回到 BASE_COLS 的终帧落定，无独立可轮询条件（终帧对错由冷渲染比对把关）。
@@ -199,6 +219,7 @@ const coldRows = makeRows()
 coldRows.push({ id: 9999, kind: 'assistant', text: STREAM_TEXT, streaming: false })
 const app3 = await mountChat(coldRows)
 const coldConverged = await settled(() => screenLines(app3.term).join('\n') === warm.join('\n'))
+await awaitQuiet(app3) // 确定性落定锚：冷渲染收敛且静默后再取终态（并行竞争保险）
 // 固定窗:探针 同上：首个相等帧之后仍可能有迟到 repaint，稳定窗后取终态再比对。
 await sleep(250); await app3.flush()
 check('流中 resize 终态 == 冷渲染（live mutation 竞争无残留几何）', coldConverged && screenLines(app3.term).join('\n') === warm.join('\n'))

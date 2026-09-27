@@ -73,7 +73,10 @@ function Harness(): ReactNode {
       <ScrollBox ref={setScroll} flexGrow={1} flexShrink={1} flexDirection="column" stickyScroll>
         <MessageList rows={rows} expanded={false} expandedRows={expandedRows}
           selectedId={null} onToggleRow={noop} model="test" showAll onToggleAll={noop}
-          historyPaintEnabled={false} scrollHandle={scroll} registerRowRef={registerRowRef} onTimeline={setTimeline} />
+          historyPaintEnabled={false} scrollHandle={scroll} registerRowRef={registerRowRef} onTimeline={setTimeline}
+          // collapsed tool cards render 0 body lines by default; the RESULT n
+          // anchors (11 uses) live in the card body, so pin 3 body lines.
+          toolBodyLines={3} />
       </ScrollBox>
       <ScrollbarGutter handle={scroll} terminalWidth={terminalWidth} />
     </Box>
@@ -94,7 +97,8 @@ const body = (): string => {
   ).join('\n')
 }
 try {
-  assert.ok(await settled(() => screen().includes('RESULT 199') && screen().includes('██')), 'tail and clickable gutter ready')
+  // assert 消息带屏幕尾行：渲染冻结（mock 缺字段被 ink 吞错）时直接可见现场。
+  assert.ok(await settled(() => screen().includes('RESULT 199') && screen().includes('██')), 'tail and clickable gutter ready — screen tail:\n' + screen().split('\n').slice(-6).join('\n'))
   const scroll = handle as ScrollBoxHandle | null
   assert.ok(scroll)
   scroll.scrollTo(0)
