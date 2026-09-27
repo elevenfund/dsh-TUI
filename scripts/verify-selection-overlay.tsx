@@ -85,7 +85,7 @@ stdin.write('j')
 await keySleep(100) // 键间节奏（每键一次 commit，人手速度；PACE 免疫）
 stdin.write('j')
 await keySleep(100) // 键间节奏（每键一次 commit，人手速度；PACE 免疫）
-check('T13a jj 光标到 tool 行', lineHighlighted('Bash('))
+check('T13a jj 光标到 tool 行',  await settled(() => lineHighlighted('Bash(')) )
 stdin.write('\r')
 await keySleep(100) // 键间节奏（每键一次 commit，人手速度；PACE 免疫）
 const okTitle = await settled(() => screenHas('Bash(seq 1 30)'))
@@ -113,14 +113,12 @@ check('T13d 浮窗内 G 滚到输出尾部', await settled(() => screenHas('resu
 stdin.write('\x1b')
 await keySleep(100) // 键间节奏（每键一次 commit，人手速度；PACE 免疫）
 check(
-  'T13e Esc 关闭浮窗、光标仍在 tool 行',
-  !screenHas('j/k scroll') && screenHas('esc to return to input') && lineHighlighted('Bash('),
-)
+  'T13e Esc 关闭浮窗、光标仍在 tool 行',  await settled(() => !screenHas('j/k scroll') && screenHas('esc to return to input') && lineHighlighted('Bash(')) )
 stdin.write('\r')
 await keySleep(100) // 键间节奏（每键一次 commit，人手速度；PACE 免疫）
 stdin.write('\r')
 await keySleep(100) // 键间节奏（每键一次 commit，人手速度；PACE 免疫）
-check('T13f Enter 关闭浮窗', !screenHas('j/k scroll') && screenHas('esc to return to input'))
+check('T13f Enter 关闭浮窗',  await settled(() => !screenHas('j/k scroll') && screenHas('esc to return to input')) )
 
 // Scene bridge: T27 opens from the composer with the view at the bottom
 // (the state T26 left in the original chain — the scroll battery covers it).

@@ -23,7 +23,7 @@ process.env.FORCE_COLOR = '3'
 process.env.DSH_TUI_THEME = 'dark'
 process.env.DSH_TUI_LANG = 'zh'
 
-const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen }, { Chat }, { QuestionStore }, { LOCAL_COMMANDS, completeCommands }, { default: instances }, { computeRailGeometry }, { settle, settled, sleep }] = await Promise.all([
+const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen }, { Chat }, { QuestionStore }, { LOCAL_COMMANDS, completeCommands }, { default: instances }, { computeRailGeometry }, { keySleep, settle, settled, sleep }] = await Promise.all([
   import('node:stream'),
   import('react'),
   import('@xterm/headless'),
@@ -196,8 +196,8 @@ function topOwningTurn(): number | null {
 const wheel = async (up: boolean, times: number) => {
   for (let i = 0; i < times; i++) {
     stdin.write(`\x1b[<${up ? 64 : 65};90;30M`)
-    // 固定窗:pacing 滚轮事件需逐个进入 hover/scroll 路径，无可轮询的逐步条件
-    await sleep(180)
+    // 键间节奏：滚轮事件逐个进入 hover/scroll 路径（每事件一次 commit；PACE 免疫）
+    await keySleep(100)
   }
 }
 const clickAt = async (col: number, row: number) => {
@@ -322,7 +322,7 @@ await wheel(false, 20)
   // 8ms 间隔连续扫过全部 tick 行（模拟快速划过）
   for (const row of snap.ticks) {
     stdin.write(`\x1b[<35;${COLS};${row + 1}M`)
-    await sleep(8) // 固定窗:pacing 快速划过的 motion 步间
+    await keySleep(8) // 快速划过的 motion 步间节奏（须低于 dwell 门；PACE 免疫）
     if (screenLines().some(l => l.slice(55, 97).includes('╭') || l.slice(55, 97).includes('╮'))) anyCard = true
   }
   // 固定窗:探针 断言「卡不得出现」——settle 对已成立的否定条件会立即返回，
@@ -498,8 +498,8 @@ await inst.unmount()
   const scrollUp = async (times: number): Promise<void> => {
     for (let i = 0; i < times; i++) {
       stdin.write('\x1b[<64;90;30M')
-      // 固定窗:pacing 滚轮事件需逐个进入滚动路径，无逐步可轮询条件
-      await sleep(180)
+      // 键间节奏：滚轮事件逐个进入滚动路径（每事件一次 commit；PACE 免疫）
+      await keySleep(100)
     }
   }
 

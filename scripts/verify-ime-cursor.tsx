@@ -166,7 +166,7 @@ const report = (name: string, ok: boolean, detail: string) => {
       `row=${row} caret=${JSON.stringify(caret)} cursor=${JSON.stringify(cur)}`)
   }
   app.unmount()
-  await sleep(100)
+  await sleep(100) // 固定窗:pacing unmount 收尾写出排空，无完成回调可等
 }
 
 /** 场景 4：窄宽 + 长回答换行 + Home —— 光标贴合 caret。 */
@@ -206,7 +206,7 @@ const report = (name: string, ok: boolean, detail: string) => {
       `row=${row} caret=${JSON.stringify(caret)} cursor=${JSON.stringify(cur)}`)
   }
   app.unmount()
-  await sleep(100)
+  await sleep(100) // 固定窗:pacing unmount 收尾写出排空，无完成回调可等
 }
 
 /** 场景 5：历史搜索浮层 —— 光标归 SearchBox caret，不被结果行抢走。 */
@@ -233,7 +233,7 @@ const report = (name: string, ok: boolean, detail: string) => {
       `boxRow=${boxRow} itemRow=${itemRow} caret=${JSON.stringify(caret)} cursor=${JSON.stringify(cur)}`)
   }
   app.unmount()
-  await sleep(100)
+  await sleep(100) // 固定窗:pacing unmount 收尾写出排空，无完成回调可等
 }
 
 /** 场景 6：窄宽 + 超长查询 —— SearchBox 单行窗口化，光标不出框。 */
@@ -267,7 +267,7 @@ const report = (name: string, ok: boolean, detail: string) => {
       `boxRow=${boxRow} aRun=${aRun} caret=${JSON.stringify(caret)} cursor=${JSON.stringify(cur)}`)
   }
   app.unmount()
-  await sleep(100)
+  await sleep(100) // 固定窗:pacing unmount 收尾写出排空，无完成回调可等
 }
 
 /** 场景 7：emoji surrogate 对中间的非法 cursorOffset —— 归一化到码点边界。 */
@@ -296,7 +296,7 @@ const report = (name: string, ok: boolean, detail: string) => {
       `emoji=${JSON.stringify(emoji)} caret=${JSON.stringify(caret)} cursor=${JSON.stringify(cur)}`)
   }
   app.unmount()
-  await sleep(100)
+  await sleep(100) // 固定窗:pacing unmount 收尾写出排空，无完成回调可等
 }
 
 /** 场景 8：极窄 SearchBox（width=4，内容区为 0）—— 光标钳制在框内。 */
@@ -321,7 +321,7 @@ const report = (name: string, ok: boolean, detail: string) => {
     report('极窄 SearchBox：光标钳制在框内', ok, `cursor=${JSON.stringify(cur)}`)
   }
   app.unmount()
-  await sleep(100)
+  await sleep(100) // 固定窗:pacing unmount 收尾写出排空，无完成回调可等
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)

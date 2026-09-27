@@ -68,9 +68,7 @@ check(
 stdin.write('g')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
-  'T11c gg 第二按幂等（仍首行仍高亮）',
-  lineHighlighted('user line alpha'),
-)
+  'T11c gg 第二按幂等（仍首行仍高亮）',  await settled(() => lineHighlighted('user line alpha')) )
 
 // T15: Tab 退出再进入（中间无输入）恢复光标与视口——旧行为重进时
 // findLast 种末行 + 滚底；只有 rows 变化（提交新消息）才应跟随底部。
@@ -79,9 +77,7 @@ await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('\t') // 重进（PromptInput 的空闲 Tab）
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
-  'T15a Tab 往返后光标恢复（仍 user 行、视口未跳底）',
-  screenHas('esc to return to input') && lineHighlighted('user line alpha') && screenHas('user line alpha'),
-)
+  'T15a Tab 往返后光标恢复（仍 user 行、视口未跳底）',  await settled(() => screenHas('esc to return to input') && lineHighlighted('user line alpha') && screenHas('user line alpha')) )
 
 // T17: 快照过期分支——退出后有新行（模拟提交），重进必须跟末行
 // 而不是恢复旧光标（"输入了才滚到底"的另一半）。
@@ -94,9 +90,7 @@ await drained() // 数据变更后排空（render-quiet 锚）
 stdin.write('\t') // 重进：rows 已变 → 跟末行
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
-  'T17 提交新消息后重进跟随末行（非恢复旧光标）',
-  screenHas('esc to return to input') && lineHighlighted('fresh turn line'),
-)
+  'T17 提交新消息后重进跟随末行（非恢复旧光标）',  await settled(() => screenHas('esc to return to input') && lineHighlighted('fresh turn line')) )
 
 // Scene bridge: T21 starts from the selection cursor on the tool row with the
 // viewport parked on it (the state T20b left in the original chain — the
@@ -117,10 +111,8 @@ check('T21a Ctrl+B 翻到会话顶部', await settled(() => screenHas('user line
 stdin.write('k') // 光标 tool → reasoning，nearest seek 拉回视口
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
-  'T21b 翻页后 selectedId 保留（k 拉回高亮）',
-  lineHighlighted('Thought'),
-  `hl=${JSON.stringify(viewportLines().filter(l => l.trim() !== '').map(l => l.trim().slice(0, 44)))}`,
-)
+  'T21b 翻页后 selectedId 保留（k 拉回高亮）',  await settled(() => lineHighlighted('Thought')) , 
+  `hl=${JSON.stringify(viewportLines().filter(l => l.trim() !== '').map(l => l.trim().slice(0, 44)))}`)
 // Ctrl+F page-by-page to the bottom（filler 48 行、每页净进 viewport-1 行，
 // 循环发送直到 clamp 到底：fresh turn 可见 + pill 消失）。
 let pagedToBottom = false
@@ -151,7 +143,7 @@ await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 // 新行到达无需任何按键即滚入视口（grok 语义：跳到尾 = 重新跟随尾巴）。
 stdin.write('\x02') // Ctrl+B 翻页离开底部
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T25a Ctrl+B 已离开底部', !screenHas('image turn line'))
+check('T25a Ctrl+B 已离开底部',  await settled(() => !screenHas('image turn line')) )
 stdin.write('G')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T25b G 跳末行（末行滚入）', await settled(() => screenHas('image turn line')))
@@ -164,7 +156,7 @@ check('T25b G 跳末行（末行滚入）', await settled(() => screenHas('image
 // （新问题的回答在尾部，grok 提交即回底）。
 stdin.write('\x02') // Ctrl+B 翻上去（断开跟随）
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T26a 已离开底部', !screenHas('image turn line'))
+check('T26a 已离开底部',  await settled(() => !screenHas('image turn line')) )
 stdin.write('\x1b') // 退出选择模式回 composer
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('followme')

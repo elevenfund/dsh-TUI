@@ -32,7 +32,7 @@ process.env.DSH_TUI_LANG = 'zh'
 process.env.SSH_CONNECTION = 'headless-test'
 delete process.env.TMUX
 
-const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen, Box, useInput }, { Chat }, { QuestionStore }, { LOCAL_COMMANDS, completeCommands }, { ScrollbarGutter }, { default: instances }, { settle, settled, sleep }] = await Promise.all([
+const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen, Box, useInput }, { Chat }, { QuestionStore }, { LOCAL_COMMANDS, completeCommands }, { ScrollbarGutter }, { default: instances }, { settle, settled, keySleep }] = await Promise.all([
   import('node:stream'),
   import('react'),
   import('@xterm/headless'),
@@ -158,12 +158,14 @@ function gutterSnapshot(): { thumbs: number[]; ticks: number[]; chevrons: number
  *  矮行的底）。 */
 const bottomPillVisible = (): boolean =>
   screenLines().some(l => l.includes('回到底部') || l.includes('条新消息'))
-// 逐事件 pacing sleep 保留：滚轮事件需要逐个进入 hover/scroll 路径，
-// 每步之间没有可区分新旧帧的屏幕条件可轮询。
+// Wheel events are drive cadence: each event must land as its own scroll
+// commit (squeezing them into one Ink input batch breaks per-event scroll
+// semantics), and consecutive wheel steps have no screen condition that
+// distinguishes the new frame from the old one.
 const wheel = async (up: boolean, times: number) => {
   for (let i = 0; i < times; i++) {
     stdin.write(`\x1b[<${up ? 64 : 65};90;30M`)
-    await sleep(150) // 固定窗:pacing 滚轮事件步间，无可区分新旧帧的屏幕条件
+    await keySleep(100)
   }
 }
 const clickAt = (col: number, row: number) => {

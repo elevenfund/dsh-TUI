@@ -241,7 +241,9 @@ function makeHarness(cols: number, rows: number): Harness {
   }
 
   try {
-    await sleep(500) // 固定窗:pacing 等首帧挂载 + 输入监听挂接，无单一可观测锚点
+    // 挂载内容锚：输入行 ❯ 前缀出现即首帧已 commit，useInput 监听随之挂接
+    // （首帧前屏幕静止，drainedScreen 会立即返回，见 term-test.mjs 盲区）。
+    await settle(() => screenHas('❯'))
     stdin.write('hello world')
     check('A0 输入渲染', await settled(() => screenHas('hello world')))
     const p = findText('hello world')
@@ -567,9 +569,13 @@ function makeHarness(cols: number, rows: number): Harness {
       oscPayloads().at(-1) ?? 'no osc52',
     )
     stdin.write('\x1b') // clear the reverse selection
-    // 固定窗:待迁移 等 Esc 清掉选区（会变化的状态），但紧随的断言只能调
-    // consumeSelectionCopy()——它带消费副作用，不能拿来轮询。
-    await sleep(200)
+    // 等状态再操作（紧随断言只能调带消费副作用的 consumeSelectionCopy，
+    // 不能拿它轮询）：Esc 塌缩选区后 TAIL 范围内只剩 caret 单格反色——
+    // 单看 tailPos.col 会被塌缩到词首的 caret 卡住（不可只断 !inverseAt）。
+    await settle(() => {
+      const lit = [0, 1, 2, 3].filter(o => inverseAt(tailPos.col + o, tailPos.row)).length
+      return lit <= 1
+    })
 
     // A10: 无选区 consumeSelectionCopy=false 且不写剪贴板
     const idleCopies = oscPayloads().length
@@ -705,7 +711,8 @@ function makeHarness(cols: number, rows: number): Harness {
   )
 
   try {
-    await sleep(600) // 固定窗:pacing 等 Chat 首帧挂载 + 输入监听挂接，无单一可观测锚点
+    // 挂载内容锚：同阶段 A（Chat 首帧含输入行 ❯ 前缀即 useInput 已挂接）。
+    await settle(() => screenHas('❯'))
     stdin.write('hello world')
     check('B1 Chat 输入渲染', await settled(() => screenHas('hello world')))
     const p = findText('hello world')!

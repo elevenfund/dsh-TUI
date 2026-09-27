@@ -50,7 +50,7 @@ process.env.FORCE_COLOR = '3'
 // to agree with.
 process.env.DSH_TUI_LANG = 'zh'
 
-const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat }, { QuestionStore }, { sleep }] =
+const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat }, { QuestionStore }, { sleep, settle, screenHas }] =
   await Promise.all([
     import('node:stream'),
     import('react'),
@@ -62,8 +62,13 @@ const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat
   ])
 const instances = (await import('../src/ink/instances.js')).default
 
-// sleep 全部保留：本文件的 oracle 是「两次渲染的最终屏等价」——期望内容
-// 本身来自另一次渲染，没有可轮询的谓词，只能等固定窗口让渲染落定。
+// Waits: both mounts settle on the workspace label of the bottom status row
+// (it lands with the whole first frame; the session title never renders).
+// The post-resize window keeps a labeled fixed sleep — the stub
+// channel leaves whaleIdle on, whose idle animation (incl. the sleep-Z loop)
+// keeps the viewport forever in motion, so drainedScreen can never see two
+// equal samples; the two 40ms sleeps run AFTER term.dispose(), when no
+// emulator is left to sample and no observable predicate exists.
 
 let failed = 0
 function check(name: string, ok: boolean, extra = ''): void {
@@ -278,8 +283,9 @@ async function equivalence(from: [number, number], to: [number, number]): Promis
 
   const live = makeHarness(fromCols, fromRows)
   const liveInstance = await mount(live)
-  // 固定窗:pacing 等价 oracle 的期望内容来自另一次渲染，本侧无可轮询谓词
-  await sleep(420)
+  // anchor: 'orca' (workspace label, bottom status row) lands with the whole
+  // first frame (~190ms); the session title never reaches the viewport.
+  await settle(() => screenHas(live.term, 'orca'))
 
   // The emulator reflows exactly as a real terminal does; the app learns about
   // it through the same 'resize' event Node emits on SIGWINCH.
@@ -287,21 +293,21 @@ async function equivalence(from: [number, number], to: [number, number]): Promis
   live.stdout.columns = toCols
   live.stdout.rows = toRows
   live.stdout.emit('resize')
-  await sleep(520) // 固定窗:pacing 等 reflow 落定，同上无可轮询谓词
+  await sleep(520) // 固定窗:pacing 等 reflow 落定——drainedScreen 不可用：stub 未关 whaleIdle，闲置鲸鱼动画（含睡着后的 sleep-Z 循环）让 viewport 永不静默、两帧采样恒不等必吃满超时；resize 后的列宽形态亦无可文本化谓词
   const resized = live.screen()
   liveInstance.unmount()
   instances.delete(process.stdout)
   live.term.dispose()
-  await sleep(40) // 固定窗:pacing 卸载/dispose 收尾
+  await sleep(40) // 固定窗:pacing 卸载/dispose 收尾（dispose 后无 term 可采样、无谓词，仅事件循环排空）
 
   const cold = makeHarness(toCols, toRows)
   const coldInstance = await mount(cold)
-  await sleep(420) // 固定窗:pacing 冷渲染侧同款静置窗
+  await settle(() => screenHas(cold.term, 'orca'))
   const fresh = cold.screen()
   coldInstance.unmount()
   instances.delete(process.stdout)
   cold.term.dispose()
-  await sleep(40) // 固定窗:pacing 卸载/dispose 收尾
+  await sleep(40) // 固定窗:pacing 卸载/dispose 收尾（dispose 后无 term 可采样、无谓词，仅事件循环排空）
 
   check(
     `${fromCols}x${fromRows} → ${toCols}x${toRows} matches a fresh render`,

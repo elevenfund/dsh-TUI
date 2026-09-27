@@ -28,7 +28,7 @@ const reproHome = mkdtempSync(joinPath(tmpdir(), 'dshtui-repro-home-'))
 process.env.HOME = reproHome
 process.env.USERPROFILE = reproHome
 
-const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat }, { QuestionStore }, { createChannel }, { settled, sleep }] = await Promise.all([
+const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat }, { QuestionStore }, { createChannel }, { keySleep, screenHas, settled, sleep }] = await Promise.all([
   import('node:stream'),
   import('react'),
   import('@xterm/headless'),
@@ -188,27 +188,30 @@ console.log(`boot: buffer=${term.buffer.active.length} 行 (视口 ${ROWS})`)
 // 与真机操作逐键一致：补全面板、picker、notify、fork+replay 全部经过。
 const bufLen = (tag: string) =>
   console.log(`  [${tag}] buffer=${term.buffer.active.length} scrollback=${term.buffer.active.baseY}`)
-// 逐键 40ms 与各步 200/600ms 均为按键序列的 ordering pacing：补全浮层/
-// picker 的 key-ready 状态无法用纯文本屏幕内容观测（同 repro-settings）。
+// 逐键 40ms 是按键序列的 ordering pacing：keySleep 不受 PACE 压缩，
+// 压缩按键节奏会破坏「每键一次 commit」的 latch 语义。
 const typeKeys = async (keys: string) => {
   for (const ch of keys) {
     stdin.write(ch)
-    await sleep(40) // 固定窗:pacing 逐键步间
+    await keySleep(40)
   }
 }
 bufLen('boot')
 await typeKeys('/model')
-await sleep(200) // 固定窗:pacing 等补全浮层收键就绪
+await keySleep(100) // 键间：等最后一键的补全浮层 commit 再发 \r（keySleep 免 PACE 压缩）
 bufLen('typed /model')
 stdin.write('\r')            // 打开 picker（slash 命令派发）
-await sleep(600) // 固定窗:pacing 等 picker 收键就绪
+// 锚：单 provider 目录经 Loading 后直落 models 层，hint-confirm-exit
+// 上屏即浮层渲染 commit 完成（可收键）。不用模型行文本做锚——切换 notify
+// 「已切换为 DeepSeek V4 …」会残留在屏上污染它。
+await settled(() => screenHas(term, 'Enter 确认'))
 bufLen('picker open')
 stdin.write('\x1b[B')        // ↓ 选中下一个模型
-await sleep(200) // 固定窗:pacing 按键步间
+await keySleep(100) // 键间：↓ 的 moveSelection commit 后 Enter 才能读到新焦点
 stdin.write('\r')            // 确认 → fork + replay
 // 固定窗:探针 「恰好一份」断言防的是切换后追加帧的多余沉积，对已成立条件
 // （count===1）轮询立即返回等于没测。
-await sleep(1500)
+await sleep(1500) // 固定窗:探针 scrollback 观察窗：窗内不得增长，轮询等于没测
 bufLen('switched')
 
 check('切换后模型名生效', await settled(() => channel.model === 'deepseek-v4-pro'), `实际 ${channel.model}`)
@@ -222,14 +225,16 @@ check('历史片段 0-8 恰好一份', countMarker('第 0-8 条历史回答要�
 
 // ---- 再切一次：确认沉积随切换次数线性增长 --------------------------------------
 await typeKeys('/model')
-await sleep(200) // 固定窗:pacing 等补全浮层收键就绪
+await keySleep(100) // 键间：同上
 stdin.write('\r')
-await sleep(600) // 固定窗:pacing 等 picker 收键就绪
+// 锚：第二次打开时 recents 已有 2 条，landing 落 groups 顶层而非单组
+// fast path；顶层 hint（hint-model-groups）上屏即挂载完成。
+await settled(() => screenHas(term, 'Enter 查看模型'))
 stdin.write('\x1b[B')
-await sleep(200) // 固定窗:pacing 按键步间
+await keySleep(100) // 键间：同上
 stdin.write('\r')
 // 固定窗:探针 同上，沉积「恰好一份」是不得改变的断言。
-await sleep(1500)
+await sleep(1500) // 固定窗:探针 scrollback 观察窗：窗内不得增长，轮询等于没测
 check('二次切换后 splash 恰好一份', countMarker(SPLASH) === 1, `实际 ${countMarker(SPLASH)}`)
 
 // ---- Esc 只关不切换：浮层整体条件挂载的回归场景 -----------------------------
@@ -251,13 +256,17 @@ await waitQuiet()
 const modelBeforeEsc = channel.model
 const bufBeforeEsc = term.buffer.active.length
 await typeKeys('/model')
-await sleep(200) // 固定窗:pacing 等补全浮层收键就绪
-stdin.write('\r')            // 打开 picker
-await sleep(600) // 固定窗:pacing 等 picker 收键就绪
-stdin.write('\x1b')          // Esc：只关闭，不切换
+await keySleep(100) // 键间：同上
+// 实测此处 \r 前组层 picker 已开着（上一段顶层 Enter 只进组未切换，
+// 字符键被 overlay 吞掉不进 composer）：这记 \r 是组内 Enter = 确认切换。
+stdin.write('\r')
+// 锚：等这次切换的 fork+replay 落地——「模型已切换为」notify 上屏
+// （此前屏上无该文案，上一条切换 notify 已超时消失）。
+await settled(() => screenHas(term, '模型已切换为'))
+stdin.write('\x1b')          // Esc：picker 已随切换关闭，此键落回 composer
 // 固定窗:探针 Esc 不切换/历史仍在/缓冲区零增长都是「状态不得改变」断言，
 // 轮询已成立条件立即返回等于没测。
-await sleep(600)
+await sleep(600) // 固定窗:探针 静息观察窗（Esc 后无新帧判定，见 waitQuiet 注释）
 check('Esc 不改动模型', channel.model === modelBeforeEsc, `实际 ${channel.model}`)
 check('Esc 关闭后被覆盖历史行仍在',
   countMarker('第 1-8 条历史回答要点') === 1 && countMarker('第 1-11 条历史回答要点') === 1,

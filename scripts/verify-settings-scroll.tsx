@@ -25,7 +25,7 @@ const [
   { Terminal: XTerm },
   { render },
   { Settings },
-  { settle, settled, sleep, viewportLines },
+  { settle, settled, keySleep, viewportLines },
 ] = await Promise.all([
   import('node:stream'),
   import('react'),
@@ -88,14 +88,15 @@ async function openScreen(cols: number, rows: number, sections: unknown[]) {
   return { stdin, screen, close: async () => { await instance.unmount() } }
 }
 
-/** The pacing sleeps below are the upstream convention: focus moves only
- *  change colors/highlight, so intermediate steps have no text-observable
- *  condition to settle on. */
+/** Focus steps are drive cadence: each arrow must land as its own input
+ *  commit (focus reads the previous state; squeezing steps into one Ink
+ *  input batch breaks that), and intermediate steps only change colors, so
+ *  there is no text-observable condition to settle on. */
 async function arrow(stdin: FakeStdin, direction: 'down' | 'up', times: number): Promise<void> {
   const key = direction === 'down' ? '\x1b[B' : '\x1b[A'
   for (let i = 0; i < times; i++) {
     stdin.write(key)
-    await sleep(120) // 固定窗:pacing 焦点步进只改颜色无文本锚点，无可 settle 条件
+    await keySleep(100)
   }
 }
 

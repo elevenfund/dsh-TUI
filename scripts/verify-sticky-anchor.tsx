@@ -36,7 +36,7 @@ const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, Alternat
 ])
 
 const COLS = Number(process.env.DSH_TEST_COLUMNS ?? 100), ROWS = 40
-const { sleep, settled } = await import('./lib/term-test.mjs')
+const { keySleep, settled } = await import('./lib/term-test.mjs')
 let failed = 0
 function check(name: string, ok: boolean, extra = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}: ${name}${extra ? `  (${extra})` : ''}`)
@@ -152,13 +152,22 @@ function firstContentTurn(): { turn: number; isPrompt: boolean } | null {
 const wheel = async (up: boolean, times: number) => {
   for (let i = 0; i < times; i++) {
     stdin.write(`\x1b[<${up ? 64 : 65};50;30M`)
-    await sleep(180) // 固定窗:pacing 逐格滚动并采样当前视口
+    // wheel events are drive cadence: one scroll commit per event, so each
+    // step must land before the next (screen-quiet probing would return
+    // before the undelivered event repaints and squeeze steps into one
+    // Ink input batch)
+    await keySleep(100)
   }
 }
 const clickHeader = async () => {
+  const pinnedTurn = Number(headerText()?.match(/问题 (\d+)/)?.[1] ?? 0)
   stdin.write('\x1b[<0;5;1M')
   stdin.write('\x1b[<0;5;1m')
-  await sleep(400) // 固定窗:pacing 点击 seek 的布局与帧排空
+  // click-seek is an observable state transition: settle until the pinned
+  // turn lands at the transcript top (rows 1-3, same slice the assertion
+  // reads) instead of betting a fixed window on the repaint
+  await settled(() => pinnedTurn > 0 &&
+    screenLines().slice(1, 4).some(line => line.includes(`问题 ${pinnedTurn}`)))
 }
 /** 内容末行（最后一轮最后 1 行回复）是否已出现在 prompt 框正上方 —— 真·钉底。 */
 function atBottomEnd(): boolean {

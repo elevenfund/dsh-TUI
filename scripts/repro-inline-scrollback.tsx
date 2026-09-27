@@ -17,7 +17,7 @@ process.env.TERM_PROGRAM = 'WezTerm'  // DEC-2026 同步输出路径（与真机
 process.env.DSH_TUI_THEME = 'dark'    // 跳过 OSC 11 探测，保持确定性
 process.env.DSH_TUI_LANG = 'zh'       // 固定中文 UI（splash 标语断言）
 
-const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat }, { QuestionStore }, { sleep }, { activateModernEmojiWidths }] = await Promise.all([
+const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat }, { QuestionStore }, { sleep, settle, drainedScreen, screenHas }, { activateModernEmojiWidths }] = await Promise.all([
   import('node:stream'),
   import('react'),
   import('@xterm/headless'),
@@ -80,9 +80,13 @@ class FakeStdin extends PassThrough {
   ref() { return this }
   unref() { return this }
 }
-// 本脚本的全部 sleep 都是模拟流式时间线的固定节奏（chunk 节拍、tick 窗口、
-// 收尾稳定窗）：断言是「scrollback 恰好一份拷贝 / 不得重复」的稳定性探针，
-// 换成对已成立条件的轮询会立即返回、错过晚到的污染帧——保留墙钟语义。
+// Wait anchors use the deterministic primitives from term-test.mjs (settle /
+// drainedScreen). The only surviving fixed sleep is the think1 streaming chunk
+// cadence: during streaming the reasoning body never reaches the screen (only
+// the "◆ 思考中…" header and the token counter, both changing every frame), so
+// there is no pollable anchor, and the spinner/ticker keep the viewport
+// permanently in motion, so drainedScreen never sees two equal samples — the
+// cadence itself is the replay timeline.
 
 /** 整个 buffer（scrollback + 视口）逐行取纯文本。 */
 function fullBufferLines(): string[] {
@@ -169,12 +173,12 @@ const instance = await render(
 )
 
 const ticker = setInterval(() => { channel.responseChars += 7; bump() }, 100)
-await sleep(800) // 固定窗:pacing 等首帧铺满，无单一可轮询锚点
+await settle(() => screenHas(term, '探索未至')) // anchor: splash logo = first frame landed
 
 // ---- 现场回合：user → Read → reasoning ticker → settle → tool → 长流式回复 ----
 const add = (row: any) => { channel.rows.push({ id: id++, ...row }); bump() }
 add({ kind: 'user', text: '看看这个项目，给个概览' })
-await sleep(120) // 固定窗:pacing 回放回合步间
+await settle(() => screenHas(term, '看看这个项目，给个概览')) // anchor: user row on screen
 
 // Real report shape: a completed Read row sits immediately above the live
 // thinking ticker. When the ticker settles from four rows to one, an incorrect
@@ -188,7 +192,7 @@ add({
     startedAt: Date.now() - 80, durationMs: 80,
   },
 })
-await sleep(150) // 固定窗:pacing 回放回合步间
+await settle(() => screenHas(term, 'READ_ONCE_7F31')) // anchor: Read card header on screen
 
 const think1 = { id: id++, kind: 'reasoning', text: '', streaming: true, durationMs: undefined as number | undefined }
 channel.rows.push(think1); bump()
@@ -199,10 +203,10 @@ for (const chunk of [
   '\n对照现有回归',
   '\n然后汇总。',
 ]) {
-  think1.text += chunk; bump(); await sleep(140) // 固定窗:pacing 流式分块步间
+  think1.text += chunk; bump(); await sleep(140) // 固定窗:pacing 流式分块步间（streaming 正文不上屏无锚、spinner 常动 drained 不可用，见文件头）
 }
 think1.streaming = false; think1.durationMs = 1000; bump()
-await sleep(150) // 固定窗:pacing 思考收拢后的回放步间
+await settle(() => screenHas(term, '（ctrl+o 展开）')) // anchor: folded-thinking header (history thinking rows already scrolled out)
 
 const tool1 = {
   id: id++, kind: 'tool', text: '',
@@ -213,12 +217,12 @@ const tool1 = {
     status: 'running' as string, resultText: undefined as string | undefined, startedAt: Date.now(), durationMs: undefined as number | undefined,
   },
 }
-channel.rows.push(tool1); bump(); await sleep(400) // 固定窗:pacing 工具 running 态的回放时长
+channel.rows.push(tool1); bump(); await settle(() => screenHas(term, '运行中')) // anchor: running-state frame
 tool1.tool.status = 'ok'
 tool1.tool.durationMs = 42
 tool1.tool.resultText = Array.from({ length: 20 }, (_, i) => `工具结果行 ${i}`).join('\n')
 channel.activeToolCount = 0
-bump(); await sleep(200) // 固定窗:pacing 工具完成后的回放步间
+bump(); await settle(() => screenHas(term, '工具结果行')) // anchor: tool body first line on screen
 
 // 长流式回复：9 大节 × 每节 11 条，60 字符一个 chunk（照 issue #39 的量级）。
 const finalMsg = { id: id++, kind: 'assistant', text: '', streaming: true }
@@ -231,29 +235,35 @@ for (const sec of sections) {
   docLines.push('\n')
 }
 const doc: string[] = []
+// Chunks are cut on whole doc lines, and each chunk's last doc line is short
+// enough (≤66 display cols < 100) to reach the viewport unwrapped — that
+// line is this chunk's render anchor.
+const docAnchors: string[] = []
 let acc = ''
+let lastLine = ''
 for (const l of docLines) {
   acc += l
-  if (acc.length > 60) { doc.push(acc); acc = '' }
+  if (l.trim()) lastLine = l.trim()
+  if (acc.length > 60) { doc.push(acc); docAnchors.push(lastLine); acc = '' }
 }
-if (acc) doc.push(acc)
-for (const chunk of doc) {
-  finalMsg.text += chunk
+if (acc) { doc.push(acc); docAnchors.push(lastLine) }
+for (let ci = 0; ci < doc.length; ci++) {
+  finalMsg.text += doc[ci]
   bump()
-  await sleep(90) // 固定窗:pacing 流式分块步间
+  await settle(() => screenHas(term, docAnchors[ci])) // anchor: chunk tail line on screen
 }
 finalMsg.streaming = false
 channel.working = false
 channel.status = 'idle'
 bump()
-await sleep(800) // 固定窗:pacing 等收尾帧铺完，无单一可轮询锚点
+await settle(() => !screenHas(term, 'esc 中断')) // anchor: working hint gone = idle settle frame rendered
 clearInterval(ticker)
-await sleep(300) // 固定窗:pacing 停掉 ticker 后的静默步间
+await drainedScreen(term) // render-quiet anchor: ticker dead, viewport byte-stable
 
 // 闲置后在真实 PromptInput 输入短标记：caret 的反色格和 xterm 硬件
 // cursor 必须重合。此时整帧远高于小视口，覆盖 native cursor 的长帧坐标路径。
 stdin.write(INPUT_MARKER)
-await sleep(500) // 固定窗:pacing 等输入后整帧重绘，字节取证无单一锚点
+await settle(() => screenHas(term, INPUT_MARKER)) // anchor: typed marker on screen
 
 // ---- 字节取证：erase/清屏/滚动序列统计（定位残留的发生机制） ----------------
 const allRaw = rawChunks.join('')

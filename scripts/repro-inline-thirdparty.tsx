@@ -17,7 +17,7 @@ process.env.FORCE_COLOR = '3'
 process.env.TERM_PROGRAM = 'WezTerm'
 process.env.DSH_TUI_THEME = 'dark'
 
-const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat }, { QuestionStore }, { sleep, settle, settled, writeParsed }] = await Promise.all([
+const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { Chat }, { QuestionStore }, { sleep, settle, settled, writeParsed, drainedScreen }] = await Promise.all([
   import('node:stream'),
   import('react'),
   import('@xterm/headless'),
@@ -103,9 +103,10 @@ for (let i = 0; i < 12; i++) {
 msg.streaming = false
 channel.working = false
 bump()
-// 固定窗:pacing 定格稳定窗：golden 必须取自不再重绘的稳态帧，「内容可见」不等于「不再
-// 重绘」，无可轮询的完成条件。
-await sleep(600)
+// Golden must come from a steady frame ("visible" is not "done repainting").
+// The golden comparison itself reads viewportLines, so viewport byte
+// stability across two probes is exactly the steady condition.
+await drainedScreen(term)
 
 // 对照基准：定格后的干净视口。
 const golden = viewportLines()

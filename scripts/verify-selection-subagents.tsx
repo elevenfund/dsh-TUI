@@ -39,24 +39,23 @@ bump()
 await settled(() => screenHas('⑂ 1'))
 stdin.write('\x01') // Ctrl+A → dashboard
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T31c Ctrl+A 打开子代理面板', screenHas('Subagent Dashboard') && screenHas('research task'))
+check('T31c Ctrl+A 打开子代理面板',  await settled(() => screenHas('Subagent Dashboard') && screenHas('research task')) )
 check('T31d continuable 焦点行提示追问键', screenHas('m follow up'))
 stdin.write('m')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T31e m 打开追问输入行', screenHas('type a follow-up'))
+check('T31e m 打开追问输入行',  await settled(() => screenHas('type a follow-up')) )
 stdin.write('dig deeper')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('\r')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T31f 追问经 send_message 投递并回执',
-  followUpCalls.length === 1 && followUpCalls[0]![0] === 'sa-1' && followUpCalls[0]![1] === 'dig deeper'
-  && notifyCalls.some(text => text.includes('follow-up delivered')),
+check('T31f 追问经 send_message 投递并回执',  await settled(() => followUpCalls.length === 1 && followUpCalls[0]![0] === 'sa-1' && followUpCalls[0]![1] === 'dig deeper'
+  && notifyCalls.some(text => text.includes('follow-up delivered'))) , 
   `calls=${JSON.stringify(followUpCalls)} notify=${JSON.stringify(notifyCalls)}`)
 stdin.write('\x1b') // 关闭面板回主界面
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 // The viewport keeps its pre-dashboard scroll position (mid-transcript
 // filler rows), so assert the dashboard is gone and the transcript is back.
-check('T31g Esc 关闭面板', !screenHas('Subagent Dashboard') && screenHas('filler line'))
+check('T31g Esc 关闭面板',  await settled(() => !screenHas('Subagent Dashboard') && screenHas('filler line')) )
 channel.subagents = []
 bump()
 await drained() // 等重渲染（chip 消失，不影响后续）
@@ -70,13 +69,11 @@ check('T32a 常驻浮层出现（◍ 描述 + 实时尾行 + ⌃G 提示）',
   await settled(() => screenHas('◍') && screenHas('research task') && screenHas('⌃G')))
 stdin.write('\x07') // Ctrl+G → task center
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T32b Ctrl+G 打开任务中心（两区分区标题）',
-  screenHas('Task Center') && screenHas('Tasks (0)') && screenHas('Subagents (1)'))
+check('T32b Ctrl+G 打开任务中心（两区分区标题）',  await settled(() => screenHas('Task Center') && screenHas('Tasks (0)') && screenHas('Subagents (1)')) )
 check('T32c 焦点行统计与追问提示', screenHas('research task') && screenHas('m follow up'))
 stdin.write('\r') // Enter → transcript detail scene
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T32d 详情=完整对话转录（user prompt + 定稿 assistant + 工具卡）',
-  screenHas('count tsx files under src') && screenHas('Found') && screenHas('122') && screenHas('Bash'),
+check('T32d 详情=完整对话转录（user prompt + 定稿 assistant + 工具卡）',  await settled(() => screenHas('count tsx files under src') && screenHas('Found') && screenHas('122') && screenHas('Bash')) , 
   viewportLines().slice(0, 8).join(' | '))
 stdin.write('m')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
@@ -84,7 +81,7 @@ stdin.write('go deeper')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('\r')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T32e 转录场景内追问投递', followUpCalls.some(([id, text]) => id === 'sa-1' && text === 'go deeper'),
+check('T32e 转录场景内追问投递',  await settled(() => followUpCalls.some(([id, text]) => id === 'sa-1' && text === 'go deeper')) , 
   JSON.stringify(followUpCalls))
 stdin.write('\x1b') // 回面板
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
@@ -99,10 +96,10 @@ stdin.write('\x1b[A') // ↑ from subagents row (index 1) to job row (index 0)
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('x')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T32g x 终止焦点后台任务', killCalls.length === 1 && killCalls[0] === 'j-9', JSON.stringify(killCalls))
+check('T32g x 终止焦点后台任务',  await settled(() => killCalls.length === 1 && killCalls[0] === 'j-9') ,  JSON.stringify(killCalls))
 stdin.write('\x1b') // 关闭面板
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T32h Esc 关闭任务中心回主界面', !screenHas('Task Center') && screenHas('◍'))
+check('T32h Esc 关闭任务中心回主界面',  await settled(() => !screenHas('Task Center') && screenHas('◍')) )
 channel.subagents = []
 channel.backgroundJobs = []
 bump()
@@ -127,20 +124,18 @@ await settled(() => screenHas('count tsx files under src'))
 check('T33a strip 点击打开详情（转录内容出现）', screenHas('count tsx files under src'))
 stdin.write('\x1b') // Esc: strip entry returns to the MAIN session
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T33b strip 进入的详情 Esc 回主界面（不回面板）',
-  !screenHas('count tsx files under src') && !screenHas('Task Center') && screenHas('live worker'))
+check('T33b strip 进入的详情 Esc 回主界面（不回面板）',  await settled(() => !screenHas('count tsx files under src') && !screenHas('Task Center') && screenHas('live worker')) )
 // Panel entry: Ctrl+G, j moves focus to the settled row, d removes it.
 stdin.write('\x07') // Ctrl+G → task center
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T33c Ctrl+G 面板含已结算行', screenHas('Task Center') && screenHas('settled worker'))
 stdin.write('j')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T33d vim j 下移焦点到已结算行（d 提示出现）', screenHas('d remove'))
+check('T33d vim j 下移焦点到已结算行（d 提示出现）',  await settled(() => screenHas('d remove')) )
 stdin.write('d') // d only fires on a settled subagent row
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T33e d 移除已结算子代理（running 行不响应）',
-  removeCalls.length === 1 && removeCalls[0] === 'sa-9'
-  && notifyCalls.some(text => text.includes('subagent removed from the list')),
+check('T33e d 移除已结算子代理（running 行不响应）',  await settled(() => removeCalls.length === 1 && removeCalls[0] === 'sa-9'
+  && notifyCalls.some(text => text.includes('subagent removed from the list'))) , 
   `remove=${JSON.stringify(removeCalls)}`)
 stdin.write('\r') // Enter → the settled child's detail (table markdown)
 // Table borders must fit the content column (COLS 100 − 6 inset): without
@@ -151,10 +146,10 @@ check('T33f 表格按内容列宽度收缩（顶边框 ≤94 列）', tableTop.t
   `len=${tableTop.trimEnd().length}`)
 stdin.write('\x1b') // Esc: panel entry returns to the PANEL
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T33g 面板进入的详情 Esc 回面板', screenHas('Task Center') && screenHas('Subagents'))
+check('T33g 面板进入的详情 Esc 回面板',  await settled(() => screenHas('Task Center') && screenHas('Subagents')) )
 stdin.write('\x1b') // 关闭面板
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T33h Esc 关闭任务中心回主界面', !screenHas('Task Center') && screenHas('◍'))
+check('T33h Esc 关闭任务中心回主界面',  await settled(() => !screenHas('Task Center') && screenHas('◍')) )
 channel.subagents = []
 bump()
 await drained() // 等清理重渲染

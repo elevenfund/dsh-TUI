@@ -16,7 +16,7 @@ process.env.FORCE_COLOR = '3'
 // module import resolves the startup lang (env > persisted > locale).
 process.env.DSH_TUI_LANG = 'en'
 
-const [{ Writable }, React, { Terminal: XTerm }, { render }, { AssistantToolUseMessage }, { getCliHighlightPromise }, { parseAnsiRuns, chalkFromToken, highlightLines }, { sleep }] = await Promise.all([
+const [{ Writable }, React, { Terminal: XTerm }, { render }, { AssistantToolUseMessage }, { getCliHighlightPromise }, { parseAnsiRuns, chalkFromToken, highlightLines }, { settle, settled }] = await Promise.all([
   import('node:stream'),
   import('react'),
   import('@xterm/headless'),
@@ -65,10 +65,46 @@ async function renderAt(cols, tool, diffLayout = 'auto', toolBackground = 'none'
     React.createElement(AssistantToolUseMessage, { tool, marginTopOnTurn: false, verbose: false, diffLayout, toolBackground }),
     { stdout: new FakeStdout(), debug: true, exitOnCtrlC: false },
   )
-  // 固定窗:pacing cli-highlight 首次使用才懒加载，其后的补色重绘没有
-  // 调用方可观测的完成条件，只能留出落地时间再读色。
-  await sleep(900)
   const buf = term.buffer.active
+  // First-frame anchor: a blank terminal is trivially quiet, so stability
+  // probing may only start once something has rendered.
+  await settled(() => {
+    for (let y = 0; y < rows; y++) {
+      if ((buf.getLine(y)?.translateToString(true) ?? '').length > 0) return true
+    }
+    return false
+  })
+  // The card awaits the same cli-highlight singleton for its recolor
+  // repaint; resolving the shared promise means that repaint is already
+  // scheduled (the card's .then registers first, so setHl has run).
+  await getCliHighlightPromise()
+  // Color-aware drain: the lazy-highlight repaint rewrites SGR with
+  // unchanged text, so stability is probed over cell colors too — a
+  // text-only drain would return while the repaint is still in flight.
+  // Quiet = two identical samples AND >=120ms since the first frame:
+  // probe evidence shows the repaint can land past the first 30ms sample
+  // interval (flaky uncolored pass at 34ms, stable color at 63-67ms), so
+  // bare frame stability can return before the repaint — the floor keeps
+  // sampling until the repaint window has provably elapsed while still
+  // adapting to slower machines (no fixed total wait).
+  {
+    let last: string | null = null
+    const t0 = Date.now()
+    await settle(() => {
+      let cur = ''
+      for (let y = 0; y < rows; y++) {
+        const line = buf.getLine(y)
+        for (let x = 0; x < cols; x++) {
+          const cell = line?.getCell(x)
+          if (!cell) break
+          cur += `${cell.getChars()}|${cell.getFgColor() & 0xffffff}|${cell.getBgColor() & 0xffffff};`
+        }
+      }
+      const quiet = last !== null && cur === last && Date.now() - t0 >= 120
+      last = cur
+      return quiet
+    })
+  }
   const lines = []
   for (let y = 0; y < rows; y++) lines.push(buf.getLine(y)?.translateToString(true) ?? '')
   const bgAt = (x, y) => (buf.getLine(y)?.getCell(x)?.getBgColor() ?? 0) & 0xffffff

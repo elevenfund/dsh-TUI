@@ -45,7 +45,7 @@ const [
   { dispatchTuiDecision, normalizeCancelDecision },
   { stringWidth },
   { KNOWN_SESSION_EVENT_TYPES },
-  { settle, settled, sleep },
+  { keySleep, settle, settled, sleep },
 ] = await Promise.all([
   import('node:stream'),
   import('react'),
@@ -788,8 +788,8 @@ const instance = await render(
   />,
   { stdout, stdin, stderr: new FakeStderr(), exitOnCtrlC: false, patchConsole: false },
 )
-// 固定窗:pacing 首帧挂载：等 React 树完成首次渲染与输入监听挂接，无单一可观测条件。
-await sleep(600)
+// 首帧挂载不再固定等待：第一个键盘交互（↓）之前，下方 select 断言的
+// settled 已等到对话框标题+选项上屏——对话框组件挂载即其输入监听挂接。
 const screen = (back = 30) => plainText(stdout.frames.slice(-back))
 
 // Select: ↓ + Enter picks the second option.
@@ -804,9 +804,9 @@ const screen = (back = 30) => plainText(stdout.frames.slice(-back))
   check('ui: select dialog renders title + options',
     await settled(() => screen().includes('挑一个') && screen().includes('第二项')), screen().slice(-200))
   stdin.write('\x1b[B')
-  // 固定窗:pacing 按键间：等上一键的编辑/选中态落地再发下一键，选中高亮是颜色，
-  // ANSI 洗净后无可观测条件（本文件后续同类 sleep 同理）。
-  await sleep(150)
+  // 键间：等上一键的选中态 commit 再发下一键（选中高亮是颜色，ANSI 洗净后
+  // 无可观测条件；keySleep 免 PACE 压缩以保每键一 commit 的 latch）。
+  await keySleep(150)
   stdin.write('\r')
   check('ui: select ↓+Enter resolves the second id', (await pending) === 'second')
   check('ui: dialog closed after settle', await settled(() => dialogStore.getSnapshot() === null))
@@ -842,8 +842,8 @@ const screen = (back = 30) => plainText(stdout.frames.slice(-back))
   const pending = plugin.tuiDialogs.input({ title: '改改', initial: '原文' })
   await settle(() => screen().includes('原文'))
   stdin.write('\x7f') // backspace removes 文
-  // 固定窗:pacing 按键间（同上）。
-  await sleep(150)
+  // 键间（同上）。
+  await keySleep(150)
   stdin.write('\r')
   check('ui: input initial pre-fills and edits', (await pending) === '原')
 }
@@ -875,8 +875,8 @@ const screen = (back = 30) => plainText(stdout.frames.slice(-back))
   await sleep(300)
   const chunk = '多行\n粘贴\x07' + '长'.repeat(600)
   stdin.write(`\x1b[200~${chunk}\x1b[201~`)
-  // 固定窗:pacing 粘贴解析：等整段粘贴落入输入值再发 Enter（同上，无可观测条件）。
-  await sleep(250)
+  // 键间：等整段粘贴落入输入值再发 Enter（同上，无可观测条件）。
+  await keySleep(250)
   stdin.write('\r')
   const resolved = await pending
   // eslint-disable-next-line no-control-regex -- asserting the absence of control chars
@@ -935,8 +935,8 @@ const screen = (back = 30) => plainText(stdout.frames.slice(-back))
   const pending = plugin.tuiDialogs.input({ title: '同批退格', initial: 'abcd' })
   await settle(() => screen().includes('同批退格'))
   stdin.write('\x7f\x7f')
-  // 固定窗:pacing 按键间（同上）。
-  await sleep(150)
+  // 键间（同上）。
+  await keySleep(150)
   stdin.write('\r')
   check('ui: batched Backspace×2 deletes both characters', (await pending) === 'ab')
 }
@@ -949,9 +949,9 @@ const screen = (back = 30) => plainText(stdout.frames.slice(-back))
   // 固定窗:pacing 排序等待：同上，增量重绘下标题片段化，无可靠的屏幕观察点。
   await sleep(300)
   stdin.write('\x1b[D') // left: cursor between 😊 and b
-  await sleep(120) // 固定窗:pacing 按键间（同上）
+  await keySleep(120) // 键间（同上）
   stdin.write('\x7f') // backspace deletes the whole emoji
-  await sleep(120) // 固定窗:pacing 按键间（同上）
+  await keySleep(120) // 键间（同上）
   stdin.write('\r')
   check('ui: Backspace deletes a whole emoji (no lone surrogate)',
     (await pending) === 'ab')
@@ -961,7 +961,7 @@ const screen = (back = 30) => plainText(stdout.frames.slice(-back))
   // 固定窗:pacing 排序等待：同上，增量重绘下标题片段化，无可靠的屏幕观察点。
   await sleep(300)
   stdin.write('\x7f') // single backspace at end of the sole emoji
-  await sleep(150) // 固定窗:pacing 按键间（同上）
+  await keySleep(150) // 键间（同上）
   stdin.write('\r')
   check('ui: Backspace on the sole emoji empties the value', (await pending) === '')
 }
@@ -972,9 +972,9 @@ const screen = (back = 30) => plainText(stdout.frames.slice(-back))
   // Left ×2 from the end: code-point steps land BEFORE the emoji (a UTF-16
   // step would park the cursor mid-surrogate and split the pair on insert).
   stdin.write('\x1b[D\x1b[D')
-  await sleep(120) // 固定窗:pacing 按键间（同上）
+  await keySleep(120) // 键间（同上）
   stdin.write('z')
-  await sleep(120) // 固定窗:pacing 按键间（同上）
+  await keySleep(120) // 键间（同上）
   stdin.write('\r')
   check('ui: arrow keys step by code point (insert never splits a pair)',
     (await pending) === 'z😊x')

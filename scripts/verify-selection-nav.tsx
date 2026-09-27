@@ -32,7 +32,7 @@ stdin.write('\t')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('zz')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T1 Tab 进入后打字失效', !screenHas('zz'))
+check('T1 Tab 进入后打字失效',  await settled(() => !screenHas('zz')) )
 
 // T2: 进入即选中最后一个可选行——assistant 正文也可达（导航要能到最
 // 底部的输出）；视觉是 ● 点亮，不刷整行蓝底。
@@ -150,9 +150,7 @@ const top10f = topOf()
 stdin.write('l')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
-  'T10f1 全局展开态 l 不跳页（视口顶不动）',
-  topOf() === top10f,
-)
+  'T10f1 全局展开态 l 不跳页（视口顶不动）',  await settled(() => topOf() === top10f) )
 stdin.write('\x0f') // Ctrl+O → off：无行级登记 → tool 行回折叠
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
@@ -196,13 +194,13 @@ await drained() // 数据变更/重进后排空（render-quiet 锚）
 const top30 = topOf()
 stdin.write('l') // 光标在 assistant 行（id 310）
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T30a assistant 行 l 不跳页', topOf() === top30)
+check('T30a assistant 行 l 不跳页',  await settled(() => topOf() === top30) )
 stdin.write('g') // 到首个可选行（user）
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const top30b = topOf()
 stdin.write('l') // user 行
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T30b user 行 l 不跳页', topOf() === top30b)
+check('T30b user 行 l 不跳页',  await settled(() => topOf() === top30b) )
 stdin.write('\x1b') // 退出选择模式（恢复 T14 的 '\t' 进入前提）
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 
@@ -217,7 +215,7 @@ FakeStdout.onWrite = chunk => {
 }
 stdin.write('\t')
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T14a 重进选择模式', screenHas('esc to return to input'))
+check('T14a 重进选择模式',  await settled(() => screenHas('esc to return to input')) )
 stdin.write('\x1b[I') // FOCUS_IN → 触发 alt-screen 探测
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const inputRow = (() => {
@@ -232,7 +230,7 @@ stdin.write(`\x1b[<0;5;${inputRow + 1}M`) // press（SGR 坐标 1-based）
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write(`\x1b[<0;5;${inputRow + 1}m`) // release → dispatchClick
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T14c 点击输入行退出选择模式', !screenHas('esc to return to input'))
+check('T14c 点击输入行退出选择模式',  await settled(() => !screenHas('esc to return to input')) )
 stdin.write('mm')
 check('T14d 退出后打字恢复', await settled(() => screenHas('mm')))
 FakeStdout.onWrite = null

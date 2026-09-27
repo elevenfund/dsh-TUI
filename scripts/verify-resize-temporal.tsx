@@ -208,6 +208,9 @@ await awaitQuiet(app2) // 确定性落定锚：静默即全量切片（含 TAILM
 // 轮询 tail 计数会对已成立条件立即返回、抓到旧宽度的中间帧；这里等的是
 // 回到 BASE_COLS 的终帧落定，无独立可轮询条件（终帧对错由冷渲染比对把关）。
 await sleep(600); await app2.flush()
+await awaitQuiet(app2) // second quiet pass: under sibling-process contention a
+// late repaint can land inside the probe window — re-settle before sampling
+// so warm is the true terminal frame, not a straddling one.
 const warm = screenLines(app2.term)
 // 计数用全文唯一的尾标记（正文字符串内部有 repeat，不能当标记）
 const streamedOnce = warm.join('\n').split('TAILMARK-终').length - 1
@@ -225,7 +228,15 @@ const coldConverged = await settled(() => screenLines(app3.term).join('\n') === 
 await awaitQuiet(app3) // 确定性落定锚：冷渲染收敛且静默后再取终态（并行竞争保险）
 // 固定窗:探针 同上：首个相等帧之后仍可能有迟到 repaint，稳定窗后取终态再比对。
 await sleep(250); await app3.flush()
-check('流中 resize 终态 == 冷渲染（live mutation 竞争无残留几何）', coldConverged && screenLines(app3.term).join('\n') === warm.join('\n'))
+check('流中 resize 终态 == 冷渲染（live mutation 竞争无残留几何）', coldConverged && screenLines(app3.term).join('\n') === warm.join('\n'),
+  `converged=${coldConverged} diff=` + (() => {
+    const cold = screenLines(app3.term), w = warm
+    const rows: string[] = []
+    for (let y = 0; y < Math.max(cold.length, w.length) && rows.length < 6; y++) {
+      if (cold[y] !== w[y]) rows.push(`L${y} cold=${JSON.stringify((cold[y] ?? '').slice(0, 60))} warm=${JSON.stringify((w[y] ?? '').slice(0, 60))}`)
+    }
+    return rows.join(' | ') || 'identical'
+  })())
 app3.unmount()
 
 console.log(failed === 0 ? '\nALL PASS' : '\n' + failed + ' 项失败')
