@@ -1275,6 +1275,34 @@ export function Chat({
       }, 3000)
     }
   }
+  /**
+   * Ctrl+C on a running turn, shared by every focus state (composer,
+   * selection mode, overlay cards) so the interrupt is reachable from
+   * anywhere — grok keeps this key global the same way. A still-
+   * converging cancel (cancelPending) upgrades the next press to the exit
+   * funnel: a stuck turn must not swallow every Ctrl+C forever.
+   */
+  const interruptRunningTurn = () => {
+    if (channel.cancelPending) {
+      onExit()
+    } else {
+      channel.cancel()
+      // Interrupt replaces any previously armed exit: the next press must
+      // re-confirm instead of exiting out from under the turn.
+      exitPendingRef.current = false
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
+    }
+  }
+  /**
+   * Page size for transcript paging (PgUp/PgDn, Ctrl+F/Ctrl+B in selection
+   * mode): one less than the viewport keeps a row of context so a page
+   * never reads as a blank jump; a not-yet-measured handle falls back to a
+   * fixed page rather than paging by 0 (a dead key).
+   */
+  const transcriptPageStep = () => {
+    const viewport = handle?.getViewportHeight() ?? 0
+    return viewport > 1 ? viewport - 1 : 12
+  }
   React.useEffect(() => {
     return () => {
       if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
@@ -3025,9 +3053,7 @@ export function Chat({
       // overshoots and the renderer clamps it exactly onto maxScroll, whose
       // positional at-bottom restore re-pins sticky (the #421/#422 wheel
       // contract) — so paging back home clears the new-messages pill too.
-      const viewport = handle?.getViewportHeight() ?? 0
-      const page = viewport > 1 ? viewport - 1 : 12
-      handle?.scrollBy(key.pageUp ? -page : page)
+      handle?.scrollBy((key.pageUp ? -1 : 1) * transcriptPageStep())
       event.stopImmediatePropagation()
       return
     }
@@ -3056,8 +3082,12 @@ export function Chat({
     if (plainReturn) lastModalEnterAtRef.current = returnNow
     if (overlay.kind === 'image-preview') {
       // Modal gallery owns plain left/right. Caret peeks below still leave
-      // navigation with PromptInput. Esc/Ctrl+C/Enter keep their close semantics.
-      if (key.escape || (key.ctrl && input === 'c') || plainReturn) {
+      // navigation with PromptInput. Esc/Ctrl+C/Enter keep their close
+      // semantics — except Ctrl+C while a turn runs, which stays an
+      // interrupt (grok keeps Cancel global; Esc still closes).
+      if (key.ctrl && input === 'c' && channel.working) {
+        interruptRunningTurn()
+      } else if (key.escape || (key.ctrl && input === 'c') || plainReturn) {
         dispatchOverlay({ type: 'close' })
       } else if (!key.ctrl && !key.meta && !key.shift && (key.leftArrow || key.rightArrow)) {
         dispatchOverlay({ type: 'image-step', delta: key.leftArrow ? -1 : 1 })
@@ -3071,7 +3101,12 @@ export function Chat({
       // stays on the row that opened the card). Same vim set as selection
       // mode so the hands never switch rows.
       const detail = rowDetailScrollRef.current
-      if (key.escape || (key.ctrl && input === 'c') || plainReturn || (!isMod(key) && !key.meta && input === 'q')) {
+      if (key.ctrl && input === 'c' && channel.working) {
+        // Ctrl+C while a turn runs stays an interrupt even with the card
+        // up (grok keeps Cancel global); the card stays, Esc/Enter/q still
+        // close it.
+        interruptRunningTurn()
+      } else if (key.escape || (key.ctrl && input === 'c') || plainReturn || (!isMod(key) && !key.meta && input === 'q')) {
         dispatchOverlay({ type: 'close' })
       } else if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) {
         detail?.scrollBy(-1)
@@ -3621,7 +3656,24 @@ export function Chat({
     if (key.shift && key.upArrow && !selectionActive && !helpOpen) {
       enterSelection()
     } else if (selectionActive) {
-      if (actionMatches('transcript', input, key) && !helpOpen) {
+      if (key.ctrl && !key.meta && input === 'c') {
+        // Ctrl+C keeps its global interrupt meaning inside selection mode
+        // (grok's "Cancel turn" works from the transcript too); idle, the
+        // key just leaves the mode — same muscle memory as Esc/Tab. The
+        // hidden composer draft is never cleared from selection mode.
+        if (channel.working) interruptRunningTurn()
+        else exitSelection()
+        event.stopImmediatePropagation()
+      } else if (key.ctrl && !key.meta && input === 'f') {
+        // Ctrl+F / Ctrl+B: vim paging over the transcript, same page size
+        // as the global PgUp/PgDn keys. The cursor row stays put; the next
+        // j/k pulls it back into view, so paging never fights selection.
+        handle?.scrollBy(transcriptPageStep())
+        event.stopImmediatePropagation()
+      } else if (key.ctrl && !key.meta && input === 'b') {
+        handle?.scrollBy(-transcriptPageStep())
+        event.stopImmediatePropagation()
+      } else if (actionMatches('transcript', input, key) && !helpOpen) {
         // Ctrl+O stays live inside selection mode: the global expand/collapse
         // owns row fold states and must not wait for the composer to regain
         // the keyboard.
@@ -3717,21 +3769,7 @@ export function Chat({
       // double-press exit when the input is empty; ctrl+d keeps the
       // time-based double-press exit regardless.
       if (channel.working) {
-        // First press while working only interrupts. If that abort is still
-        // converging (cancelPending) the next press is the user insisting on
-        // leaving: go straight to the exit funnel. Without this, a stuck turn
-        // (long tool call that never settles, silent stream) swallows every
-        // Ctrl+C forever — raw mode keeps the launcher's SIGINT escape
-        // unreachable until the TUI exits.
-        if (channel.cancelPending) {
-          onExit()
-        } else {
-          channel.cancel()
-          // Interrupt replaces any previously armed exit: the next press
-          // must re-confirm instead of exiting out from under the turn.
-          exitPendingRef.current = false
-          if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
-        }
+        interruptRunningTurn()
       } else if (input === 'c' && promptControllerRef.current?.consumeSelectionCopy()) {
         // A mouse selection is active: Ctrl+C copies it to the clipboard
         // (via the prompt controller — Chat's listener registers first) and

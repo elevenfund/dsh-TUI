@@ -517,6 +517,77 @@ try {
   stdin.write('\r')
   await sleep(300)
   check('T13f Enter 关闭浮窗', !screenHas('j/k scroll') && screenHas('esc to return to input'))
+
+  // T19/T20: 选择模式下的 Ctrl+C（grok 语义：Cancel turn 全局可达）——
+  // working 时打断且停留在选择模式；idle 时退出选择模式（同 Esc/Tab 的
+  // 肌肉记忆，绝不清空隐藏输入框草稿）。
+  let cancelCount = 0
+  ;(channel as Record<string, unknown>).cancel = () => {
+    cancelCount++
+  }
+  ;(channel as Record<string, unknown>).working = true
+  bump()
+  await sleep(400)
+  stdin.write('\x03')
+  await sleep(300)
+  check(
+    'T19a 选择模式 working Ctrl+C 打断（cancel 调用、仍在选择模式）',
+    cancelCount === 1 && screenHas('esc to return to input') && lineHighlighted('Bash('),
+  )
+  ;(channel as Record<string, unknown>).working = false
+  bump()
+  await sleep(400)
+  stdin.write('\x03')
+  await sleep(300)
+  check('T20 选择模式 idle Ctrl+C 退出选择模式', !screenHas('esc to return to input'))
+  stdin.write('\t')
+  await sleep(400)
+  check('T20b 重进选择模式（光标恢复 tool 行）', screenHas('esc to return to input') && lineHighlighted('Bash('))
+
+  // T21: Ctrl+B / Ctrl+F vim 翻页（同 PgUp/PgDn 页大小）——视口移动、
+  // selectedId 保留（k/j 把光标行拉回视口，翻页不与选择打架）。
+  stdin.write('\x02') // Ctrl+B → page up
+  await sleep(400)
+  check('T21a Ctrl+B 翻到会话顶部', await settled(() => screenHas('user line alpha')))
+  stdin.write('k') // 光标 tool → reasoning，nearest seek 拉回视口
+  await sleep(400)
+  check(
+    'T21b 翻页后 selectedId 保留（k 拉回高亮）',
+    lineHighlighted('Thought'),
+    `hl=${JSON.stringify(viewportLines().filter(l => l.trim() !== '').map(l => l.trim().slice(0, 44)))}`,
+  )
+  // Ctrl+F page-by-page to the bottom（filler 48 行、每页净进 viewport-1 行，
+  // 循环发送直到 clamp 到底：fresh turn 可见 + pill 消失）。
+  let pagedToBottom = false
+  for (let i = 0; i < 12 && !pagedToBottom; i++) {
+    stdin.write('\x06')
+    await sleep(250)
+    pagedToBottom = screenHas('fresh turn line') && !screenHas('back to bottom')
+  }
+  check('T21c Ctrl+F 连续翻页到底部（clamp 后 sticky 恢复、pill 消失）', pagedToBottom)
+
+  // T22/T23: 浮窗内 Ctrl+C——working 时打断且浮窗保持（grok: Cancel 全局，
+  // Esc 才是 close）；idle 时维持关闭语义。
+  stdin.write('j') // reasoning → tool
+  await sleep(250)
+  stdin.write('\r')
+  await sleep(500)
+  check('T22a 浮窗打开', screenHas('bash(seq 1 30)'))
+  ;(channel as Record<string, unknown>).working = true
+  bump()
+  await sleep(400)
+  stdin.write('\x03')
+  await sleep(300)
+  check(
+    'T22b 浮窗内 working Ctrl+C 打断且浮窗保持',
+    cancelCount === 2 && screenHas('bash(seq 1 30)'),
+  )
+  ;(channel as Record<string, unknown>).working = false
+  bump()
+  await sleep(400)
+  stdin.write('\x03')
+  await sleep(300)
+  check('T23 浮窗内 idle Ctrl+C 关闭浮窗', !screenHas('bash(seq 1 30)') && screenHas('esc to return to input'))
   stdin.write('\x1b')
   await sleep(250)
 
