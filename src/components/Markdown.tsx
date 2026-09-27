@@ -25,6 +25,12 @@ type Props = {
   dimColor?: boolean
   /** 为 false 时跳过 token 缓存（流式尾部的内容逐帧变化，缓存必然失效） */
   cacheTokens?: boolean
+  /** Content-column width override for width-budgeted nodes (tables,
+   * mermaid). Defaults to the full terminal width — pass it whenever the
+   * surrounding container insets the column (padding, bullets), or a table
+   * wider than its column gets re-wrapped by the Text layout and its
+   * borders break mid-row. */
+  width?: number
 }
 
 // ---- token 缓存 ----
@@ -123,6 +129,7 @@ function renderTokensToNodes(
   tokens: Token[],
   highlight: CliHighlight | null,
   dimColor: boolean,
+  width?: number,
 ): React.ReactNode[] {
   const nodes: React.ReactNode[] = []
   let ansiText = ''
@@ -162,6 +169,7 @@ function renderTokensToNodes(
           key={nodes.length}
           token={token as Tokens.Table}
           highlight={highlight}
+          forceWidth={width}
         />,
       )
     } else if (isMermaidToken(token)) {
@@ -172,6 +180,7 @@ function renderTokensToNodes(
           token={token}
           highlight={highlight}
           dimColor={dimColor}
+          forceWidth={width}
         />,
       )
     } else {
@@ -200,7 +209,7 @@ function renderTokensToNodes(
  * block — the dominant long-output stall (string-width via wrap-ansi, 60%+
  * of CPU in streaming profiles).
  */
-function MarkdownImpl({ children, dimColor = false, cacheTokens = true }: Props): React.ReactNode {
+function MarkdownImpl({ children, dimColor = false, cacheTokens = true, width }: Props): React.ReactNode {
   const [highlight, setHighlight] = React.useState<CliHighlight | null>(null)
 
   React.useEffect(() => {
@@ -221,8 +230,9 @@ function MarkdownImpl({ children, dimColor = false, cacheTokens = true }: Props)
       lexWithCache(source, cacheTokens),
       highlight,
       dimColor,
+      width,
     )
-  }, [children, dimColor, highlight, cacheTokens])
+  }, [children, dimColor, highlight, cacheTokens, width])
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -240,5 +250,6 @@ export const Markdown = React.memo(
   (prev, next) =>
     prev.children === next.children &&
     prev.dimColor === next.dimColor &&
-    prev.cacheTokens === next.cacheTokens,
+    prev.cacheTokens === next.cacheTokens &&
+    prev.width === next.width,
 )

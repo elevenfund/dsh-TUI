@@ -25,13 +25,20 @@ export interface AgentTranscriptSceneProps {
   followUpEnabled?: boolean
 }
 
+/** Horizontal inset of the content column: scene paddingX (2×2) + the
+ * assistant bullet column (2). MarkdownTable budgets column widths from the
+ * FULL terminal width, so without passing this inset through, a table wider
+ * than the content column gets re-wrapped by the Text layout and its
+ * box-drawing borders break mid-row. */
+const CONTENT_INSET = 6
+
 /** Folded reasoning rows render collapsed to one preview line; l toggles. */
-function ReasoningLine({ row, expanded }: { row: AgentTranscriptRow; expanded: boolean }): React.ReactNode {
+function ReasoningLine({ row, expanded, width }: { row: AgentTranscriptRow; expanded: boolean; width: number }): React.ReactNode {
   const preview = row.text.split('\n')[0]?.slice(0, 120) ?? ''
   return (
     <Box flexDirection="column" paddingLeft={1}>
       <Text dimColor wrap="truncate">{`✻ ${expanded ? '' : `${preview}${row.text.length > preview.length ? '…' : ''}`}`}</Text>
-      {expanded && <Markdown dimColor cacheTokens={false}>{row.text}</Markdown>}
+      {expanded && <Markdown dimColor cacheTokens={false} width={width}>{row.text}</Markdown>}
     </Box>
   )
 }
@@ -76,7 +83,8 @@ export function AgentTranscriptScene({
   followUpEnabled,
 }: AgentTranscriptSceneProps): React.ReactNode {
   const scrollRef = React.useRef<ScrollBoxHandle | null>(null)
-  const { rows: terminalRows } = useTerminalSize()
+  const { rows: terminalRows, columns } = useTerminalSize()
+  const contentWidth = Math.max(20, columns - CONTENT_INSET)
   const [expandedReasoning, setExpandedReasoning] = React.useState<ReadonlySet<string>>(() => new Set())
   const running = subagent.status === 'running' || subagent.status === 'starting'
   // While the child streams, re-read the event snapshot on its version
@@ -100,12 +108,12 @@ export function AgentTranscriptScene({
       onBack()
       return
     }
-    if (key.upArrow) {
+    if (key.upArrow || input === 'k') {
       event.stopImmediatePropagation()
       scrollRef.current?.scrollBy(-1)
       return
     }
-    if (key.downArrow) {
+    if (key.downArrow || input === 'j') {
       event.stopImmediatePropagation()
       scrollRef.current?.scrollBy(1)
       return
@@ -165,12 +173,12 @@ export function AgentTranscriptScene({
               return (
                 <Box key={row.id} flexDirection="row" width="100%">
                   <Box minWidth={2}><Text color="text">●</Text></Box>
-                  <Markdown cacheTokens={false}>{row.text}</Markdown>
+                  <Markdown cacheTokens={false} width={contentWidth}>{row.text}</Markdown>
                 </Box>
               )
             }
             if (row.kind === 'reasoning') {
-              return <ReasoningLine key={row.id} row={row} expanded={expandedReasoning.has(row.id)} />
+              return <ReasoningLine key={row.id} row={row} expanded={expandedReasoning.has(row.id)} width={contentWidth} />
             }
             return <ToolLine key={row.id} row={row} />
           })}

@@ -206,6 +206,9 @@ export default class Ink {
   // LF-induced scroll when screen.height === terminalRows) and gates
   // alt-screen-aware SIGCONT/resize/unmount handling.
   private altScreenActive = false;
+  // Per-layer mouseTracking flags for nested <AlternateScreen> mounts (see
+  // setAltScreenActive): only the outermost layer owns the physical state.
+  private altScreenStack: boolean[] = [];
   // Set alongside altScreenActive so SIGCONT resume knows whether to
   // re-enable mouse tracking (not all <AlternateScreen> uses want it).
   private altScreenMouseTracking = false;
@@ -1333,6 +1336,19 @@ export default class Ink {
    * screen-matched diff, with repaint as the resize fallback.
    */
   setAltScreenActive(active: boolean, mouseTracking = false): void {
+    // Nested <AlternateScreen> (fullscreen boot wrapping the task-center
+    // panel's own <AlternateScreen>) must not clobber the outer layer: an
+    // inner exit that leaves the stack non-empty keeps the gate open, so
+    // main-surface mouse clicks survive opening and closing a panel.
+    if (active) {
+      const nested = this.altScreenStack.length > 0
+      this.altScreenStack.push(mouseTracking)
+      if (nested) return
+    } else {
+      if (this.altScreenStack.length === 0) return
+      this.altScreenStack.pop()
+      if (this.altScreenStack.length > 0) return
+    }
     if (this.altScreenActive === active) return;
     const resetOldPointerContext = (): void => {
       // Fire leave handlers before dropping the set — a bare clear strands

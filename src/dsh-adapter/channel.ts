@@ -105,6 +105,7 @@ import {
   type SessionTreeData,
 } from './sessionTree.js'
 import { getHostSettingsSections, getLocalSettingsSectionsHost, type TuiSettingsSection, type TuiSettingsSectionsRuntime } from './settings-sections.js'
+import { readRemovedSubagents } from './removedSubagents.js'
 import { SubagentActivityStore, type SubagentState } from './subagents.js'
 import { getHostThemes, type TuiThemeRuntime } from './themes.js'
 import { attachSessionToWorkspace } from './workspace.js'
@@ -214,6 +215,13 @@ function createChannelWithOwner(
   const subagentStore = subagentProjection.store
   const subagentControl = subagentProjection.control
   const pendingTaskDescriptions = subagentProjection.pendingTaskDescriptions
+  // Persisted removals ride in before any durable replay: the catalog is
+  // append-only, so tombstoning is the only thing that keeps a deleted
+  // settled child out of the list surfaces across restarts.
+  {
+    const parentId = (binding.agent.session as { id?: unknown } | null | undefined)?.id
+    if (typeof parentId === 'string') subagentProjection.loadRemoved(readRemovedSubagents(parentId))
+  }
   // Job projection owns registry callbacks and transcript rows. The optional
   // service attachment has no authority after its injected lifetime ends.
   const jobProjection = createJobProjection(() => state, {

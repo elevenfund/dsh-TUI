@@ -1,5 +1,6 @@
 import type { Agent, AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import { markChannelReadDirty } from '../../adapter/channel/read-view.js'
+import { addRemovedSubagent } from '../removedSubagents.js'
 import { SubagentActivityStore, type SubagentState } from '../subagents.js'
 import type { ChannelState, ChatRow, SubagentControl, SubagentRow } from './types.js'
 
@@ -278,8 +279,26 @@ export function createSubagentProjection(
         return true
       } catch { return false }
     },
+    remove(agentId) {
+      if (store.isRemoved(agentId)) return 'removed'
+      if (!store.remove(agentId)) {
+        return store.has(agentId) ? 'running' : 'missing'
+      }
+      // Persist under the parent session so log replay after a restart
+      // cannot resurrect the row; the in-memory tombstone works even when
+      // the write fails (best-effort prefs).
+      const parentId = (deps.agent().session as { id?: unknown } | null | undefined)?.id
+      if (typeof parentId === 'string') addRemovedSubagent(parentId, agentId)
+      syncNow()
+      getState().emit()
+      return 'removed'
+    },
+  }
+  /** Tombstone persisted removals (channel build, before log replay). */
+  const loadRemoved = (ids: Iterable<string>): void => {
+    for (const id of ids) store.markRemoved(id)
   }
   const dropRows = (): void => { streamDirty = false; rowsByAgentId.clear() }
   const reset = (): void => { dropRows(); cardedIds.clear(); workflowMembers.clear(); pendingTaskDescriptions.length = 0; store.reset(); getState().subagents = [] }
-  return { store, control, pendingTaskDescriptions, onSessionEvent, onStreamFrame, onParentEvent, bootstrapFromLog, onStart, onEnd, syncNow, flush, dropRows, reset }
+  return { store, control, pendingTaskDescriptions, onSessionEvent, onStreamFrame, onParentEvent, bootstrapFromLog, onStart, onEnd, syncNow, flush, dropRows, loadRemoved, reset }
 }

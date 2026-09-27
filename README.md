@@ -140,7 +140,7 @@ While the model is working: `Enter` steers, `Tab` queues a follow-up, `Ctrl+Ente
 
 Browsing the transcript: `Shift+Up` or idle `Tab` enters selection mode — `k/j` move the cursor, `l/h` expand/collapse, `Enter` opens the detail card, `g/G` jump to either end, `Ctrl+F/B` page, `Ctrl+C` interrupts from anywhere.
 
-Subagents & tasks: `Ctrl+G` opens the task center — background jobs and subagents classified on one screen; `Enter` reads a subagent's full conversation transcript, `m` follows up (running ones steer, idle ones cold-resume), `k` kills a job. A live one-line strip under the input shows every running item. `Ctrl+A` keeps the subagent dashboard; external editor moved to `alt+g`.
+Subagents & tasks: `Ctrl+G` opens the task center — background jobs and subagents classified on one screen; `↑/↓/j/k` move (vim), `Enter` reads a subagent's full conversation transcript, `m` follows up (running ones steer, idle ones cold-resume), `x` stops the focused running row (job kill / subagent interrupt), `d` drops a settled subagent from the list (persisted). A live one-line strip under the input shows every running item; clicking a strip line opens that transcript, and `Esc` returns where you came from (the panel or the main session). `Ctrl+A` keeps the subagent dashboard; external editor moved to `alt+g`.
 
 Mouse (fullscreen): drag to select and copy, double/triple click to select a word or line, click tool cards, timeline ticks and `[Image #N]` previews.
 

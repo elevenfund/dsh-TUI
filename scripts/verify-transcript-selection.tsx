@@ -115,12 +115,24 @@ const listeners = new Set<() => void>()
 const followUpCalls: Array<[string, string]> = []
 const notifyCalls: string[] = []
 const killCalls: string[] = []
+const removeCalls: string[] = []
+// Two multi-word columns: without the content-width override the table is
+// 96 cells wide in a 94-cell column (COLS 100 − 6 inset) and the Text
+// layout re-wraps it, breaking the box borders mid-row. Multi-word cells
+// matter: wrap-ansi's wordWrap never folds an unbroken long word, which
+// would push the table into the vertical fallback instead.
+const tableCell = (word: string): string => Array.from({ length: 8 }, () => word).join(' ')
+const tableMarkdown = `| ${tableCell('a')} | ${tableCell('b')} |\n|---|---|\n| ${tableCell('c')} | ${tableCell('d')} |`
 const transcriptEvents = [
   { type: 'user/message', data: { id: 'm1', source: { kind: 'user' }, content: [{ type: 'text', text: 'count tsx files under src' }] } },
   { type: 'assistant/chunk', data: { chunk: { type: 'reasoning-delta', text: 'plan first' } } },
   { type: 'tool/call', data: { callId: 'c1', name: 'Bash', arguments: '{"command":"find src -name *.tsx | wc -l"}' } },
   { type: 'tool/result', data: { message: { source: { callId: 'c1' }, content: [{ type: 'text', text: '122' }] } } },
   { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Found **122** tsx files' }] } } },
+]
+const tableEvents = [
+  { type: 'user/message', data: { id: 't1', source: { kind: 'user' }, content: [{ type: 'text', text: 'show the table' }] } },
+  { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: tableMarkdown }] } } },
 ]
 const channel: Record<string, unknown> = {
   version: 0,
@@ -174,13 +186,14 @@ const channel: Record<string, unknown> = {
   subagents: [],
   backgroundJobs: [] as Array<Record<string, unknown>>,
   subagentModes: () => Promise.resolve({ 'sa-1': true, 'sa-2': false }),
-  subagentTranscript: (id: string) => Promise.resolve(id === 'sa-1' ? transcriptEvents : []),
+  subagentTranscript: (id: string) => Promise.resolve(id === 'sa-1' || id === 'sa-7' ? transcriptEvents : id === 'sa-9' ? tableEvents : []),
   jobControl: {
     kill: (id: string) => { killCalls.push(id); return true },
   },
   subagentControl: {
     interrupt: () => true,
     followUp: async (id: string, text: string) => { followUpCalls.push([id, text]); return true },
+    remove: (id: string) => { removeCalls.push(id); return 'removed' },
   },
   listModels: () => Promise.resolve([]),
   listSessions: () => [],
@@ -867,17 +880,68 @@ try {
   bump()
   await sleep(400) // 固定窗:pacing 等面板重渲染
   check('T32f 面板含后台任务区行', screenHas('j-9') && screenHas('watch logs'))
-  // Move focus up into the tasks section then kill with k.
+  // Move focus up into the tasks section then stop with x.
   stdin.write('\x1b[A') // ↑ from subagents row (index 1) to job row (index 0)
   await sleep(200) // 固定窗:pacing 等焦点移动
-  stdin.write('k')
+  stdin.write('x')
   await sleep(300) // 固定窗:pacing 等 kill 派发
-  check('T32g k 终止焦点后台任务', killCalls.length === 1 && killCalls[0] === 'j-9', JSON.stringify(killCalls))
+  check('T32g x 终止焦点后台任务', killCalls.length === 1 && killCalls[0] === 'j-9', JSON.stringify(killCalls))
   stdin.write('\x1b') // 关闭面板
   await sleep(300) // 固定窗:pacing 等卸载
   check('T32h Esc 关闭任务中心回主界面', !screenHas('Task Center') && screenHas('◍'))
   channel.subagents = []
   channel.backgroundJobs = []
+  bump()
+  await sleep(300) // 固定窗:pacing 等清理重渲染
+
+  // T33: return-context split (strip vs panel entry), settled-row removal,
+  // and the detail scene's table-width fix. The strip lists RUNNING rows
+  // only, so the strip door is exercised on the live child.
+  const saRun33 = { agentId: 'sa-7', runId: 'sa-7', description: 'live worker', provider: 'subagent', model: 'glm', status: 'running', startedAt: Date.now() - 4000, output: ['working'], outputEvents: [], toolCalls: [] }
+  const saDone33 = { agentId: 'sa-9', runId: 'sa-9', description: 'settled worker', provider: 'subagent', model: 'glm', status: 'completed', startedAt: Date.now() - 9000, completedAt: Date.now() - 1000, output: [], outputEvents: [], toolCalls: [] }
+  channel.subagents = [saRun33, saDone33]
+  bump()
+  await settled(() => screenHas('◍') && screenHas('live worker'))
+  // Strip click opens the live child's detail (SGR mouse: press+release).
+  const stripPos = findText('live worker')
+  if (stripPos !== null) {
+    stdin.write(`\x1b[<0;${stripPos.col + 3};${stripPos.row + 1}M`)
+    await sleep(150) // 固定窗:pacing 让 press 先进 gesture latch
+    stdin.write(`\x1b[<0;${stripPos.col + 3};${stripPos.row + 1}m`)
+  }
+  await settled(() => screenHas('count tsx files under src'))
+  check('T33a strip 点击打开详情（转录内容出现）', screenHas('count tsx files under src'))
+  stdin.write('\x1b') // Esc: strip entry returns to the MAIN session
+  await sleep(400) // 固定窗:pacing 等返回
+  check('T33b strip 进入的详情 Esc 回主界面（不回面板）',
+    !screenHas('count tsx files under src') && !screenHas('Task Center') && screenHas('live worker'))
+  // Panel entry: Ctrl+G, j moves focus to the settled row, d removes it.
+  stdin.write('\x07') // Ctrl+G → task center
+  await sleep(500) // 固定窗:pacing 等面板挂载
+  check('T33c Ctrl+G 面板含已结算行', screenHas('Task Center') && screenHas('settled worker'))
+  stdin.write('j')
+  await sleep(200) // 固定窗:pacing 等焦点移动
+  check('T33d vim j 下移焦点到已结算行（d 提示出现）', screenHas('d remove'))
+  stdin.write('d') // d only fires on a settled subagent row
+  await sleep(300) // 固定窗:pacing 等删除派发
+  check('T33e d 移除已结算子代理（running 行不响应）',
+    removeCalls.length === 1 && removeCalls[0] === 'sa-9'
+    && notifyCalls.some(text => text.includes('subagent removed from the list')),
+    `remove=${JSON.stringify(removeCalls)}`)
+  stdin.write('\r') // Enter → the settled child's detail (table markdown)
+  // Table borders must fit the content column (COLS 100 − 6 inset): without
+  // the width override the 95-cell top border re-wraps mid-row.
+  await settled(() => screenHas('completed') && viewportLines().some(line => line.includes('┌')))
+  const tableTop = viewportLines().find(line => line.includes('┌')) ?? ''
+  check('T33f 表格按内容列宽度收缩（顶边框 ≤94 列）', tableTop.trimEnd().length > 0 && tableTop.trimEnd().length <= 94,
+    `len=${tableTop.trimEnd().length}`)
+  stdin.write('\x1b') // Esc: panel entry returns to the PANEL
+  await sleep(400) // 固定窗:pacing 等返回
+  check('T33g 面板进入的详情 Esc 回面板', screenHas('Task Center') && screenHas('Subagents'))
+  stdin.write('\x1b') // 关闭面板
+  await sleep(300) // 固定窗:pacing 等卸载
+  check('T33h Esc 关闭任务中心回主界面', !screenHas('Task Center') && screenHas('◍'))
+  channel.subagents = []
   bump()
   await sleep(300) // 固定窗:pacing 等清理重渲染
 

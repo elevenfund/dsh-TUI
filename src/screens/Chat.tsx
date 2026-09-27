@@ -815,6 +815,10 @@ export function Chat({
    * subagents. Legacy Ctrl+A dashboard and /jobs panel stay untouched. */
   const [taskCenterOpen, setTaskCenterOpen] = React.useState(false)
   const [taskCenterDetailId, setTaskCenterDetailId] = React.useState<string | null>(null)
+  /** Where the open detail scene was entered from: the panel (Enter on a
+   * row) returns to the panel on Esc, the agent strip returns to the main
+   * session. */
+  const [taskCenterDetailFromPanel, setTaskCenterDetailFromPanel] = React.useState(true)
   /** Continuable child ids from the host catalog: the follow-up composer is
    * offered only on these rows (one-shot children dispose at settlement).
    * Re-read when the child set changes or the channel is replaced. */
@@ -4172,8 +4176,15 @@ export function Chat({
           }
         }}
         onInterrupt={(id) => channel.subagentControl?.interrupt(id)}
+        onDeleteSubagent={(id) => {
+          const outcome = channel.subagentControl?.remove?.(id)
+          if (outcome === 'running') channel.notify(t('subagent-delete-running'), { color: 'error' })
+          else if (outcome === 'removed') channel.notify(t('subagent-delete-done'), { color: 'success' })
+        }}
         onFollowUp={followUpSubagent}
         onOpenSubagent={(id) => {
+          // Enter from the panel: Esc returns HERE, to the panel.
+          setTaskCenterDetailFromPanel(true)
           setTaskCenterOpen(false)
           setTaskCenterDetailId(id)
         }}
@@ -4185,7 +4196,7 @@ export function Chat({
     const subagent = (channel.subagents ?? []).find(s => s.agentId === taskCenterDetailId)
     if (subagent === undefined) {
       setTaskCenterDetailId(null)
-      setTaskCenterOpen(true)
+      if (taskCenterDetailFromPanel) setTaskCenterOpen(true)
     } else {
       // The transcript scene re-reads on every channel.subagents snapshot
       // change (streaming bumps) — same defensive optionality as above for
@@ -4200,7 +4211,9 @@ export function Chat({
           onFollowUp={followUpSubagent}
           onBack={() => {
             setTaskCenterDetailId(null)
-            setTaskCenterOpen(true)
+            // Return where the user came from: the panel (Enter on a row)
+            // or the main session (strip click).
+            if (taskCenterDetailFromPanel) setTaskCenterOpen(true)
           }}
         />
       )
@@ -4630,6 +4643,8 @@ export function Chat({
           subagents={channel.subagents ?? []}
           onOpenCenter={openTaskCenter}
           onOpenSubagent={(id) => {
+            // Strip click: Esc returns to the main session, not the panel.
+            setTaskCenterDetailFromPanel(false)
             setTaskCenterDetailId(id)
           }}
         />

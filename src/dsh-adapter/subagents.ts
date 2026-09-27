@@ -23,6 +23,29 @@ export class SubagentActivityStore {
   private sessionToAgent = new Map<unknown, string>()
   private listeners = new Set<() => void>()
   private streams = new Map<string, AssistantOutputStream>()
+  /** Removal tombstones: the durable catalog is append-only, so log replay
+   * and registry back-fill would resurrect a removed row without this. */
+  private removed = new Set<string>()
+
+  isRemoved(agentId: string): boolean { return this.removed.has(agentId) }
+
+  /** Tombstone ids loaded from the persisted preference at channel build. */
+  markRemoved(agentId: string): void { this.removed.add(agentId) }
+
+  /** Remove a SETTLED row (running rows refuse: stop them first) and
+   * tombstone it against durable rediscovery. Transcript cards in the main
+   * conversation stay — they are history, not list state. */
+  remove(agentId: string): boolean {
+    const state = this.states.get(agentId)
+    if (state === undefined) return this.removed.has(agentId)
+    if (state.status === 'running' || state.status === 'starting') return false
+    this.states.delete(agentId)
+    this.streams.delete(agentId)
+    for (const [session, agent] of this.sessionToAgent) if (agent === agentId) this.sessionToAgent.delete(session)
+    this.removed.add(agentId)
+    this.notify()
+    return true
+  }
 
   private commitLine(agentId: string, kind: SubagentOutputKind, text: string): void {
     const state = this.states.get(agentId)
@@ -38,6 +61,7 @@ export class SubagentActivityStore {
   }
 
   onSpawned(agentId: string, provider = 'subagent', model?: string, info: Partial<SubagentState> = {}): void {
+    if (this.removed.has(agentId)) return
     const existing = this.states.get(agentId)
     if (!existing) {
       this.states.set(agentId, {
@@ -97,6 +121,7 @@ export class SubagentActivityStore {
    * row running; an idle historical child shows as `unknown` (the parent log
    * alone cannot prove how its last epoch ended). */
   onDiscovered(agentId: string, info: { label?: string; childCreatedAt?: number; live?: boolean; provider?: string; model?: string } = {}): void {
+    if (this.removed.has(agentId)) return
     if (this.states.has(agentId)) return
     this.states.set(agentId, {
       agentId,
@@ -349,6 +374,9 @@ export class SubagentActivityStore {
     this.states.clear()
     this.sessionToAgent.clear()
     this.streams.clear()
+    // Session swap: tombstones of the previous parent die with it; the
+    // channel re-loads this session's persisted removals after the swap.
+    this.removed.clear()
     this.notify()
   }
 

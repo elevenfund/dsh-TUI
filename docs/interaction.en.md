@@ -389,14 +389,16 @@ In the detail scene `←/→` page through Summary / Output / Tools (the output 
 
 | Key | Action |
 | --- | --- |
-| `↑` / `↓` | Move the focus across BOTH sections |
-| `Enter` | Open the subagent's **full conversation transcript** (user bubbles, markdown replies, folded reasoning toggled with `l/h`, tool cards — same rendering semantics as the main chat; a streaming child refreshes live with tail-follow) |
-| `k` | Kill the focused running job (`job_kill`) |
-| `X` | Interrupt the focused running subagent (stops the current turn) |
+| `↑` / `↓` / `k` / `j` | Move the focus across BOTH sections (vim keys) |
+| `Enter` | Open the subagent's **full conversation transcript** (user bubbles, markdown replies, folded reasoning toggled with `l/h`, tool cards — same rendering semantics as the main chat; a streaming child refreshes live with tail-follow; `↑/↓/j/k` scroll) |
+| `x` | Stop the focused running row: kill a job (`job_kill`), interrupt a running subagent (stops the current turn) |
+| `d` | Drop the focused settled subagent from the list (persisted preference — restarts and log replay do not resurrect it; stop it first; the transcript card in the main conversation stays) |
 | `m` | Follow up on the focused continuable subagent (send_message: steer a live child, cold-resume an idle one) |
 | `Esc` | Close |
 
 **Agent strip**: while any background task or subagent runs, a one-line readout appears under the input — one line per item (status glyph, description, live output tail, elapsed, token draw, refreshed every second); clicking a subagent line opens its transcript scene, the trailing `⌃G` hint is the keyboard door; it disappears when everything is idle. The status-line `● N` (jobs) and `⑂ N` (subagents) chips open the task center too.
+
+**Detail-scene return semantics**: `Esc` returns where you entered from — the task-center panel (`Enter` or a row click) or the main session (a strip-line click).
 
 ### /settings editor
 

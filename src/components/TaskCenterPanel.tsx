@@ -20,6 +20,8 @@ export interface TaskCenterPanelProps {
   onKillJob: (id: string) => void
   /** Interrupt the focused running subagent (stops the current turn). */
   onInterrupt: (agentId: string) => void
+  /** Drop a settled subagent row from the list surfaces (persisted). */
+  onDeleteSubagent?: (agentId: string) => void
   /** Deliver a follow-up to a continuable subagent (send_message seam). */
   onFollowUp?: (agentId: string, text: string) => Promise<boolean> | boolean
   /** Open the full transcript scene for a subagent row. */
@@ -142,10 +144,11 @@ function TaskRow({ entry, focused, columns, onOpen }: { entry: Entry; focused: b
  * Task center (`Ctrl+G`) — the unified classified panel: background tasks
  * (bash/pty jobs) and subagents on one screen, grok-style classification.
  * The legacy `Ctrl+A` dashboard and `/jobs` panel stay untouched; this is
- * the merged view over the same channel state. Keyboard: ↑/↓ move across
- * BOTH sections, Enter opens a subagent's transcript scene, `k` kills a
- * running job, `X` interrupts a running subagent, `m` follows up on a
- * continuable subagent, Esc closes.
+ * the merged view over the same channel state. Keyboard: ↑/↓/j/k move
+ * across BOTH sections (vim), Enter opens a subagent's transcript scene,
+ * `x` stops the focused running row (job kill / subagent interrupt), `d`
+ * drops a settled subagent row, `m` follows up on a continuable subagent,
+ * Esc closes.
  */
 export function TaskCenterPanel({
   jobs,
@@ -154,6 +157,7 @@ export function TaskCenterPanel({
   onClose,
   onKillJob,
   onInterrupt,
+  onDeleteSubagent,
   onFollowUp,
   onOpenSubagent,
 }: TaskCenterPanelProps): React.ReactNode {
@@ -181,6 +185,9 @@ export function TaskCenterPanel({
     && continuableIds?.has(focusedEntry.subagent.agentId) === true
   const interruptReady = focusedEntry?.section === 'subagents'
     && (focusedEntry.subagent.status === 'running' || focusedEntry.subagent.status === 'starting')
+  const settledSubagentFocused = focusedEntry?.section === 'subagents'
+    && focusedEntry.subagent.status !== 'running' && focusedEntry.subagent.status !== 'starting'
+  const deleteReady = settledSubagentFocused && onDeleteSubagent !== undefined
 
   useInput((input, key, event) => {
     if (followUp.composing) {
@@ -193,13 +200,15 @@ export function TaskCenterPanel({
       onClose()
       return
     }
-    if (key.upArrow) {
+    const moveUp = key.upArrow || input === 'k'
+    const moveDown = key.downArrow || input === 'j'
+    if (moveUp) {
       event.stopImmediatePropagation()
       setFocusIndex(i => Math.max(0, Math.min(i, entries.length - 1) - 1))
       scrollRef.current?.scrollBy(-1)
       return
     }
-    if (key.downArrow) {
+    if (moveDown) {
       event.stopImmediatePropagation()
       setFocusIndex(i => Math.min(entries.length - 1, Math.max(0, i) + 1))
       scrollRef.current?.scrollBy(1)
@@ -210,19 +219,27 @@ export function TaskCenterPanel({
       if (focusedEntry?.section === 'subagents' && onOpenSubagent) onOpenSubagent(focusedEntry.subagent.agentId)
       return
     }
-    // k kills the focused running job (job_kill authority).
-    if (input === 'k' && focusedEntry?.section === 'tasks') {
-      const { job } = focusedEntry
-      if (job.status === 'running' || job.status === 'stopping') {
+    // x stops the focused running row: job_kill authority on a task row,
+    // turn-interrupt on a subagent row.
+    if (input.toLowerCase() === 'x') {
+      if (focusedEntry?.section === 'tasks') {
+        const { job } = focusedEntry
+        if (job.status === 'running' || job.status === 'stopping') {
+          event.stopImmediatePropagation()
+          onKillJob(job.id)
+        }
+        return
+      }
+      if (interruptReady && focusedEntry?.section === 'subagents') {
         event.stopImmediatePropagation()
-        onKillJob(job.id)
+        onInterrupt(focusedEntry.subagent.agentId)
       }
       return
     }
-    // X interrupts the focused running subagent (stops the current turn).
-    if (input.toLowerCase() === 'x' && interruptReady) {
+    // d drops the focused settled subagent row (persisted removal).
+    if (input === 'd' && deleteReady && focusedEntry?.section === 'subagents') {
       event.stopImmediatePropagation()
-      onInterrupt(focusedEntry.section === 'subagents' ? focusedEntry.subagent.agentId : '')
+      onDeleteSubagent!(focusedEntry.subagent.agentId)
       return
     }
     // m opens the follow-up composer on the focused continuable subagent.
@@ -289,6 +306,7 @@ export function TaskCenterPanel({
         <Text dimColor>{t('task-center-hint')}</Text>
         {followUpReady && <Text dimColor>{` · ${t('subagent-followup-key-hint')}`}</Text>}
         {interruptReady && <Text dimColor>{` · ${t('subagent-interrupt-key-hint')}`}</Text>}
+        {deleteReady && <Text dimColor>{` · ${t('subagent-delete-key-hint')}`}</Text>}
       </Box>
       {followUp.composing && (
         <FollowUpLine state={followUp} placeholder={t('subagent-followup-prompt')} />

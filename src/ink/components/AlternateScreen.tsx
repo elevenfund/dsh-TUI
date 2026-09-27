@@ -22,6 +22,9 @@ export function AlternateScreen({ children, mouseTracking = true }: Props) {
     return () => {
       renderer?.setAltScreenActive(false)
       renderer?.clearTextSelection()
+      // An outer layer still mounted owns the terminal: only the outermost
+      // exit may physically leave the alternate buffer / disable tracking.
+      if (renderer?.isAltScreenActive === true) return
       write((mouseTracking ? DISABLE_MOUSE_TRACKING : '') + EXIT_ALT_SCREEN)
       logMouseDebug('alt-screen exit', {})
     }

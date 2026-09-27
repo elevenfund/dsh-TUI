@@ -383,6 +383,11 @@ export interface SubagentControl {
    * sendMessage): steering a live child, cold-resuming an idle one. Resolves
    * false when the service is absent or the host rejects delivery. */
   followUp(agentId: string, text: string): Promise<boolean>
+  /** Drop a SETTLED child from the list surfaces and remember the removal
+   * (the durable catalog is append-only, so this is a persisted client
+   * preference). Returns 'removed' on success; 'running' refuses a live
+   * child; 'missing' means the row is unknown. */
+  remove(agentId: string): 'removed' | 'running' | 'missing'
 }
 
 /** One tracked job as the UI renders it. */
