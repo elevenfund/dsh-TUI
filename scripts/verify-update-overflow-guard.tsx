@@ -126,9 +126,9 @@ console.log('--- B: hotspots ---')
   const unsubscribeA = clock.subscribe(() => { threw = true; throw prodErr }, true)
   const unsubscribeB = clock.subscribe(() => { bTicks++ }, true)
   let survived = true
-  // 固定窗:待迁移 断言 bTicks>0 是正向变化，但 sleep 同时被 try/catch 包着
-  // 承担「异常不得逃逸」语义，改成 settled 需重排 survived 的捕获点
-  try { await sleep(40) } catch { survived = false }
+  // threw/bTicks turning positive is the observable of a live clock; the
+  // try/catch keeps the "no escape" semantics around the wait itself.
+  try { await settled(() => threw && bTicks > 0) } catch { survived = false }
   check('B1 clock.tick 吞 #185 且进程存活', survived && threw && bTicks > 0, `bTicks=${bTicks}`)
   unsubscribeA()
   unsubscribeB()
@@ -161,12 +161,14 @@ console.log('--- B: hotspots ---')
   revealTextOf(key, 'x'.repeat(24), { enabled: true, active: true })
   const v0 = getRevealVersion()
   let survived = true
-  // 固定窗:待迁移 断言游标推进是正向变化，但重新求值要调用有副作用的
-  // revealTextOf（读即创建/推进游标），轮询会改被测行为
-  try { await sleep(1200) } catch { survived = false }
-  const settled = revealTextOf(key, 'x'.repeat(24), { enabled: true, active: true })
-  check('B2 reveal.tick 吞 #185 且游标推进', survived && getRevealVersion() > v0 && settled.length === 24,
-    `v=${getRevealVersion() - v0} len=${settled.length}`)
+  // The cursor for this key was created by the read above, so polling the
+  // SAME text is an idempotent render-phase read (smoothReveal guarantees
+  // this) — the prefix reaching full length is the completion anchor for
+  // the advancing cursor, with no side effect on the tick under test.
+  try { await settled(() => revealTextOf(key, 'x'.repeat(24), { enabled: true, active: true }).length === 24) } catch { survived = false }
+  const settledText = revealTextOf(key, 'x'.repeat(24), { enabled: true, active: true })
+  check('B2 reveal.tick 吞 #185 且游标推进', survived && getRevealVersion() > v0 && settledText.length === 24,
+    `v=${getRevealVersion() - v0} len=${settledText.length}`)
   unsub()
   resetRevealForTest()
 }

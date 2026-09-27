@@ -282,11 +282,15 @@ function makeChannel(overrides: Record<string, unknown> = {}): Record<string, un
 
   // Jump to the next failure, then confirm the inspector explains it.
   stdin.write(']')
-  // 固定窗:待迁移 断言条件在 seek 前就已成立（retry 行本来就打印 RATE_LIMIT），
-  // settled 会在旧屏立即返回；且这段延迟同时负责让下一次 `/` 写入不与 `]`
-  // 合并进同一个 stdin chunk（合并后 useInput 收到 `']/'`，两个键都不匹配）。
-  await sleep(140)
+  // The `]` seek lands the cursor on the retry row: ▸ sharing a line with
+  // RATE_LIMIT is the observable positive of the seek itself (the bare
+  // ENOENT/RATE_LIMIT text was already true on the pre-seek screen). The
+  // first settled poll always reads the pre-seek frame, so its 30ms poll
+  // step also keeps the `/` write below out of the same stdin chunk.
+  const soughtFailure = await settled(() =>
+    screen().split('\n').some(line => line.includes('▸') && line.includes('RATE_LIMIT')))
   const atFailure = screen()
+  check('] seeks to a failure', soughtFailure && (atFailure.includes('ENOENT') || atFailure.includes('RATE_LIMIT')), '')
   check('] seeks to a failure', atFailure.includes('ENOENT') || atFailure.includes('RATE_LIMIT'), '')
 
   // Query mode filters the whole session.

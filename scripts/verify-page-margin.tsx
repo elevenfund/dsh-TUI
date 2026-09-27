@@ -27,7 +27,7 @@ process.env.FORCE_COLOR = '3'
 process.env.DSH_TUI_THEME = 'dark'
 process.env.DSH_TUI_LANG = 'zh'
 
-const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen, Box, Text }, { PageMargin, PageInsetContext }, { useTerminalSize }, { settle, sleep }] = await Promise.all([
+const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen, Box, Text }, { PageMargin, PageInsetContext }, { useTerminalSize }, { settle, drainedScreen, sleep }] = await Promise.all([
   import('node:stream'),
   import('react'),
   import('@xterm/headless'),
@@ -237,9 +237,12 @@ function linesC(): string[] {
   return Array.from({ length: CHAT_ROWS }, (_, y) => termC.buffer.active.getLine(termC.buffer.active.baseY + y)?.translateToString(true) ?? '')
 }
 await settle(() => linesC().some(l => l.trimStart().startsWith('❯')))
-// 固定窗:待迁移 等整帧（含滚动轨）画完；同一个窗口服务下面 4 条断言与
-// railRows 快照，拆成单条 settled 会改语义
-await sleep(250)
+// Full-frame anchor: the ❯ settle above already rules out the pre-first-
+// frame blind spot of a quiet drain, so draining until two consecutive
+// viewport probes match means the WHOLE frame (scroll rail included) has
+// painted — the edge-negative checks below (cols 0/1 blank, 98/99 rail-only)
+// must not sample a half-parsed frame.
+await drainedScreen(termC, { rows: CHAT_ROWS })
 const railRows = Array.from({ length: CHAT_ROWS }, (_, y) => cellAtC(y, 98) !== '' || cellAtC(y, 99) !== '')
 const promptRow = linesC().findIndex(l => l.trimStart().startsWith('❯'))
 const promptCol = promptRow >= 0 ? linesC()[promptRow]!.indexOf('❯') : -1

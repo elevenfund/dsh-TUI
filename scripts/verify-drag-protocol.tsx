@@ -1008,9 +1008,14 @@ check('场景渲染：DRAGPAD/PLAIN 标记定位', padPos.col >= 0 && plainPos.c
   stdin.write('\x1b[?1;2c') // DA1 哨兵
   await sleep(60) // 固定窗:pacing 等 promise 回调落地再 release，无可观测完成条件
   release(padPos.col + 2, padPos.row) // 无 motion → dormant → click 路径
-  // 固定窗:待迁移 一个 sleep 服务 clickHeal 快照派生的三条断言
-  // （含 stdout 序号索引运算），迁移需把条件合进单个 settled 谓词，非平凡改写。
-  await sleep(100)
+  // The deferred re-entry writes are the positive observable — they land
+  // strictly after the click dispatch (the timeline under test), so polling
+  // until both appear settles every snapshot-derived check below, including
+  // the stdout-seq index math and the recorded click event itself.
+  await settled(() => {
+    const w = stdoutWrites.slice(clickReplyStart).join('')
+    return w.includes('[?1049h') && w.includes('[2J')
+  })
   // re-entry 必须在 click 之后发生（统一 timeline：click 事件的 stdout 序号
   // 必须小于 re-entry 的 stdout 序号——若 re-entry 先执行，frontFrame 被清空，
   // dispatchClick 读到空帧，click 事件不会发出或读到错误坐标）。

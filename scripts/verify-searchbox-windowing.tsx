@@ -27,7 +27,7 @@ process.env.DSH_TUI_LANG = 'zh'
 
 // 静态 import 会提升到上面的 env 钉死之前，但 term-test 只读 process.env.CI，
 // 与语言/主题无关，顺序安全。
-import { settle } from './lib/term-test.mjs'
+import { settle, settled } from './lib/term-test.mjs'
 
 const [
   { PassThrough, Writable },
@@ -159,9 +159,10 @@ async function mountTree(cols = 120, rows = 30) {
   )
   // 单 chunk 整段到达（等价粘贴）：查询一次到位，围绕 caret 只显示尾部窗口。
   h.stdin.write(`START${'x'.repeat(150)}END`)
-  // 固定窗:待迁移 同一个 sleep 服务下面三条断言（尾部可见 / 头部滚出 / 不折行），
-  // 不是「一个 sleep 一条断言」的平凡改写形态。
-  await sleep(300)
+  // Tail visibility is the positive observable of the one-shot paste being
+  // windowed around the caret; once it settles, the same frame's head-
+  // scrolled-out and no-wrap negatives below are stable.
+  await settled(() => h.searchRow().includes('END'))
   check(
     "/tree 超长查询：尾部 'END' 可见",
     h.searchRow().includes('END'),

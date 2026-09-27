@@ -369,9 +369,13 @@ const runningJob = {
 await withTerminal(
   () => React.createElement(JobCard, { job: runningJob, marginTopOnTurn: false }),
   async screen => {
-    // 固定窗:待迁移 一个 sleep 服务同一快照上的多条正/负混合断言，
-    // 迁移需把全部条件合进一个 settled 谓词并在其中捕获快照，非平凡改写。
-    await sleep(150)
+    // Static props: settle on every positive condition, then the snapshot
+    // frame has fully painted them and the checks below are stable.
+    await settled(() => {
+      const s = screen()
+      return s.includes('pwsh-1') && s.includes('gh run watch 42') &&
+        s.includes('build step 1 ok') && s.includes('build step 2 ok')
+    })
     const text = screen()
     check('C1 运行卡头含 id/label', text.includes('pwsh-1') && text.includes('gh run watch 42'))
     check('C1 瀑布呈现镜像输出', text.includes('build step 1 ok') && text.includes('build step 2 ok'))
@@ -383,9 +387,12 @@ await withTerminal(
     marginTopOnTurn: false,
   }),
   async screen => {
-    // 固定窗:待迁移 一个 sleep 服务同一快照上的多条正/负混合断言，
-    // 迁移需把全部条件合进一个 settled 谓词并在其中捕获快照，非平凡改写。
-    await sleep(150)
+    // Positive anchor first (card head painted); the negative check (no
+    // waterfall gutter) is stable on that same frame.
+    await settled(() => {
+      const s = screen()
+      return s.includes('pwsh-1') && s.includes('gh run watch 42')
+    })
     const text = screen()
     check(
       'C1 无输出时卡片仅头行（无空瀑布 gutter）',
@@ -400,9 +407,12 @@ await withTerminal(
     marginTopOnTurn: false,
   }),
   async screen => {
-    // 固定窗:待迁移 一个 sleep 服务同一快照上的多条正/负混合断言，
-    // 迁移需把全部条件合进一个 settled 谓词并在其中捕获快照，非平凡改写。
-    await sleep(150)
+    // Positive anchor: settled card head with its exit detail has painted;
+    // the folded waterfall's absence is stable on that frame.
+    await settled(() => {
+      const s = screen()
+      return s.includes('pwsh-1') && s.includes('exit code: 0')
+    })
     const text = screen()
     check('C2 落定卡折叠（无瀑布行）', !text.includes('│ build step 1 ok'))
     check('C2 落定卡头含 exit detail', text.includes('exit code: 0'))
@@ -418,9 +428,15 @@ await withTerminal(
     onKill: () => {},
   }),
   async screen => {
-    // 固定窗:待迁移 一个 sleep 服务同一快照上的多条正/负混合断言，
-    // 迁移需把全部条件合进一个 settled 谓词并在其中捕获快照，非平凡改写。
-    await sleep(150)
+    // Every positive of the checks below (title, rows, hint, focused detail)
+    // goes into the anchor; the non-focused negative is stable once painted.
+    await settled(() => {
+      const s = screen()
+      return s.includes('Background Jobs') && s.includes('pwsh-1') && s.includes('bash-2') &&
+        s.includes('kill focused job') && s.includes('started') && s.includes('command') &&
+        s.includes('gh run watch 42') && s.includes('gh pr checks --watch 42') &&
+        s.includes('build step 1 ok') && s.includes('build step 2 ok')
+    })
     const text = screen()
     check('C3 面板标题与两行任务', text.includes('Background Jobs') && text.includes('pwsh-1') && text.includes('bash-2'))
     check('C3 面板含操作提示', text.includes('kill focused job'), text.split('\n').at(-3) ?? '')
