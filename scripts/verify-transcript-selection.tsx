@@ -699,6 +699,47 @@ try {
     `screen=${JSON.stringify(viewportLines().filter(l => l.trim() !== '').map(l => l.trim().slice(0, 50)).slice(-6))}`,
   )
 
+  // T27: assistant 行 Enter 浮窗——标题 Reply、正文 markdown 渲染（grok 的
+  // 详情卡保留格式：code fence 与 ** 加粗标记被剥除，不按原文显示），且
+  // 浮窗开着时流式追加的内容跟随出现（流式行上读详情不被冻结）。
+  ;(channel.rows as Array<Record<string, unknown>>).push({
+    id: 310,
+    kind: 'assistant',
+    text: '**bm** prose\n\n```ts\nconst value = 1\n```\n',
+  })
+  bump()
+  stdin.write('\t') // 重进选择模式（findLast 跟随新末行 id 310）
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T27a 光标跟到新 assistant 行', await settled(() => lineHighlighted('bm') || screenHas('bm')))
+  stdin.write('\r') // Enter → 浮窗
+  await sleep(500) // 固定窗:pacing 等输入批次与渲染帧排空
+  check(
+    'T27b assistant 浮窗 markdown（加粗标记剥除、标题 Reply）',
+    await settled(() => screenHas('Reply') && screenHas('const value = 1') && !screenHas('**bm**') && screenHas('bm')),
+    `screen=${JSON.stringify(viewportLines().filter(l => l.trim() !== '').map(l => l.trim().slice(0, 50)).slice(-8))}`,
+  )
+  ;(channel.rows as Array<Record<string, unknown>>).find(r => r.id === 310)!.text =
+    '**bm** prose\n\n```ts\nconst value = 1\n```\nstreaming tail marker\n'
+  bump()
+  check('T27c 浮窗跟随流式追加（无冻结）', await settled(() => screenHas('streaming tail marker')))
+  stdin.write('\x1b')
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+
+  // T30: l/h 在无折叠语义的行上 no-op——assistant/user 行按 l 不登记展开、
+  // 不触发 pin 跳页（grok 的行级展开只作用于 thought/tool 卡）。
+  const top30 = topOf()
+  stdin.write('l') // 光标在 assistant 行（id 310）
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T30a assistant 行 l 不跳页', topOf() === top30)
+  stdin.write('g') // 到首个可选行（user）
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  const top30b = topOf()
+  stdin.write('l') // user 行
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T30b user 行 l 不跳页', topOf() === top30b)
+  stdin.write('\x1b') // 退出选择模式（恢复 T14 的 '\t' 进入前提）
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+
   // T14: 鼠标点击输入簇退出选择模式（Tab-back 的鼠标等价）。headless 终端
   // 不应答 alt-screen 探测——onWrite 收到 ?1049$p 时回 DECRPM set，
   // dispatchClick 的 altScreenActive 守卫随即放行 SGR 点击（真实终端自己

@@ -3685,17 +3685,31 @@ export function Chat({
       } else if (!isMod(key) && !key.meta && input === 'l' && selectedId !== null) {
         // l expands (vim right = open). Same expanding-edge seek as Enter:
         // the row's head is pinned to the viewport top so the revealed
-        // body reads top-down. The global expand state owns fold states
+        // body reads top-down. Only fold-bearing kinds respond (reasoning,
+        // tool): assistant text and user prompts have no collapsed form,
+        // so expanding there would register an expansion nothing renders
+        // (plus a seek jump) — grok's row-level expand applies to thinking
+        // and tool cards only. The global expand state owns fold states
         // (Ctrl+O contract): when every row already shows expanded, l is
         // a no-op — no redundant row-local registration, no seek jump.
-        if (!expanded && !expandedRows.has(selectedId)) {
+        const selectedRow = selectableRows.find(row => row.id === selectedId)
+        if (
+          selectedRow !== undefined &&
+          (selectedRow.kind === 'reasoning' || selectedRow.kind === 'tool') &&
+          !expanded && !expandedRows.has(selectedId)
+        ) {
           toggleRowExpanded(selectedId)
           seekRow(selectedId)
         }
       } else if (!isMod(key) && !key.meta && input === 'h' && selectedId !== null) {
         // h collapses (vim left = close). No seek: the shrink leaves the
-        // cursor row where it is.
-        if (expandedRows.has(selectedId)) toggleRowExpanded(selectedId)
+        // cursor row where it is. Same fold-bearing kind gate as l.
+        const selectedRow = selectableRows.find(row => row.id === selectedId)
+        if (
+          selectedRow !== undefined &&
+          (selectedRow.kind === 'reasoning' || selectedRow.kind === 'tool') &&
+          expandedRows.has(selectedId)
+        ) toggleRowExpanded(selectedId)
       } else if (!isMod(key) && !key.meta && input === 'g') {
         // g / gg → first selectable row (single g is the less habit,
         // double gg the vim one; the second press re-selects an

@@ -3,6 +3,7 @@ import { Box, ScrollBox, Text, useTerminalSize, type ScrollBoxHandle } from '../
 import type { ChatRow } from '../adapter/ports/channel-view.js'
 import { truncateToWidth } from '../ink/truncateToWidth.js'
 import { t } from '../i18n.js'
+import { Markdown } from './Markdown.js'
 import { toolDisplayName } from './messages/toolNames.js'
 
 /**
@@ -133,6 +134,14 @@ export function RowDetailOverlay({
                   ? multiline(tool.resultText, 'r')
                   : null}
               </>
+            ) : row.kind === 'assistant' || row.kind === 'reasoning' ? (
+              // Markdown body matches the transcript row's own renderer
+              // (grok's detail card keeps formatting; a code fence read as
+              // raw text is a regression). cacheTokens stays off: a card
+              // opened on a streaming row sees its text grow token by
+              // token, and the token cache is only valid for immutable
+              // content. Reasoning keeps the transcript's dimmed look.
+              <Markdown dimColor={row.kind === 'reasoning'} cacheTokens={false}>{row.text}</Markdown>
             ) : (
               multiline(row.text, 't')
             )}
