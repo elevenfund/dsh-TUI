@@ -1,52 +1,39 @@
 import React from 'react'
-import { t, getLang, setLang, isLang, writeLangPref, readLangPref, subscribeLang, LANGS, type Lang } from '../i18n.js'
-import { readThemePref } from '../themePrefs.js'
-import { readPresetPref } from '../presetPrefs.js'
-import { readModelPref } from '../modelPrefs.js'
-import { readActivityFrames } from '../activityPrefs.js'
-import { envThemeOverride } from '../components/design-system/ThemeProvider.js'
-import { hasPath } from '../dsh-adapter/settingsEditor.js'
-import { isMod } from '../utils/modifiers.js'
-import { planReload, type ReloadKind } from '../reload.js'
+import { t, getLang, setLang, writeLangPref, subscribeLang, LANGS, type Lang } from '../i18n.js'
+
 import { AlternateScreen, Box, Image, Text, useInput, ScrollBox, type ScrollBoxHandle, useTheme, useTerminalSize } from '../ui.js'
 import * as tuiKit from '../ui.js'
-import { usePageInset } from '../components/PageMargin.js'
-import { POINTER } from '../terminal-utils/figures.js'
+
 import { isPlainReturnInput, modLabel } from '../utils/modifiers.js'
 import { actionMatches } from '../utils/keymap.js'
-import { formatTokens } from '../terminal-utils/format.js'
+
 import { homeDir } from '../utils/paths.js'
-import type { LlmModelInfo, LlmProviderInfo } from '../adapter/ports/channel-view.js'
 import { cleanRenderText, cleanScalarText } from '../dsh-adapter/sanitize.js'
 import {
-  deriveModelGroups,
   modelPickerLanding,
-  recentCatalogModels,
-  RECENTS_GROUP_PROVIDER,
+  RECENTS_GROUP_PROVIDER
 } from '../modelGroups.js'
-import { readModelRecents, recordModelUse, type ModelRecentsRef } from '../modelRecents.js'
+
 import type { ChannelUi as Channel } from '../adapter/channel/ui-policy.js'
-import { sessionCwdMatches, type ChatRow, type ComposerImageRef, type EffortOption, type ExternalCommandOutcome, type PermissionPresetSnapshot, type PresetOption, type SkillInfo } from '../dsh-adapter/channel.js'
+import { type ChatRow, type ComposerImageRef, type EffortOption, type ExternalCommandOutcome, type PresetOption, type SkillInfo } from '../dsh-adapter/channel.js'
 import type { QuestionStore } from '../dsh-adapter/questions.js'
 import { TuiDialogStore } from '../dsh-adapter/dialogs.js'
 import { TuiStatusStore, type TuiStatusViewUi } from '../dsh-adapter/status.js'
-import { ActivityPhase, ActivityStore, useActivity } from '../dsh-adapter/activity-store.js'
-import type { TranscriptImage } from '../dsh-adapter/transcript-images.js'
+import { ActivityStore, useActivity } from '../dsh-adapter/activity-store.js'
 import type { TuiShortcutHost } from '../dsh-adapter/shortcuts.js'
 import type { TuiThemeHost } from '../dsh-adapter/themes.js'
-import type { TuiRewindMode } from '../dsh-adapter/extension-events.js'
-import { runProviderWizard } from '../dsh-adapter/providerWizard.js'
+
 import { ApprovalStore } from '../dsh-adapter/approvals.js'
 import { AskUserQuestionPanel } from '../components/questions/AskUserQuestionPanel.js'
 import { ApprovalPanel } from '../components/approvals/ApprovalPanel.js'
-import { ExtensionDialog } from '../components/ExtensionDialog.js'
+
 import type { DOMElement } from '../ink/dom.js'
 import { useSearchHighlight } from '../ink/hooks/use-search-highlight.js'
 import { useTerminalTitle } from '../ink/hooks/use-terminal-title.js'
 import { useTerminalFocus } from '../ink/hooks/use-terminal-focus.js'
 import { useCopyOnSelect } from '../ink/hooks/use-copy-on-select.js'
 import { useSelection } from '../ink/hooks/use-selection.js'
-import { NoSelect } from '../ink/components/NoSelect.js'
+
 import { LogoHeader, MessageList } from '../components/MessageList.js'
 import { TimelineRail } from '../components/TimelineRail.js'
 import { ScrollbarGutter } from '../components/ScrollbarGutter.js'
@@ -61,7 +48,6 @@ import { PromptEditorLayer, usePromptEditorOpen } from '../components/PromptEdit
 import { GoalTodoPanel } from '../components/GoalTodoPanel.js'
 import { AutoRecapRow } from '../components/AutoRecapRow.js'
 import { BalanceReportRow } from '../components/BalanceReportRow.js'
-import type { BalanceResult } from '../deepseekBalance.js'
 import { LoadedContextPanel } from '../components/LoadedContextPanel.js'
 import { StatusLine } from './StatusLine.js'
 import { WorkingSpinner, useThinkingStatus } from '../components/WorkingSpinner.js'
@@ -78,7 +64,7 @@ import { Settings } from './Settings.js'
 import { WorkspacePicker } from '../components/WorkspacePicker.js'
 import { WorkspaceMenuPicker } from '../components/WorkspaceMenuPicker.js'
 import { WorkspaceFlowPicker } from '../components/WorkspaceFlowPicker.js'
-import type { TuiWorkspaceCommandResult, TuiWorkspaceTarget } from '../workspaces.js'
+import type { TuiWorkspaceTarget } from '../workspaces.js'
 import { ActivityPicker } from '../components/ActivityPicker.js'
 import { ColorPicker } from '../components/ColorPicker.js'
 import { EffortSlider } from '../components/EffortSlider.js'
@@ -87,22 +73,21 @@ import { PermissionsPicker } from '../components/PermissionsPicker.js'
 import { PlanPicker } from '../components/PlanPicker.js'
 import { LangPicker } from '../components/LangPicker.js'
 import { ThemePicker, getThemeOptions } from '../components/ThemePicker.js'
-import { AUTO_THEME_NAME, getAutoThemeBase } from '../theme.js'
-import { FRAME_PRESETS, PRESET_NAMES } from '../components/activityFrames.js'
+
+import { PRESET_NAMES } from '../components/activityFrames.js'
 import { ThinkingToggle } from '../components/ThinkingToggle.js'
 import { HistorySearchDialog } from '../components/HistorySearchDialog.js'
 import { RewindPicker } from '../components/RewindPicker.js'
-import { BtwPanel } from '../components/BtwPanel.js'
-import { RecapPanel } from '../components/RecapPanel.js'
-import { isValidSessionColor, SESSION_COLOR_NAMES } from '../terminal-utils/sessionColors.js'
-import { TipsPanel } from '../components/TipsPanel.js'
+
+import { SESSION_COLOR_NAMES } from '../terminal-utils/sessionColors.js'
+
 import { SubagentDashboard } from '../components/SubagentDashboard.js'
 import { TaskCenterPanel } from '../components/TaskCenterPanel.js'
-import { AgentStrip } from '../components/AgentStrip.js'
+
 import { TaskCenterDetail } from '../components/AgentTranscriptScene.js'
 import { JobsPanel } from '../components/JobsPanel.js'
 import { SubagentDetailScene } from '../components/SubagentDetailScene.js'
-import { FileActionsPanel, FILE_ACTION_COUNT } from '../components/FileActionsPanel.js'
+import { FileActionsPanel } from '../components/FileActionsPanel.js'
 import { openExternal, openFile, revealInFileManager } from '../utils/openExternal.js'
 import { resolveTargetPath } from '../utils/fileTarget.js'
 import { classifyOpenTarget } from '../utils/urlGuard.js'
@@ -110,26 +95,19 @@ import { statSync } from 'node:fs'
 import { setClipboard } from '../ink/termio/osc.js'
 import { TerminalWriteContext } from '../ink/useTerminalNotification.js'
 import instances from '../ink/instances.js'
-import { useAnimationFrame } from '../ink/hooks/use-animation-frame.js'
+
 import { useExternalVersion } from '../hooks/useExternalVersion.js'
 import { TrajectoryScene } from './TrajectoryScene.js'
 import { resumeFailureText } from '../sessions/resumeFailure.js'
-import { markHomeSeen } from '../homePrefs.js'
-import { extendTrajectory, projectWave, type TrajBuild } from '../dsh-adapter/trajectory/index.js'
-import { miniWakeWidth } from '../components/trajectory/MiniWake.js'
-import { readTrajectorySeen, writeTrajectorySeen } from '../trajectoryPrefs.js'
-import type { RawTrajEvent as SessionEvent } from '../adapter/ports/channel-view.js'
-import { LoadingState } from '../components/design-system/LoadingState.js'
-import { Pane } from '../components/design-system/Pane.js'
+
+
 import { loadHistory, type HistoryEntry } from '../history.js'
-import { formatLoadedContextReport } from '../utils/loaded-context.js'
+
 import {
   NO_OVERLAY,
   chatOverlayReducer,
   dialogOverlayVisible,
-  wrapIndex,
-  type ChatOverlay,
-  type WorkspaceFlowInput,
+  type ChatOverlay
 } from './chatOverlay.js'
 import type { Key } from '../ink/events/input-event.js'
 import { grokWorkingLine } from './chat/working-line.js'
@@ -142,8 +120,12 @@ import { useWorkspaceCommands } from './chat/use-workspace-commands.js'
 import { createRunCommand } from './chat/run-command.js'
 import { createRewindCommands } from './chat/rewind.js'
 import { InputCluster } from './chat/InputCluster.js'
-import { useTranscriptSearch } from './chat/use-transcript-search.js'
+import { searchableText, useTranscriptSearch } from './chat/use-transcript-search.js'
 import { inputGuardAction } from './chat/input-guard.js'
+import { useModelPicker } from './chat/use-model-picker.js'
+import { useViewportState } from './chat/use-viewport-state.js'
+import { useTurnControl } from './chat/use-turn-control.js'
+import { useSceneHome } from './chat/use-scene.js'
 import { useTrajectory } from './chat/use-trajectory.js'
 import { useSeek } from './chat/use-seek.js'
 
@@ -184,7 +166,6 @@ const STATUS_VIEW_UI = Object.freeze({
 }) satisfies TuiStatusViewUi
 
 /** Shared empty snapshot for hosts whose channel has no event log. */
-const NO_EVENTS: readonly SessionEvent[] = []
 
 const COMMAND_RESULT_CELLS = 200
 
@@ -198,14 +179,6 @@ function cleanCommandError(error: unknown): string {
     return cleanScalarText(error, COMMAND_RESULT_CELLS)
   } catch {
     return ''
-  }
-}
-
-function clonePermissionPresetSnapshot(snapshot: PermissionPresetSnapshot): PermissionPresetSnapshot {
-  return {
-    availability: snapshot.availability,
-    options: snapshot.options.map(option => ({ ...option })),
-    ...(snapshot.current === undefined ? {} : { current: { ...snapshot.current } }),
   }
 }
 
@@ -229,26 +202,8 @@ const SELECTABLE_KINDS = new Set<ChatRow['kind']>([
  *  downstream consumers never see a changing prop when the mode is off). */
 const NO_ROWS: readonly ChatRow[] = []
 
-/** `max` → `Max` (effort levels arrive lower-case from the adapter). */
-function capitalize(text: string): string {
-  return text.length === 0 ? text : text[0].toUpperCase() + text.slice(1)
-}
-
 /** Terminal-title spinner frames. */
 const TITLE_SPINNER_FRAMES = ['⠂', '⠐']
-
-/** Searchable transcript text for one row (`/` incsearch):
- *  user text, assistant text, thinking, tool args/results, local output). */
-function searchableText(row: ChatRow): string {
-  switch (row.kind) {
-    case 'tool':
-      return row.tool
-        ? `${row.tool.name} ${row.tool.argsText} ${row.tool.resultText ?? ''} ${row.tool.errorText ?? ''}`
-        : ''
-    default:
-      return row.text
-  }
-}
 
 /**
  * Main chat screen: a scrollable transcript
@@ -510,46 +465,12 @@ export function Chat({
       permissionOverlayFocusRef.current = null
     }
   }, [overlay])
-  const [models, setModels] = React.useState<readonly LlmModelInfo[]>([])
-  /** Provider display identities for the /model group level; refreshed alongside `models`. */
-  const [providerInfos, setProviderInfos] = React.useState<readonly LlmProviderInfo[]>([])
-  /** /model 最近使用分组：成功切换即记录（去重置顶，上限 10），重启保留。 */
-  const [modelRecents, setModelRecents] = React.useState<readonly ModelRecentsRef[]>(() => readModelRecents())
-  /** Two-level /model: the drilled-in provider route; undefined = group level.
-   *  Reset on open; stale ids resolve back to the group level via `activeModelGroup`. */
-  const [modelGroup, setModelGroup] = React.useState<string | undefined>(undefined)
-  /** True while the picker sits in the single-provider fast path (drilled in
-   *  at open, the group level never shown): Esc closes directly and no back
-   *  hint renders — a pinned recents pseudo-group must not fake a two-level
-   *  walk the user never saw (issue #527 regression: repro-picker-windowing). */
-  const [modelPickerDirect, setModelPickerDirect] = React.useState(false)
-  /** Group rows over the current catalog, first-appearance (registry) order,
-   *  with the pinned recents pseudo-group first when any entry is catalogued. */
-  const modelGroups = React.useMemo(
-    () => deriveModelGroups(models, providerInfos, modelRecents),
-    [models, providerInfos, modelRecents],
-  )
-  /** The drilled-in group, but only while it still exists in the catalog. */
-  const activeModelGroup = modelGroup !== undefined && modelGroups.some(group => group.provider === modelGroup)
-    ? modelGroup
-    : undefined
-  const groupModels = React.useMemo(() => {
-    if (activeModelGroup === undefined) return []
-    if (activeModelGroup === RECENTS_GROUP_PROVIDER) return recentCatalogModels(modelRecents, models)
-    return models.filter(model => model.provider === activeModelGroup)
-  }, [models, modelRecents, activeModelGroup])
-  /** Switch + record: every successful switch feeds the /model recents group
-   *  (picker Enter/click, `/model provider/id`, the wizard's live switch,
-   *  and /reload's applied model all ride this one path). */
-  const switchModelRecorded = (provider: string, id: string, name?: string): Promise<boolean> => {
-    if (name !== undefined) channel.notify(t('model-switching', { name }))
-    return channel.switchModel(provider, id).then((ok) => {
-      if (!ok) return ok
-      if (name !== undefined) channel.notify(t('model-switched', { name }))
-      setModelRecents(recordModelUse({ provider, id }))
-      return ok
-    })
-  }
+  const {
+    models, setModels, providerInfos, setProviderInfos,
+    modelRecents, setModelRecents, modelGroup, setModelGroup,
+    modelPickerDirect, setModelPickerDirect,
+    modelGroups, activeModelGroup, groupModels, switchModelRecorded,
+  } = useModelPicker(channel)
   /** `/skills` 技能目录（issue #204）：null = 注册表快照在途。 */
   const [skillsList, setSkillsList] = React.useState<readonly SkillInfo[] | null>(null)
   /**
@@ -752,58 +673,6 @@ export function Chat({
   const [logoNonce, setLogoNonce] = React.useState(0)
   React.useEffect(() => () => btwAbortRef.current?.abort(), [])
   React.useEffect(() => () => recapAbortRef.current?.abort(), [])
-  /**
-   * The trajectory scene (issue #80 evolution). Unlike every other overlay
-   * here it is not a panel but a whole screen: while open, Chat renders the
-   * scene INSTEAD of the conversation (see the early return below) and hands
-   * it the keyboard. Chat itself stays mounted, so scroll position, pickers
-   * and in-flight turn state survive the round trip untouched.
-   */
-  const [sceneOpen, setSceneOpen] = React.useState(false)
-  /**
-   * Close the scene.
-   *
-   * Leaving the alternate screen makes the terminal restore the main buffer;
-   * Ink restores the matching saved frame and diffs any conversation changes
-   * that happened while the scene was open.
-   */
-  const closeScene = React.useCallback(() => {
-    setSceneOpen(false)
-  }, [])
-
-  /** Open the scene, mark failures seen, and retire the key hint for good. */
-  const openScene = React.useCallback(() => {
-    markFailuresSeen()
-    setSceneOpen(true)
-  }, [])
-
-  /**
-   * Leave the session supervisor for the conversation.
-   *
-   * The one-shot landing preference is written here rather than at boot: a
-   * process that dies before the user ever sees the screen (a config error, a
-   * crash during the first render) must not burn the installation's only
-   * first-launch landing. Writing on the way OUT means "the user has seen it".
-   *
-   * Leaving also honours `/bg`'s return target. `/background` moved the
-   * session the user was in to the background and opened this screen; a plain
-   * Esc out of it re-attaches to that session instead of silently leaving them
-   * on the fresh one, which is what "go back to what I was doing" means. Any
-   * explicit mount inside the screen clears the target first, so this can
-   * never undo a choice the user just made.
-   */
-  const closeHome = React.useCallback(() => {
-    suppressLogoIntroRef.current = true
-    markHomeSeen()
-    const returnTo = agentViewReturnId
-    setAgentViewReturnId(undefined)
-    setSupervisorOpen(false)
-    if (returnTo !== undefined && returnTo !== channel.agentId) {
-      void channel.resumeTo(returnTo).then((result) => {
-        if (result.ok) repaintTranscript()
-      }).catch(() => undefined)
-    }
-  }, [agentViewReturnId, channel, repaintTranscript])
   /** The startup summary gives way to transcript rows after the first local command or message. */
   const loadedContextVisible = channel.rows.length === 0 && channel.loadedContext !== undefined
   /** Startup context panel: collapsed by default, toggled with Ctrl+P. */
@@ -913,77 +782,12 @@ export function Chat({
   const rowRefsRef = React.useRef(new Map<number, DOMElement>())
   const { setQuery: setHighlight } = useSearchHighlight()
 
-  // Sticky (pinned-to-bottom) scroll state, subscribed imperatively so
-  // wheel events don't re-render React — only the header/pill flip.
-  // Deliberately KEPT on useSyncExternalStore despite the SyncLane wakeup
-  // cost: the renderer's at-bottom re-pin flips sticky WITHOUT firing the
-  // scroll subscribers (see ScrollBox's subscribe doc), so only uSES's
-  // every-render getSnapshot check picks that flip up — a pure
-  // notification-driven subscription misses it and the new-message pill
-  // stops reflecting reality (repro-pill). Wheel cadence is an
-  // interaction-rate source (not streaming-rate), the streaming-side
-  // #185 sources are all Default-lane now, and the overflow guard
-  // backstops the residue.
-  const isSticky = React.useSyncExternalStore(
-    cb => (handle ? handle.subscribe(cb) : () => {}),
-    () => (handle ? handle.isSticky() : true),
-  )
-  // Whale idle gate: the settled header scrolls away with the transcript,
-  // and the idle planner is worth nothing the moment its art leaves the
-  // viewport — pause it there (timers cleared, the resting pose's cached
-  // rows stay painted so scroll geometry never shifts) and re-arm a fresh
-  // cycle when the user scrolls back to the top. Same uSES rationale as
-  // isSticky above: the renderer's sticky re-pin doesn't fire scroll
-  // subscribers, only the every-render snapshot check picks it up.
-  const WHALE_ART_CUTOFF_ROWS = 16 // marginTop + the 13-row whale art
-  const whaleArtVisible = React.useSyncExternalStore(
-    cb => (handle ? handle.subscribe(cb) : () => {}),
-    () => {
-      if (!handle) return true
-      // A transcript that fits the viewport always shows the header.
-      if (handle.getScrollHeight() <= handle.getViewportHeight()) return true
-      // Visible while the art block intersects the viewport. A sticky bottom
-      // pin with an overflow smaller than the art's height still leaves the
-      // art on screen — visibility, not pin state, decides whether the idle
-      // planner earns its keep.
-      return handle.getScrollTop() < WHALE_ART_CUTOFF_ROWS
-    },
-  )
-  const subscribeTooltipInvalidation = React.useCallback(
-    (listener: () => void) => (handle ? handle.subscribe(listener) : () => {}),
-    [handle],
-  )
-
-  // "N new messages" pill: new rows whose top edge is still BELOW the
-  // viewport bottom. The count decrements as the user scrolls down through
-  // them and hits 0 (pill hides) once every new row has been on screen —
-  // no need to wait for the exact-bottom sticky restore. Chat anchors the
-  // "seen up to" point by ROW ID (stable across loadOlder prepends, unlike
-  // a rows.length index); MessageList owns the row offsets, so it computes
-  // how many rows past that anchor lie below the viewport and reports it.
-  const lastSeenRowIdRef = React.useRef<number | null>(null)
-  const [unseenCount, setUnseenCount] = React.useState(0)
-  React.useEffect(() => {
-    if (isSticky) {
-      lastSeenRowIdRef.current = null
-      setUnseenCount(0)
-    } else if (lastSeenRowIdRef.current === null) {
-      lastSeenRowIdRef.current = channel.rows.length
-        ? channel.rows[channel.rows.length - 1]!.id
-        : -1
-    }
-  }, [isSticky, channel.rows])
-  // The pill shows whenever the view is off the bottom (one-click return
-  // home): with unseen rows it counts them, otherwise it is the plain
-  // "return to bottom" affordance (Enter/End/click all land it).
-  const showPill = !isSticky
+  const { isSticky, whaleArtVisible, subscribeTooltipInvalidation, unseenCount, setUnseenCount, lastSeenRowIdRef, showPill } = useViewportState(handle, channel.rows)
 
     // Idle Ctrl+C: first press arms an exit, second press exits. Under
     // Windows ConPTY the key
   // arrives as stdin data (key.ctrl && input === 'c') — the useInput
   // branch below is the only path; SIGINT is not emitted.
-  const exitPendingRef = React.useRef(false)
-  const exitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   // Live view into the prompt's text for the Ctrl+C rule (clears text when
   // non-empty; the double-press exit only arms on an empty input).
   const ownPromptControllerRef = React.useRef<PromptController | null>(null)
@@ -1121,66 +925,12 @@ export function Chat({
       injectControllerRef.current = null
     }
   })
-  const requestExit = () => {
-    if (exitPendingRef.current) {
-      onExit()
-    } else {
-      exitPendingRef.current = true
-      channel.notify(t('exit-press-again'))
-      exitTimerRef.current = setTimeout(() => {
-        exitPendingRef.current = false
-      }, 3000)
-    }
-  }
-  /**
-   * Ctrl+C on a running turn, shared by every focus state (composer,
-   * selection mode, overlay cards) so the interrupt is reachable from
-   * anywhere — grok keeps this key global the same way. A still-
-   * converging cancel (cancelPending) upgrades the next press to the exit
-   * funnel: a stuck turn must not swallow every Ctrl+C forever.
-   */
-  const interruptRunningTurn = () => {
-    if (channel.cancelPending) {
-      onExit()
-    } else {
-      channel.cancel()
-      // Interrupt replaces any previously armed exit: the next press must
-      // re-confirm instead of exiting out from under the turn.
-      exitPendingRef.current = false
-      if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
-    }
-  }
-  /**
-   * Page size for transcript paging (PgUp/PgDn, Ctrl+F/Ctrl+B in selection
-   * mode): one less than the viewport keeps a row of context so a page
-   * never reads as a blank jump; a not-yet-measured handle falls back to a
-   * fixed page rather than paging by 0 (a dead key).
-   */
-  const transcriptPageStep = () => {
-    const viewport = handle?.getViewportHeight() ?? 0
-    return viewport > 1 ? viewport - 1 : 12
-  }
-  React.useEffect(() => {
-    return () => {
-      if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
-    }
-  }, [])
-
-  // Spinner timing refs, fed from channel state each render (the spinner
-  // only mounts while working, so values are stable for the mount).
-  const responseLengthRef = React.useRef(0)
-  const uploadTokensRef = React.useRef(0)
-  const loadingStartTimeRef = React.useRef(0)
-  const totalPausedMsRef = React.useRef(0)
-  const pauseStartTimeRef = React.useRef<number | null>(null)
-  responseLengthRef.current = channel.responseChars
-  // Most recent request's real upload (input + cache read/write occupy the
-  // wire exactly like the context window); 0 until the first usage event.
-  const lastUploadTokens = channel.lastUsage === undefined
-    ? 0
-    : channel.lastUsage.input + channel.lastUsage.cacheRead + channel.lastUsage.cacheWrite
-  uploadTokensRef.current = lastUploadTokens
-  loadingStartTimeRef.current = channel.turnStart
+  const {
+    exitPendingRef, exitTimerRef,
+    requestExit, interruptRunningTurn, transcriptPageStep,
+    responseLengthRef, uploadTokensRef, loadingStartTimeRef,
+    totalPausedMsRef, pauseStartTimeRef,
+  } = useTurnControl(channel, onExit, handle)
   const thinkingStatus = useThinkingStatus(channel.spinnerMode === 'thinking')
 
   // Terminal tab title: the session
@@ -1221,7 +971,6 @@ export function Chat({
     runWorkspaceFlowAction, workspaceMenuOptions,
     openWorkspaceTarget, openWorkspaceResume, runWorkspaceMenuOption,
   } = useWorkspaceCommands(channel, dispatchOverlay, setWorkspaceTargets)
-
 
   /**
    * Dispatch a slash command; false lets the input flow to the model.
@@ -1310,8 +1059,6 @@ ing registered by a DSH
     )
   }
 
-
-
   // === Message-selection mode (Shift+↑ message actions) ===
   // NOTE: rows is a live in-place array on the channel (no new reference per
   // update), so derived lists must be computed per render — a useMemo keyed
@@ -1346,6 +1093,10 @@ ing registered by a DSH
     trajectory, terminalColumns, markFailuresSeen, pageInsetX, wakeBand, wakeTickRef, wakeTime,
     trajectorySeen, setTrajectorySeen, unreadFailures, failureHintRowId,
   } = useTrajectory(channel, trajectorySeenProp)
+  const { sceneOpen, setSceneOpen, closeScene, openScene, closeHome } = useSceneHome({
+    channel, markFailuresSeen, suppressLogoIntroRef,
+    agentViewReturnId, setAgentViewReturnId, setSupervisorOpen, repaintTranscript,
+  })
   const rewindRequestRef = React.useRef(0)
   const pendingFillRef = React.useRef<string | null>(null)
   const { openRewind, requestRewindConfirm, performRewind } = createRewindCommands({
@@ -1369,8 +1120,6 @@ ing registered by a DSH
     setLogoNonce, suppressLogoIntroRef, recapAbortRef, agentViewOpenSessionRef,
     runPermissionCommand, openRewind,
   })
-
-
 
   // `/` transcript search: rows whose searchable text contains the query.
   const { searchMatches } = useTranscriptSearch({

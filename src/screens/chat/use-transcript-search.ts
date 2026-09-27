@@ -2,6 +2,17 @@ import React from 'react'
 import type { ChannelUi } from '../../adapter/channel/ui-policy.js'
 import type { ChatRow } from '../../dsh-adapter/channel.js'
 
+export function searchableText(row: ChatRow): string {
+  switch (row.kind) {
+    case 'tool':
+      return row.tool
+        ? `${row.tool.name} ${row.tool.argsText} ${row.tool.resultText ?? ''} ${row.tool.errorText ?? ''}`
+        : ''
+    default:
+      return row.text
+  }
+}
+
 /**
  * `/` transcript incsearch state: the per-render match list (rows is a live
  * in-place array, so a useMemo would freeze at mount), the highlight/count
