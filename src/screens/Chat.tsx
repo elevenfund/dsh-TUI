@@ -1748,7 +1748,7 @@ ing registered by a DSH
   // Subagent detail scene: displays detailed view of a specific subagent.
   // Like the browser and settings, it replaces the conversation entirely.
   if (subagentDetailId !== null) {
-    const subagent = channel.subagents.find(s => s.agentId === subagentDetailId)
+    const subagent = (channel.subagents ?? []).find(s => s.agentId === subagentDetailId)
     if (!subagent) {
       // Agent not found, go back to dashboard
       setSubagentDetailId(null)
@@ -1794,7 +1794,7 @@ ing registered by a DSH
   if (subagentDashboardOpen) {
     const dashboard = (
       <SubagentDashboard
-        subagents={[...channel.subagents]}
+        subagents={[...(channel.subagents ?? [])]}
         onSelect={(id) => {
           setSubagentDashboardOpen(false)
           setSubagentDetailId(id)
@@ -1813,7 +1813,7 @@ ing registered by a DSH
     const panel = (
       <TaskCenterPanel
         jobs={channel.backgroundJobs ?? []}
-        subagents={[...channel.subagents]}
+        subagents={[...(channel.subagents ?? [])]}
         continuableIds={subagentContinuableIds}
         onClose={() => setTaskCenterOpen(false)}
         onKillJob={(id) => {

@@ -156,8 +156,11 @@ writes.length = 0 // 只看页面交互期的模式写
   const rowC = lines0.findIndex(l => l.includes('历史会话 4'))
   check('resume 行可见（0/5/4）', rowA >= 0 && rowB >= 0 && rowC >= 0, `rows=${rowA},${rowB},${rowC}`)
   if (rowA >= 0 && rowB >= 0 && rowC >= 0) {
-    // 真实断言：xterm 单元背景色随 hover 出现、移开后消失
-    const cellBg = (y: number, x = 20): number | undefined => {
+    // True-color assertion: the xterm cell background appears on hover and
+    // clears on leave. Column 45 sits mid-list in the right pane — the
+    // /resume page is a two-pane centered layout (preview x0-29, rows
+    // x31-99, list container starts at y6), so x20 would hit the preview.
+    const cellBg = (y: number, x = 45): number | undefined => {
       const cell = term.buffer.active.getLine(y)?.getCell(x)
       const color = cell?.getBgColor()
       // xterm headless reports default bg as -1 or 0; treat both as "none"
@@ -165,7 +168,7 @@ writes.length = 0 // 只看页面交互期的模式写
     }
     const bgA0 = cellBg(rowA)
     const wBefore = writes.length
-    stdin.write(`\x1b[<35;20;${rowA + 1}M`)
+    stdin.write(`\x1b[<35;45;${rowA + 1}M`)
     await sleep(150)
     const bgA1 = cellBg(rowA)
     const wAfter = writes.slice(wBefore)
@@ -176,7 +179,7 @@ writes.length = 0 // 只看页面交互期的模式写
     check('hover 行 A → 背景高亮出现', bgA0 === undefined && bgA1 !== undefined, `bg ${bgA0} → ${bgA1}`)
 
     const writesAfterHoverA = writes.length
-    stdin.write(`\x1b[<35;20;${rowB + 1}M`)
+    stdin.write(`\x1b[<35;45;${rowB + 1}M`)
     await sleep(150)
     if (process.env.HOVER_DEBUG) {
       console.log(`[dbg] writes A→B: ${writes.length - writesAfterHoverA} chunks, A bg=${cellBg(rowA)} B bg=${cellBg(rowB)}`)
@@ -185,7 +188,7 @@ writes.length = 0 // 只看页面交互期的模式写
     const bgB = cellBg(rowB)
     check('移到行 B → A 的高亮消失、B 出现（leave 派发）', bgA2 === undefined && bgB !== undefined, `A=${bgA2} B=${bgB}`)
 
-    stdin.write(`\x1b[<35;20;${ROWS - 2}M`) // 移出列表
+    stdin.write(`\x1b[<35;45;${ROWS - 2}M`) // 移出列表
     await sleep(150)
     const bgB2 = cellBg(rowB)
     check('移出列表 → B 高亮消失', bgB2 === undefined, `B=${bgB2}`)
@@ -196,11 +199,13 @@ writes.length = 0 // 只看页面交互期的模式写
 // ── 滚轮下滚 = 焦点下移（❯ 随行移动；位置路由无 onWheel → 回落
 // wheelDown 键 → 浏览器 step(1)，与 ↓ 同路径） ──
 {
-  const pointerRow = (): number => screenLines().findIndex(l => l.trimStart().startsWith('❯'))
+  // The ❯ focus marker sits mid-line in the three-pane layout (left pane
+  // text occupies the trimmed prefix), so match by inclusion, not prefix.
+  const pointerRow = (): number => screenLines().findIndex(l => l.includes('❯'))
   const p0 = pointerRow()
   check('聚焦行 ❯ 可见', p0 >= 0, `行${p0}`)
   if (p0 >= 0) {
-    stdin.write(`\x1b[<65;40;${p0 + 3}M`) // SGR 65 = wheel down，列表中部
+    stdin.write(`\x1b[<65;45;${p0 + 4}M`) // SGR 65 = wheel down，列表容器内（y6 起，p0+3 会落容器外一行）
     await sleep(250)
     const p1 = pointerRow()
     check('滚轮下滚 → ❯ 下移到下一会话行', p1 > p0, `❯ ${p0} → ${p1}`)

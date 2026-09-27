@@ -14,6 +14,7 @@
  */
 process.env.FORCE_COLOR = '3'
 process.env.DSH_TUI_THEME = 'dark'
+process.env.DSH_TUI_LANG = 'zh'
 process.env.DSH_TUI_DEBUG_MOUSE = '1'
 
 const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, AlternateScreen }, { Chat }, { QuestionStore }, { completeCommands, LOCAL_COMMANDS }] = await Promise.all([

@@ -24,7 +24,7 @@ const { Terminal: XTerm } = xtermHeadless
 import { render } from '../lib/types/ui.js'
 import { Chat } from '../lib/types/screens/Chat.js'
 import { setLang } from '../lib/types/i18n.js'
-import { settle, settled, sleep, viewportLines } from './lib/term-test.mjs'
+import { settle, settled, viewportLines } from './lib/term-test.mjs'
 
 let failed = 0
 function check(name, ok, extra = '') {
@@ -204,8 +204,9 @@ const instance = await render(
   }),
   { stdout, stderr, stdin, exitOnCtrlC: false, patchConsole: false },
 )
-// 固定窗:pacing 等 Chat 首帧与快捷键安装完成，无单一可轮询锚点
-await sleep(700)
+// 首帧锚：输入行 prompt 出现即 Chat/PromptInput 挂载完成（useInput 同批
+// 安装）。固定 700ms 在重负载下不足会静默丢首键，锚定后慢机也能等到就绪。
+await settle(() => viewportLines(term).some(l => l.includes('❯')))
 
 // inline 模式下有 scrollback 时 getLine(0..rows) 直扫读的是缓冲区开头；
 // 改用公共辅助按 baseY 读可见视口（issue #532）。

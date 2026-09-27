@@ -81,7 +81,7 @@ function check(name: string, ok: boolean, detail = ''): void {
 
 {
   const chatSource = readFileSync(new URL('../src/screens/Chat.tsx', import.meta.url), 'utf8')
-  const previewModalGuard = chatSource.indexOf("if (overlay.kind === 'image-preview') {")
+  const previewModalGuard = chatSource.indexOf("runOverlayKeys('image-preview'")
   const mouseSelectionEsc = chatSource.indexOf('if (key.escape && hasMouseSelection())')
   check('chat: preview modal consumes Esc before transcript mouse selection',
     previewModalGuard !== -1 && mouseSelectionEsc > previewModalGuard,
@@ -482,7 +482,9 @@ const COLS = 80
 const ROWS = 30
 // CSI-u: Ctrl+Shift+E (E=69, modifier 6 = ctrl+shift).
 const CTRL_SHIFT_E = '\x1b[69;6u'
-const CTRL_G = '\x07'
+// Editor moved off ctrl+g (ctrl+g now opens the unified task center);
+// alt+g keeps the mnemonic — see src/utils/keymap.ts.
+const ALT_G = '\x1bg'
 
 class FakeStdout extends Writable {
   columns = COLS
@@ -1197,7 +1199,7 @@ for (const columns of [32, 80]) {
   const savedEditor = process.env.EDITOR
   delete process.env.VISUAL
   process.env.EDITOR = `"${process.execPath}" -e "require('node:fs').appendFileSync(process.argv[1],' edited')"`
-  stdin.write(CTRL_G)
+  stdin.write(ALT_G)
   check('chat: external editor returns the preserved image token',
     await settled(() =>
       screen.text().includes('edited') &&

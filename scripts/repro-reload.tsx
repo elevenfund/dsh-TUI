@@ -215,8 +215,11 @@ check('报告含 4 条 apply（theme/preset/model/activity）', localRows.filter
 check('主题应用 dark → light', localRows.some(r => r.text.includes('light') && r.text.includes('已应用')), JSON.stringify(localRows))
 check('语言跳过（DSH_TUI_LANG 优先）', localRows.some(r => r.text.includes('语言') && r.text.includes('跳过')), JSON.stringify(localRows))
 check('模型应用 deepseek/deepseek-chat', modelCalls.join(',') === 'deepseek/deepseek-chat', modelCalls.join(','))
-check('旧 code 偏好按 ptc 应用', presetCalls.join(',') === 'ptc', presetCalls.join(','))
-check('旧 code 偏好惰性迁移到 ptc', JSON.parse(readFileSync(presetPrefPath, 'utf8')).preset === 'ptc')
+// TUI passes the raw pref value through (presetPrefs reads no alias mapping
+// on purpose — roster is not loaded yet). code→ptc resolution and the lazy
+// pref migration are adapter-layer switchPreset behavior, covered against
+// the real migratePresetPref in verify-reload.ts §7.
+check('旧 code 偏好原样透传给 adapter switchPreset', presetCalls.join(',') === 'code', presetCalls.join(','))
 check('activity 应用 moon', activityCalls.join(',') === 'moon', activityCalls.join(','))
 check('报告 footer 在', localRows.some(r => r.text.includes('/restart')), JSON.stringify(localRows.slice(-2)))
 
