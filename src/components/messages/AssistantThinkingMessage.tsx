@@ -98,7 +98,7 @@ export function AssistantThinkingMessage({
         <Text bold>{label}</Text>
       </Box>
     ) : (
-      <Text dimColor={!hovered} color={hovered ? 'text' : undefined} italic>
+      <Text dimColor={!hovered && !isSelected} color={hovered || isSelected ? 'text' : undefined} italic>
         {`${minimal ? '*' : THINKING_SETTLED_MARKER} `}
         <Text bold>{t('thought-label')}</Text>
         <Text>{duration}{streaming ? '…' : ` ${t('hint-expand-ctrl-o')}`}</Text>

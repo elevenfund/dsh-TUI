@@ -401,7 +401,7 @@ function toolCardMetaTooltip(tool: ToolRow, isRunning: boolean, isError: boolean
   return parts.join(' · ')
 }
 
-function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, displayArgs, argsLanguage, nameColor, filePath, onOpenFile, metaTooltip, headerTextBudget }: {
+function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, displayArgs, argsLanguage, nameColor, filePath, onOpenFile, metaTooltip, headerTextBudget, lit }: {
   name: string
   title: string | undefined
   isTerminal: boolean
@@ -438,6 +438,9 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
    * clipped by the 480-char budget) — this budget gates just that cut.
    */
   headerTextBudget: number
+  /** Grok-style rest state: a folded header stays dim; the caller lights it
+   *  on selection, hover, expansion, while running, or on error. */
+  lit?: boolean
 }): React.ReactNode {
   // Hover tooltip rule: pop ONLY when the header genuinely hides content —
   // a folded terminal script, args clipped past the 480-char budget, or a
@@ -465,13 +468,13 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
     return (
       <>
         <Box flexShrink={0}>
-          <Text bold color={nameColor} wrap="truncate-end">{name}</Text>
+          <Text bold color={nameColor} dimColor={!lit} wrap="truncate-end">{name}</Text>
         </Box>
         {displayArgs !== '' && (
           <Box flexWrap="nowrap" {...headerTooltip}>
-            <Text>(</Text>
-            <SyntaxText text={clipHeaderArgs(displayArgs)} sourceText={displayArgs} language={argsLanguage} />
-            <Text>)</Text>
+            <Text dimColor={!lit}>(</Text>
+            <SyntaxText text={clipHeaderArgs(displayArgs)} sourceText={displayArgs} language={argsLanguage} dimColor={!lit} />
+            <Text dimColor={!lit}>)</Text>
           </Box>
         )}
       </>
@@ -491,10 +494,10 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
       return (
         <>
           <Box flexShrink={0}>
-            <Text bold color={nameColor} wrap="truncate-end">{name}</Text>
+            <Text bold color={nameColor} dimColor={!lit} wrap="truncate-end">{name}</Text>
           </Box>
           <Box flexWrap="nowrap" {...headerTooltip}>
-            <Text wrap="truncate-end">{text}</Text>
+            <Text wrap="truncate-end" dimColor={!lit}>{text}</Text>
           </Box>
         </>
       )
@@ -502,10 +505,10 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
     return (
       <>
         <Box flexShrink={0}>
-          <Text bold color={nameColor} wrap="truncate-end">{name}</Text>
+          <Text bold color={nameColor} dimColor={!lit} wrap="truncate-end">{name}</Text>
         </Box>
         <Box flexWrap="nowrap" {...headerTooltip}>
-          <Text>({title})</Text>
+          <Text dimColor={!lit}>({title})</Text>
         </Box>
       </>
     )
@@ -514,7 +517,7 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
   if (trimmed === '') {
     return (
       <Box flexShrink={0}>
-        <Text bold color={nameColor} wrap="truncate-end">{name}</Text>
+        <Text bold color={nameColor} dimColor={!lit} wrap="truncate-end">{name}</Text>
       </Box>
     )
   }
@@ -529,17 +532,17 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
     const after = trimmed.slice(at + filePath.length)
     return (
       <Box flexWrap="nowrap" {...headerTooltip}>
-        <Text bold color={nameColor} wrap="truncate-end">{before}</Text>
+        <Text bold color={nameColor} dimColor={!lit} wrap="truncate-end">{before}</Text>
         <Box
           onClick={(event: ClickEvent) => {
             event.stopImmediatePropagation()
             onOpenFile(filePath)
           }}
         >
-          <Text underline wrap="truncate-end">{filePath}</Text>
+          <Text underline wrap="truncate-end" dimColor={!lit}>{filePath}</Text>
         </Box>
         {after !== '' && (
-          <Text bold={false} color="text" wrap="truncate-end">{after}</Text>
+          <Text bold={false} color="text" wrap="truncate-end" dimColor={!lit}>{after}</Text>
         )}
       </Box>
     )
@@ -549,9 +552,9 @@ function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, disp
   const tail = space === -1 ? '' : trimmed.slice(space)
   return (
     <Box flexWrap="nowrap" {...headerTooltip}>
-      <Text bold color={nameColor} wrap="truncate-end">
+      <Text bold color={nameColor} dimColor={!lit} wrap="truncate-end">
         {head}
-        <Text bold={false} color="text">{tail}</Text>
+        <Text bold={false} color="text" dimColor={!lit}>{tail}</Text>
       </Text>
     </Box>
   )
@@ -720,6 +723,10 @@ export function AssistantToolUseMessage({
   // No layout change: the indicator is a fixed column on the header line, the
   // body never moves.
   const [hovered, setHovered] = React.useState(false)
+  // Grok-style rest state: a settled folded header dims (name, summary,
+  // args, elapsed); selection, hover, expansion, a running call, or an error
+  // lights it back to full color. The expanded body always renders lit.
+  const headerLit = isSelected || hovered || isExpanded || isRunning || isError
   const hoverTint = interactive && hovered && !isSelected
 
   return (
@@ -744,10 +751,10 @@ export function AssistantToolUseMessage({
             isError={isError}
             toolName={tool.name}
           />
-          <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} summary={verbose ? undefined : modelSummary} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} />
+          <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} summary={verbose ? undefined : modelSummary} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} lit={headerLit} />
           {!isRunning && (
             <Box flexWrap="nowrap">
-              <Text dimColor={!hovered}>{elapsedText}</Text>
+              <Text dimColor={!headerLit}>{elapsedText}</Text>
             </Box>
           )}
           {hovered && (
@@ -816,7 +823,7 @@ export function AssistantToolUseMessage({
                                 ? 'ide'
                                 : undefined
                     }
-                    dimColor={line.tone === 'dim' && !(line.revealOnHover === true && hovered)}
+                    dimColor={line.tone === 'dim' && !(line.revealOnHover === true && headerLit)}
                     wrap="wrap"
                   >
                     {line.tone === 'plain' && syntaxLanguage !== undefined ? (

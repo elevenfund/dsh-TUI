@@ -467,8 +467,10 @@ export interface PromptInputProps {
     rawInput: string,
     images: readonly ComposerImageRef[],
   ): boolean | Promise<boolean>
-  /** Message-selection mode (Shift+↑): the input ignores keys while active. */
+  /** Message-selection mode (Shift+↑ or Tab): the input ignores keys while active. */
   selectionActive: boolean
+  /** Idle plain Tab hands the keyboard to the transcript selection mode. */
+  onEnterSelection?(): void
   /**
    * External fill from the ctrl+r history dialog: when this prop changes to
    * a non-null string, the input replaces its value and moves the caret to
@@ -558,6 +560,7 @@ export function PromptInput({
   onToggleHelp,
   onRunCommand,
   selectionActive,
+  onEnterSelection,
   fillText,
   onFillConsumed,
   onRewindRequest,
@@ -2256,6 +2259,16 @@ export function PromptInput({
     // distinct from Enter's steer (Codex's "tab to queue message").
     if (key.tab && channel.working && value.trim() !== '') {
       queueSend(value)
+      return
+    }
+    // Idle plain Tab enters the transcript selection mode (grok-style focus
+    // rotation). Every earlier Tab owner has returned by here: completion
+    // overlays, the expanded editor's indentation, and the working-queue
+    // followup above. Backtab (Shift+Tab, session cycling) never reaches
+    // this branch.
+    if (key.tab && !key.shift) {
+      event?.stopImmediatePropagation()
+      onEnterSelection?.()
       return
     }
     // Help is a viewport, not prompt history. It deliberately owns every
