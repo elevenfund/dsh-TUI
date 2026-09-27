@@ -24,7 +24,7 @@ const { Terminal: XTerm } = xtermHeadless
 import { render } from '../lib/types/ui.js'
 import { Chat } from '../lib/types/screens/Chat.js'
 import { setLang } from '../lib/types/i18n.js'
-import { settle, settled, viewportLines } from './lib/term-test.mjs'
+import { keySleep, settle, settled, viewportLines } from './lib/term-test.mjs'
 
 let failed = 0
 function check(name, ok, extra = '') {
@@ -239,7 +239,9 @@ stdin.write('\x1b[C')
 check('right arrow applied setEffort(max)', await settled(() => channel.setEffortCalls.length === 1 && channel.setEffortCalls[0] === 'max'), JSON.stringify(channel.setEffortCalls))
 check('statusline effort shows max', await settled(() => /max/.test(screen())), '')
 
-// 3. Esc closes.
+// 3. Esc closes. Key cadence first: the right-arrow's handler state must
+// settle before Esc arrives (same swallow risk as the zh leg).
+await keySleep(100)
 stdin.write('\x1b')
 check('Esc closed the slider', await settled(() => !/Reasoning effort/.test(screen().slice(-4000))), '')
 
@@ -278,7 +280,10 @@ await settle(() => screen().includes('Adjust the reasoning effort'))
 stdin.write('\r')
 check('zh: slider title 推理强度', await settled(() => screen().includes('推理强度')), '')
 check('zh: hint line localized', await settled(() => screen().includes('调整') && screen().includes('完成')), '')
-// Read the xterm visible screen after the repaint, not the raw output backlog.
+// Key cadence: Enter's overlay key handler must be installed before Esc
+// arrives — under load a same-batch Esc is swallowed by the pre-overlay
+// handler and the slider never closes.
+await keySleep(100)
 stdin.write('\x1b')
 check('zh: Esc closed the slider', await settled(() => !screen().includes('推理强度')), '')
 setLang('en')
