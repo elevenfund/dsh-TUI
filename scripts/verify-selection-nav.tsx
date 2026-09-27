@@ -22,16 +22,16 @@
  */
 export {} // 模块边界：避免顶层 await/全局名与其他 verify 脚本冲突
 
-import { bootSelectionScene, markdownTurnRow, sleep, settled, FakeStdout } from './lib/transcript-scene.mjs'
+import { bootSelectionScene, markdownTurnRow, sleep, settled, FakeStdout, keySleep } from './lib/transcript-scene.mjs'
 
 const scene = await bootSelectionScene()
-const { stdin, channel, bump, check, finish, screenHas, findText, bgKey, fgKey, topOf, dimFg, defaultBg, plainFg } = scene
+const { stdin, channel, bump, check, finish, screenHas, findText, bgKey, fgKey, topOf, dimFg, defaultBg, plainFg, drained  } = scene
 
 // T1: 空闲 Tab 进入选择模式；PromptInput 挂起，打字不落地。
 stdin.write('\t')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('zz')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T1 Tab 进入后打字失效', !screenHas('zz'))
 
 // T2: 进入即选中最后一个可选行——assistant 正文也可达（导航要能到最
@@ -46,14 +46,14 @@ check('T2b tool 行保持无高亮', bashA !== null && bgKey(bashA.col, bashA.ro
 
 // T3: ↑ 一次到 tool 行、再 ↑ 到 reasoning 行。
 stdin.write('\x1b[A')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const bash1 = findText('Bash(')
 check(
   'T3a ↑ 后 tool 行高亮且点亮（bg+fg）',
   bash1 !== null && bgKey(bash1.col, bash1.row) !== defaultBg && fgKey(bash1.col, bash1.row) !== dimFg,
 )
 stdin.write('\x1b[A')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const thought1 = findText('Thought')
 const bash2 = findText('Bash(')
 check(
@@ -62,7 +62,7 @@ check(
 )
 // T4: ↓ 回到 tool 行，l 展开折叠正文。
 stdin.write('\x1b[B')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('l')
 // 60 行正文 > 40 行视口：展开后视口必须 pin 在被展开行的顶部——首行
 // 可见、末行被推出视口（pin 末行方向的回归即在此暴露）。
@@ -75,69 +75,69 @@ check(
 
 // T5: Tab 退出选择模式，打字恢复。
 stdin.write('\t')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('zz')
 check('T5 Tab 退出后打字恢复', await settled(() => screenHas('zz')))
 
 // T6: 再进一次，Esc 也能退出并恢复打字。
 stdin.write('\t')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('\x1b')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('qq')
 check('T6 Esc 退出后打字恢复', await settled(() => screenHas('qq')))
 
 // T9: 选择模式里 Ctrl+O 随时生效并覆盖单行展开状态。断言用 reasoning
 // 行的 verbose 差异（展开=全文可见；收起=单行 Thought，正文不可见）。
 for (let i = 0; i < 8; i++) stdin.write('\x1b[5~')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 等输入批次与渲染帧排空
 stdin.write('\t')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T9-pre 选择模式已激活', await settled(() => screenHas('esc to return to input')))
 // 进入选择模式的光标现在落在末行 assistant（nearest 底对齐，页面回底）；
 // 先 g 跳回顶部，reasoning/tool 回到屏内，Ctrl+O 的展开才可见。
 stdin.write('g')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('\x0f') // Ctrl+O → transcript mode on
-await sleep(600) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
   'T9a 选择模式里 Ctrl+O 全局展开（reasoning 全文可见）',
   await settled(() => screenHas('reasoning body marker xyz')),
 )
 stdin.write('\x0f') // Ctrl+O → off，单行 expandedRows 一并清除
-await sleep(600) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
   'T9b Ctrl+O 收起覆盖单行展开（reasoning 回折叠）',
   await settled(() => !screenHas('reasoning body marker xyz') && !screenHas('result-line-59')),
 )
 stdin.write('\x1b')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 
 // T10: vim l/h 定向折叠——l 只展开（并 pin 行首），h 只收起，幂等。
 stdin.write('\t')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T10-pre 选择模式已激活', await settled(() => screenHas('esc to return to input')))
 stdin.write('g')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const user10 = findText('user line alpha')
 check('T10a g 跳首行并高亮', user10 !== null && bgKey(user10.col, user10.row) !== defaultBg)
 stdin.write('j')
-await sleep(200) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('j')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const bash10 = findText('Bash(')
 check('T10b j j 选中 tool 行', bash10 !== null && bgKey(bash10.col, bash10.row) !== defaultBg)
 stdin.write('l')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
   'T10c l 展开并 pin 首行',
   await settled(() => screenHas('result-line-0') && !screenHas('result-line-59')),
 )
 stdin.write('h')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T10d h 收起', await settled(() => !screenHas('result-line-0') && !screenHas('result-line-59')))
 stdin.write('h') // 已收起：幂等无操作
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const bash10b = findText('Bash(')
 check('T10e h 幂等（仍收起、仍选中）', bash10b !== null && bgKey(bash10b.col, bash10b.row) !== defaultBg)
 
@@ -145,16 +145,16 @@ check('T10e h 幂等（仍收起、仍选中）', bash10b !== null && bgKey(bash
 // 不登记行级展开、不触发 pin 跳页；关回折叠全局态后该行保持折叠
 // （旧行为会白登记一条，收起后展开残留）。
 stdin.write('\x0f') // Ctrl+O → transcript mode on（tool 行随之展开）
-await sleep(600) // 固定窗:pacing 全局重排 + reanchor 落定，无可观测锚点
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const top10f = topOf()
 stdin.write('l')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
   'T10f1 全局展开态 l 不跳页（视口顶不动）',
   topOf() === top10f,
 )
 stdin.write('\x0f') // Ctrl+O → off：无行级登记 → tool 行回折叠
-await sleep(600) // 固定窗:pacing 全局重排 + reanchor 落定，无可观测锚点
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
   'T10f2 全局展开态 l 无行级登记（收起后无展开残留）',
   await settled(() => !screenHas('result-line-0') && !screenHas('result-line-59')),
@@ -164,21 +164,23 @@ check(
 // top-align 行为会把光标行钉到屏幕顶，页面每次跳变）。
 const before12 = topOf()
 stdin.write('k') // reasoning 行在屏内：光标上移，页面不动
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const thought12 = findText('Thought')
 check(
   'T12a 视口内 k 光标上移、页面不动',
   thought12 !== null && bgKey(thought12.col, thought12.row) !== defaultBg && topOf() === before12,
 )
 stdin.write('j') // 回 tool 行，同样在屏内
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const bash12 = findText('Bash(')
 check(
   'T12b 视口内 j 光标下移、页面不动',
   bash12 !== null && bgKey(bash12.col, bash12.row) !== defaultBg && topOf() === before12,
 )
 stdin.write('\x1b')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+// 等退出真正生效（exitSelection 同步快照 rows，push 改同一数组引用：
+// 快照先于 push 才能让重进 findLast 跟尾而非恢复旧光标）。
+await settled(() => !screenHas('esc to return to input'))
 
 // Scene bridge: T30 needs the selection cursor on the trailing assistant
 // row (id 310). In the original chain T27 left it there; this battery pushes
@@ -187,22 +189,22 @@ await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
 ;(channel.rows as Array<Record<string, unknown>>).push(markdownTurnRow())
 bump()
 stdin.write('\t')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 数据变更/重进后排空（render-quiet 锚）
 
 // T30: l/h 在无折叠语义的行上 no-op——assistant/user 行按 l 不登记展开、
 // 不触发 pin 跳页（grok 的行级展开只作用于 thought/tool 卡）。
 const top30 = topOf()
 stdin.write('l') // 光标在 assistant 行（id 310）
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T30a assistant 行 l 不跳页', topOf() === top30)
 stdin.write('g') // 到首个可选行（user）
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const top30b = topOf()
 stdin.write('l') // user 行
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T30b user 行 l 不跳页', topOf() === top30b)
 stdin.write('\x1b') // 退出选择模式（恢复 T14 的 '\t' 进入前提）
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 
 // T14: 鼠标点击输入簇退出选择模式（Tab-back 的鼠标等价）。headless 终端
 // 不应答 alt-screen 探测——onWrite 收到 ?1049$p 时回 DECRPM set，
@@ -214,10 +216,10 @@ FakeStdout.onWrite = chunk => {
   }
 }
 stdin.write('\t')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T14a 重进选择模式', screenHas('esc to return to input'))
 stdin.write('\x1b[I') // FOCUS_IN → 触发 alt-screen 探测
-await sleep(300) // 固定窗:pacing 等探测应答与 altScreenActive 生效，无可观测锚点
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const inputRow = (() => {
   const lines = scene.viewportLines()
   for (let r = lines.length - 1; r >= 0; r--) {
@@ -227,9 +229,9 @@ const inputRow = (() => {
 })()
 check('T14b 定位输入行', inputRow >= 0, `row=${inputRow}`)
 stdin.write(`\x1b[<0;5;${inputRow + 1}M`) // press（SGR 坐标 1-based）
-await sleep(120) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write(`\x1b[<0;5;${inputRow + 1}m`) // release → dispatchClick
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T14c 点击输入行退出选择模式', !screenHas('esc to return to input'))
 stdin.write('mm')
 check('T14d 退出后打字恢复', await settled(() => screenHas('mm')))

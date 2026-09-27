@@ -116,7 +116,8 @@ function doResize(app: { stdout: any; term: typeof XTerm.prototype }, w: number,
 /** 确定性落定锚：连续两次采样（隔一个渲染节拍）画面完全相同才算静默。
  *  固定时长等待在并行 runner 的 CPU 竞争下不可靠——落定前采样会把旧帧
  *  当作不变量基线（组内并行 flaky 的根因）。时间不变量采样前先等静默，
- *  采样窗本身保持不变。 */
+ *  采样窗本身保持不变。stepMs 100：采样步长必须跨过 40ms 的流式 chunk
+ *  节拍，否则两帧可能落在同一 chunk 间隙里被误判静默。 */
 async function awaitQuiet(a: { term: typeof XTerm.prototype; flush: () => void }) {
   let last: string | null = null
   await settle(() => {
@@ -125,7 +126,7 @@ async function awaitQuiet(a: { term: typeof XTerm.prototype; flush: () => void }
     const quiet = last !== null && cur === last
     last = cur
     return quiet
-  }, { timeoutMs: 8000, stepMs: 50 })
+  }, { timeoutMs: 8000, stepMs: 100 })
 }
 
 // ================= 1+2. 时间稳定性 & 往返循环 =================
@@ -218,7 +219,9 @@ await sleep(150) // 固定窗:pacing unmount 收尾写出无完成回调可等
 const coldRows = makeRows()
 coldRows.push({ id: 9999, kind: 'assistant', text: STREAM_TEXT, streaming: false })
 const app3 = await mountChat(coldRows)
-const coldConverged = await settled(() => screenLines(app3.term).join('\n') === warm.join('\n'))
+// 16-way parallel CPU contention can stretch the cold render past the local
+// 4s default — give the convergence poll the CI budget explicitly.
+const coldConverged = await settled(() => screenLines(app3.term).join('\n') === warm.join('\n'), { timeoutMs: 8000 })
 await awaitQuiet(app3) // 确定性落定锚：冷渲染收敛且静默后再取终态（并行竞争保险）
 // 固定窗:探针 同上：首个相等帧之后仍可能有迟到 repaint，稳定窗后取终态再比对。
 await sleep(250); await app3.flush()

@@ -132,7 +132,9 @@ check(
 instance.unmount()
 
 // ── static invariant: isMod arrow arms precede bare arrow arms ─────────────
-const source = readFileSync(join(root, 'src/components/PromptInput.tsx'), 'utf8')
+// The key dispatch lives in prompt-input/prompt-keys.ts since the
+// PromptInput split (stage 2); the ordering constraint is unchanged.
+const source = readFileSync(join(root, 'src/components/prompt-input/prompt-keys.ts'), 'utf8')
 const modLeft = source.indexOf('if (isMod(key) && key.leftArrow)')
 const bareLeft = source.indexOf('if (key.leftArrow)')
 const modRight = source.indexOf('if (isMod(key) && key.rightArrow)')

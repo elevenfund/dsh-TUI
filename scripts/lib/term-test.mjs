@@ -61,6 +61,12 @@ const PACE = Math.max(0.05, Number(process.env.DSH_TUI_TEST_PACE ?? '1') || 1)
 delete process.env.TMUX
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms < 60 ? ms : Math.round(ms * PACE)))
 
+/** Inter-key cadence for drive loops ("one commit per key, human hand
+ *  speed"). Immune to PACE on purpose: PACE scales pure drain/mount waits,
+ *  but compressing a key cadence below one render commit breaks latch
+ *  semantics (moveSelection-style closures read the previous state). */
+export const keySleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
 // CI 共享 runner 有负载抖动，条件成立即返回，加大上限只影响真失败的耗时。
 const DEFAULT_TIMEOUT_MS = process.env.CI ? 8000 : 4000
 
@@ -90,6 +96,29 @@ export async function settle(pred, opts = {}) {
 export async function settled(pred, opts = {}) {
   await settle(pred, opts)
   return Boolean(pred())
+}
+
+/**
+ * Deterministic drain: resolve once the viewport has been byte-stable
+ * across two successive probes, or give up at timeout (silent, like settle).
+ * Replaces fixed-length drain sleeps — under parallel-runner CPU contention
+ * a fixed window samples pre-settle frames (false reds), while this adapts:
+ * fast hosts return in one step, busy hosts keep polling until quiet.
+ * Use for "wait for rendering/animation to finish before asserting/driving";
+ * for an explicit condition prefer settled/settle, and keep labeled fixed
+ * windows only for probe/wall-clock/pacing semantics (see header).
+ * @param {import('@xterm/headless').Terminal} term
+ * @param {{ rows?: number, timeoutMs?: number, stepMs?: number }} [opts]
+ */
+export async function drainedScreen(term, opts = {}) {
+  const rows = opts.rows
+  let last = null
+  await settle(() => {
+    const cur = viewportLines(term, rows).join('\n')
+    const quiet = last !== null && cur === last
+    last = cur
+    return quiet
+  }, { timeoutMs: opts.timeoutMs ?? 8000, stepMs: opts.stepMs ?? 50 })
 }
 
 /**

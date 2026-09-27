@@ -43,6 +43,7 @@ const [
 
 export const sleep = termTest.sleep
 export const settled = termTest.settled
+export const keySleep = termTest.keySleep
 
 const COLS = 100
 const ROWS = 40
@@ -327,6 +328,10 @@ export async function bootSelectionScene(rows = baseRows()) {
     channel, bump, listeners,
     followUpCalls, notifyCalls, killCalls, removeCalls,
     check, finish,
+    // Deterministic drain anchor for selection-mode scripts: two successive
+    // probes of the viewport must agree before continuing (replaces the
+    // per-script fixed drain sleeps).
+    drained: opts => termTest.drainedScreen(term, opts),
     buf, viewportLines, screenHas, findText, bgKey, fgKey, topOf, lineHighlighted,
     dimFg, defaultBg, plainFg,
   }

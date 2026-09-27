@@ -14,26 +14,26 @@
  */
 export {} // 模块边界：避免顶层 await/全局名与其他 verify 脚本冲突
 
-import { bootSelectionScene, baseRows, longTailRows, imageTurnRow, sleep, settled, FakeStdout } from './lib/transcript-scene.mjs'
+import { bootSelectionScene, baseRows, longTailRows, imageTurnRow, sleep, settled, FakeStdout, keySleep } from './lib/transcript-scene.mjs'
 
 const scene = await bootSelectionScene([
   ...baseRows(),
   ...longTailRows(),
   { id: 200, kind: 'user', text: 'fresh turn line' },
 ])
-const { stdin, channel, bump, check, finish, screenHas, viewportLines, lineHighlighted } = scene
+const { stdin, channel, bump, check, finish, screenHas, viewportLines, lineHighlighted, drained  } = scene
 
 // Scene bridge: T19/T20 start from selection mode with the cursor on the
 // tool row (the state T13f left in the original chain — the overlay battery
 // covers T13). Tab enters, g + j + j walks the cursor onto the tool row.
 stdin.write('\t')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('g')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('j')
-await sleep(200) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('j')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 
 // T19/T20: 选择模式下的 Ctrl+C（grok 语义：Cancel turn 全局可达）——
 // working 时打断且停留在选择模式；idle 时退出选择模式（同 Esc/Tab 的
@@ -44,53 +44,55 @@ let cancelCount = 0
 }
 ;(channel as Record<string, unknown>).working = true
 bump()
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 等输入批次与渲染帧排空
 stdin.write('\x03')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
   'T19a 选择模式 working Ctrl+C 打断（cancel 调用、仍在选择模式）',
   cancelCount === 1 && screenHas('esc to return to input') && lineHighlighted('Bash('),
 )
 ;(channel as Record<string, unknown>).working = false
 bump()
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 等输入批次与渲染帧排空
 stdin.write('\x03')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T20 选择模式 idle Ctrl+C 退出选择模式', !screenHas('esc to return to input'))
 stdin.write('\t')
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T20b 重进选择模式（光标恢复 tool 行）', screenHas('esc to return to input') && lineHighlighted('Bash('))
 
 // Scene bridge: T22 opens the overlay after stepping the cursor up to the
 // reasoning row (the state T21c left in the original chain — the scroll
 // battery covers T21), so its `j` walks reasoning → tool as before.
 stdin.write('k') // tool → reasoning
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 
 // T22/T23: 浮窗内 Ctrl+C——working 时打断且浮窗保持（grok: Cancel 全局，
 // Esc 才是 close）；idle 时维持关闭语义。
 stdin.write('j') // reasoning → tool
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write('\r')
-await sleep(500) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T22a 浮窗打开', screenHas('Bash(seq 1 30)'))
 ;(channel as Record<string, unknown>).working = true
 bump()
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 等输入批次与渲染帧排空
 stdin.write('\x03')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
   'T22b 浮窗内 working Ctrl+C 打断且浮窗保持',
   cancelCount === 2 && screenHas('Bash(seq 1 30)'),
 )
 ;(channel as Record<string, unknown>).working = false
 bump()
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 等输入批次与渲染帧排空
 stdin.write('\x03')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T23 浮窗内 idle Ctrl+C 关闭浮窗', !screenHas('Bash(seq 1 30)') && screenHas('esc to return to input'))
 stdin.write('\x1b')
-await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+// 等退出真正生效（exitSelection 同步快照 rows，push 改同一数组引用：
+// 快照先于 push 才能让重进 findLast 跟尾而非恢复旧光标）。
+await settled(() => !screenHas('esc to return to input'))
 
 // T24: 图片预览浮窗内 Ctrl+C——与 row-detail 同一条全局打断契约：
 // working 时打断且浮窗保持（Cancel 全局，Esc 才是 close）；idle 时关闭。
@@ -101,7 +103,7 @@ await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
 ;(channel.rows as Array<Record<string, unknown>>).push(imageTurnRow())
 bump()
 stdin.write('\t') // 退出选择模式后重进：findLast → 新行滚入
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 数据变更/重进后排空（render-quiet 锚）
 check('T24a 缩略图渲染（fallback 文本）', await settled(() => screenHas('[Image · shot.png]')),
   `screen=${JSON.stringify(viewportLines().filter(l => l.trim() !== '').map(l => l.trim().slice(0, 60)))}`)
 FakeStdout.onWrite = chunk => {
@@ -110,7 +112,7 @@ FakeStdout.onWrite = chunk => {
   }
 }
 stdin.write('\x1b[I') // FOCUS_IN → 触发 alt-screen 探测
-await sleep(300) // 固定窗:pacing 等探测应答与 altScreenActive 生效，无可观测锚点
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 const thumbRow = (() => {
   const lines = viewportLines()
   for (let r = 0; r < lines.length; r++) {
@@ -120,24 +122,24 @@ const thumbRow = (() => {
 })()
 check('T24b 定位缩略图行', thumbRow >= 0, `row=${thumbRow}`)
 stdin.write(`\x1b[<0;5;${thumbRow + 1}M`) // press（SGR 坐标 1-based）
-await sleep(120) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 stdin.write(`\x1b[<0;5;${thumbRow + 1}m`) // release → dispatchClick
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T24c 点击缩略图打开图片预览浮窗', screenHas('Open original'))
 ;(channel as Record<string, unknown>).working = true
 bump()
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 等输入批次与渲染帧排空
 stdin.write('\x03')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check(
   'T24d 图片浮窗内 working Ctrl+C 打断且浮窗保持',
   cancelCount === 3 && screenHas('Open original'),
 )
 ;(channel as Record<string, unknown>).working = false
 bump()
-await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+await drained() // 等输入批次与渲染帧排空
 stdin.write('\x03')
-await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T24e 图片浮窗内 idle Ctrl+C 关闭浮窗', !screenHas('Open original'))
 
 finish('verify-selection-interrupt')

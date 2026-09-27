@@ -28,6 +28,7 @@ const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render }, { AskU
   import('../src/components/SearchBox.js'),
 ])
 
+const { keySleep, settled } = await import('./lib/term-test.mjs')
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 function makeHarness(cols: number, rows: number) {
@@ -111,12 +112,12 @@ const report = (name: string, ok: boolean, detail: string) => {
     }),
     { stdout, stdin, stderr: stdout, exitOnCtrlC: false, patchConsole: false },
   )
-  await sleep(400)
+  await settled(() => lines().some(l => l.includes('选项一')))
 
   // 场景 1：焦点在选项行时直接打字 —— 文本进输入行，非聚焦 caret 是 ▏，
   // 光标应停在 ▏ 那一格（输入行最后一个可见字符）。
   stdin.write('hello')
-  await sleep(400)
+  await keySleep(100)
   {
     const ls = lines()
     const row = ls.findIndex(l => l.includes('自定义回答') && l.includes('hello'))
@@ -135,12 +136,13 @@ const report = (name: string, ok: boolean, detail: string) => {
       question: QUESTION,
     }),
   )
-  await sleep(300)
+  await settled(() => lines().some(l => l.includes('选项一')))
   stdin.write('\x1b[B')
+  await keySleep(30)
   stdin.write('\x1b[B')
-  await sleep(200)
+  await keySleep(100)
   stdin.write('hello')
-  await sleep(400)
+  await keySleep(100)
   {
     const ls = lines()
     const row = ls.findIndex(l => l.includes('自定义回答') && l.includes('hello'))
@@ -153,7 +155,7 @@ const report = (name: string, ok: boolean, detail: string) => {
 
   // 场景 3：CJK 宽字符。
   stdin.write('你好')
-  await sleep(400)
+  await keySleep(100)
   {
     const ls = lines()
     const row = ls.findIndex(l => l.includes('自定义回答') && l.includes('你好'))
@@ -178,14 +180,15 @@ const report = (name: string, ok: boolean, detail: string) => {
     }),
     { stdout, stdin, stderr: stdout, exitOnCtrlC: false, patchConsole: false },
   )
-  await sleep(400)
+  await settled(() => lines().some(l => l.includes('选项一')))
   stdin.write('\x1b[B')
+  await keySleep(30)
   stdin.write('\x1b[B')
-  await sleep(200)
+  await keySleep(100)
   stdin.write('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij') // 46 字符，必换行
-  await sleep(400)
+  await keySleep(100)
   stdin.write('\x1b[H') // Home：caret 回到文本开头，反色格是 'A'
-  await sleep(400)
+  await keySleep(100)
   {
     const ls = lines()
     // 40 列下「自定义回答」标签自身会被换行拆断（如「自定义 / 答」），用
@@ -217,7 +220,7 @@ const report = (name: string, ok: boolean, detail: string) => {
     React.createElement(HistorySearchDialog, { query: 'abc', cursorOffset: 3, matches, focusIndex: 0 }),
     { stdout, stdin, stderr: stdout, exitOnCtrlC: false, patchConsole: false },
   )
-  await sleep(500)
+  await settled(() => lines().some(l => l.includes('abc')))
   {
     const ls = lines()
     const boxRow = ls.findIndex(l => l.includes('abc'))
@@ -247,7 +250,7 @@ const report = (name: string, ok: boolean, detail: string) => {
     }),
     { stdout, stdin, stderr: stdout, exitOnCtrlC: false, patchConsole: false },
   )
-  await sleep(500)
+  await settled(() => findCharCell('⌕') !== undefined)
   {
     const ls = lines()
     const lens = findCharCell('⌕')
@@ -282,7 +285,7 @@ const report = (name: string, ok: boolean, detail: string) => {
     }),
     { stdout, stdin, stderr: stdout, exitOnCtrlC: false, patchConsole: false },
   )
-  await sleep(500)
+  await settled(() => findCharCell('😀') !== undefined)
   {
     const emoji = findCharCell('😀')
     const caret = emoji !== undefined ? findInverseCell(emoji.y, emoji.y) : undefined
@@ -298,7 +301,7 @@ const report = (name: string, ok: boolean, detail: string) => {
 
 /** 场景 8：极窄 SearchBox（width=4，内容区为 0）—— 光标钳制在框内。 */
 {
-  const { stdout, stdin, cursor } = makeHarness(80, 24)
+  const { stdout, stdin, lines, cursor } = makeHarness(80, 24)
   const app = await render(
     React.createElement(SearchBox, {
       query: 'abcdef',
@@ -309,7 +312,7 @@ const report = (name: string, ok: boolean, detail: string) => {
     }),
     { stdout, stdin, stderr: stdout, exitOnCtrlC: false, patchConsole: false },
   )
-  await sleep(500)
+  await settled(() => lines().some(l => l.trim() !== ''))
   {
     // 框在 x=0..3（width 4 圆角边框），内容区为 0 列：prefix 都放不下，
     // 光标仍不得越出框体右缘。
