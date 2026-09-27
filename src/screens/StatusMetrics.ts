@@ -360,6 +360,24 @@ export function renderMiniContextBar(
   return `▕${pressureColor(pct, fill)}${`\x1b[2m${track}\x1b[22m`}▏`
 }
 
+/** Compact borderless gauge cells for the footer's ctx field (grok-style
+ * inline bar): whole-cell `█` fill over a visible `░` track, 20 columns
+ * wide. Returns fill/track strings plus the pressure theme key so JSX can
+ * tint them without embedding ANSI escapes.
+ */
+export function contextBarCells(
+  usedTokens: number,
+  contextWindow: number,
+  width = 20,
+): { fill: string; track: string; pressure: 'success' | 'warning' | 'error' } {
+  if (contextWindow <= 0 || width <= 0) return { fill: '', track: '', pressure: 'success' }
+  const pct = Math.min(100, Math.max(0, (usedTokens / contextWindow) * 100))
+  const full = Math.min(width, Math.round((pct / 100) * width))
+  const fill = '█'.repeat(full)
+  const track = '░'.repeat(Math.max(0, width - fill.length))
+  return { fill, track, pressure: contextPressureStep(pct) ?? 'success' }
+}
+
 // --- TPS gauge + sparkline (pi-tps-meter) ---
 
 const BLOCKS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█']

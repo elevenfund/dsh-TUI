@@ -178,6 +178,7 @@ function signatureParts(
   streamViewToggledRows: ReadonlySet<number>,
   thinkingVisible: boolean,
   thinkingFold: string,
+  toolBodyLines: number,
   diffLayout: string,
   foldTerminalCommand: boolean,
   model: string,
@@ -215,6 +216,7 @@ function signatureParts(
         expanded,
         expandedRows.has(row.id),
         diffLayout,
+        toolBodyLines,
         // Terminal header folding changes the header's height the same way
         // diffLayout changes the body's — without it, a /settings toggle
         // leaves already-mounted tool cards at their stale cached height.
@@ -288,7 +290,8 @@ export function MessageList({
   onToggleStreamView = NOOP_TOGGLE_STREAM_VIEW,
   model,
   diffLayout = 'auto',
-  thinkingFold = 'preview',
+  thinkingFold = 'fold',
+  toolBodyLines = 0,
   toolBackground = 'none',
   foldTerminalCommand = false,
   smoothStreaming = false,
@@ -324,8 +327,10 @@ export function MessageList({
   model: string
   /** Edit/Write diff presentation preference (forwarded to tool cards). */
   diffLayout?: 'auto' | 'split' | 'unified'
-  /** Thinking-block display mode from channel (`preview`/`full`). */
-  thinkingFold?: 'preview' | 'full'
+  /** Thinking-block display mode from channel (`fold`/`preview`/`full`). */
+  thinkingFold?: 'fold' | 'preview' | 'full'
+  /** Collapsed tool-card body budget from the live channel settings (0 = header only). */
+  toolBodyLines?: number
   /** Tool-card background treatment from the live channel settings. */
   toolBackground?: ToolBackground
   /** Terminal-card header folding from the live channel settings. */
@@ -658,6 +663,7 @@ export function MessageList({
         streamViewToggledRows,
         thinkingVisible,
         thinkingFold,
+        toolBodyLines,
         diffLayout,
         foldTerminalCommand,
         model,
@@ -1243,6 +1249,7 @@ export function MessageList({
               model={model}
               diffLayout={diffLayout}
               thinkingFold={thinkingFold}
+              toolBodyLines={toolBodyLines}
               toolBackground={toolBackground}
               foldTerminalCommand={foldTerminalCommand}
               smoothStreaming={smoothStreaming}
@@ -1322,7 +1329,8 @@ type MemoRowProps = {
   fresh: boolean
   /** Version tick for active tool reveal; 0 keeps settled rows memoized. */
   revealVersion: number
-  thinkingFold: 'preview' | 'full'
+  thinkingFold: 'fold' | 'preview' | 'full'
+  toolBodyLines: number
   toolBackground: ToolBackground
   /** Terminal-card header folding (forwarded to tool cards). */
   foldTerminalCommand: boolean
@@ -1404,6 +1412,7 @@ function TranscriptRow({
   fresh,
   revealVersion,
   thinkingFold,
+  toolBodyLines,
   toolBackground,
   foldTerminalCommand,
   activityFrames,
@@ -1564,8 +1573,14 @@ function TranscriptRow({
     case 'reasoning': {
       // The setting chooses the live default; a row click reverses it. Global
       // or per-row transcript expansion always wins and shows the full text.
+      // `fold` streams as the single-line header (no ticker) — a click opens
+      // the full text, mirroring grok's collapsed-thinking steps.
       const streamPreview = streaming && !expanded && !isExpanded &&
-        (streamViewToggled ? thinkingFold === 'full' : thinkingFold === 'preview')
+        (thinkingFold === 'preview' ? !streamViewToggled
+          : thinkingFold === 'full' ? streamViewToggled
+            : false)
+      const streamVerbose = streaming && !streamPreview &&
+        (thinkingFold === 'fold' ? streamViewToggled : true)
       return (
         <Box flexDirection="column" ref={ref}>
           <AssistantThinkingMessage
@@ -1576,7 +1591,7 @@ function TranscriptRow({
             preview={streamPreview}
             // Settled rows keep the fold-on-settle default and expand via
             // expandedRows/Ctrl+O; a live row is always preview or full.
-            verbose={isExpanded || expanded || (streaming && !streamPreview)}
+            verbose={isExpanded || expanded || streamVerbose}
             durationMs={durationMs}
             isSelected={isSelected}
             onClick={streaming ? streamViewOnClick : foldOnClick}
@@ -1620,6 +1635,7 @@ function TranscriptRow({
             isExpanded={isExpanded}
             footnote={toolFootnote}
             diffLayout={diffLayout}
+            toolBodyLines={toolBodyLines}
             toolBackground={toolBackground}
             smoothReveal={smoothStreaming}
             fresh={fresh}

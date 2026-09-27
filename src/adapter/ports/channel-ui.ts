@@ -103,9 +103,12 @@ export interface ChannelUi {
   readonly activityFrames: string | undefined
   /** Edit/Write diff presentation preference (`auto`/`split`/`unified`). */
   readonly diffLayout: 'auto' | 'split' | 'unified'
-  /** Thinking-block display (`preview` = 2-3 line live stream + fold per
-   *  step; `full` = expanded until turn end). */
-  readonly thinkingFold: 'preview' | 'full'
+  /** Thinking-block display (`fold` = single-line header while streaming;
+   *  `preview` = 2-3 line live stream + fold per step; `full` = expanded
+   *  until turn end). */
+  readonly thinkingFold: 'fold' | 'preview' | 'full'
+  /** Collapsed tool-card body line budget (0 = header-only). */
+  readonly toolBodyLines: number
   /** Live tool-card background treatment. */
   readonly toolBackground: ToolBackground
   /** What the fullscreen transcript's right gutter shows (settings
@@ -561,7 +564,8 @@ export interface ChannelUi {
    */
   traceEvents(): readonly RawTrajEvent[]
   setDiffLayout(layout: 'auto' | 'split' | 'unified'): void
-  setThinkingFold(mode: 'preview' | 'full'): void
+  setThinkingFold(mode: 'fold' | 'preview' | 'full'): void
+  setToolBodyLines(lines: number): void
   setToolBackground(background: ToolBackground): void
   setScrollGutter(mode: ScrollGutterMode): void
   setPageMargin(setting: PageMarginSetting): void

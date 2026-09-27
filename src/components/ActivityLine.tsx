@@ -1,11 +1,8 @@
 import React from 'react'
 import { t } from '../i18n.js'
-import { Text, useAnimationFrame } from '../ui.js'
-import { resolvePreset } from './activityFrames.js'
-import { BRAND, FLASH, ICE, sweep } from './shimmer.js'
-import { getTheme } from '../theme.js'
-import { useTheme } from './design-system/ThemeProvider.js'
-import { parseRGB } from './Spinner/spinnerUtils.js'
+import { Box, Text } from '../ui.js'
+import { DIAMOND } from '../terminal-utils/figures.js'
+import { useBlink } from '../hooks/useBlink.js'
 import type { ActivityView } from '../dsh-adapter/activity-store.js'
 
 /**
@@ -27,11 +24,11 @@ export function contextPressurePct(
 
 /**
  * The working-activity line, rendered either in the spinner slot (while a
- * turn runs — alongside the random-verb spinner) or on the status bar
- * (the turn-summary card once idle). pi working-activity style: an animated
- * indicator frame, an ice-blue shimmer sweep over the line, an amber/red
- * `⚠ ctx N%` pressure prefix, and a trailing token suffix for the spinner
- * placement. Done summaries render statically in the brand mist blue.
+ * turn runs) or on the status bar (the turn-summary card once idle):
+ * a blinking diamond leading the live copy — the same glyph language as
+ * tool and thinking rows (grok-style running bullet) — an amber/red
+ * `⚠ ctx N%` pressure prefix, and an optional trailing suffix. Done
+ * summaries render statically in the brand mist blue.
  */
 /** The fields the line renders, from the working-activity plugin's projection. */
 export interface ActivityLineValue {
@@ -41,53 +38,45 @@ export interface ActivityLineValue {
 
 export function ActivityLine({
   activity,
-  activityFrames,
   warnPct,
   warnDanger,
   suffix,
 }: {
   activity: ActivityLineValue
-  activityFrames: string | undefined
+  /** Deprecated: frame presets no longer render — the line leads with the
+   *  shared grok-style blinking diamond. Kept for call-site compatibility. */
+  activityFrames?: string
   warnPct?: number
   warnDanger?: boolean
   suffix?: string
 }): React.ReactNode {
-  // 60ms frames: the shimmer sweep advances one column per frame (3.3× the
-  // ported 200ms cadence — the slow crawl read as lag).
-  const [, time] = useAnimationFrame(60)
-  const [themeName] = useTheme()
-  const theme = getTheme(themeName)
-  const preset = React.useMemo(
-    () => resolvePreset(activityFrames),
-    [activityFrames],
-  )
-  const frameIndex = Math.floor(time / preset.intervalMs) % preset.frames.length
-  const frame = preset.frames[frameIndex] ?? '·'
+  const [bulletRef, bulletBlinking] = useBlink(activity.phase !== 'done')
   const color =
     activity.phase === 'done' || activity.phase === 'tool'
       ? 'accent'
       : 'activity'
-  const baseRGB =
-    activity.phase === 'tool'
-      ? (parseRGB(theme.accent) ?? BRAND)
-      : (parseRGB(theme.activity) ?? ICE)
 
   return (
-    <Text wrap="truncate">
-      {activity.phase !== 'done' && (
-        <Text color={color}>{frame} </Text>
-      )}
-      {warnPct !== undefined && warnPct >= 80 && (
-        <Text color={warnDanger ? 'error' : 'warning'}>
-          {t('activity-ctx-warn')}{warnPct}% ·{' '}
-        </Text>
-      )}
-      {activity.phase === 'done' ? (
-        <Text color={color}>{activity.line}</Text>
-      ) : (
-        <Text>{sweep(activity.line, time, baseRGB, FLASH, 60)}</Text>
-      )}
-      {suffix !== undefined && <Text dimColor>{suffix}</Text>}
-    </Text>
+    <Box flexDirection="row" ref={bulletRef}>
+      <Text wrap="truncate">
+        {activity.phase !== 'done' && (
+          <Text
+            color={bulletBlinking ? 'success' : undefined}
+            bold={bulletBlinking}
+          >{`${DIAMOND} `}</Text>
+        )}
+        {warnPct !== undefined && warnPct >= 80 && (
+          <Text color={warnDanger ? 'error' : 'warning'}>
+            {t('activity-ctx-warn')}{warnPct}% ·{' '}
+          </Text>
+        )}
+        {activity.phase === 'done' ? (
+          <Text color={color}>{activity.line}</Text>
+        ) : (
+          <Text>{activity.line}</Text>
+        )}
+        {suffix !== undefined && <Text dimColor>{suffix}</Text>}
+      </Text>
+    </Box>
   )
 }

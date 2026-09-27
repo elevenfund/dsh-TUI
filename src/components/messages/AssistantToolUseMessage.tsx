@@ -45,6 +45,10 @@ type Props = {
   footnote?: string
   /** Diff presentation preference; `auto` picks by terminal width. */
   diffLayout?: 'auto' | 'split' | 'unified'
+  /** Collapsed body line budget (settings `dsh-tui.toolBodyLines`); 0 keeps
+   *  the card to its header row only (grok-style one-line steps). Unset
+   *  falls back to the per-kind defaults (3 text / 8 diff). */
+  toolBodyLines?: number
   /** Background treatment for the ordinary, unselected tool card surface. */
   toolBackground?: ToolBackground
   /**
@@ -254,9 +258,13 @@ function viewLines(view: ToolCallView | ToolResultView): BodyLine[] {
 }
 
 /** Collapsed bodies fold past the card's line budget; verbose (Ctrl+O) is
- *  always uncapped. Mirrors wrapText's "one extra line is shown directly". */
-function capLines(lines: BodyLine[], max: number, verbose: boolean): BodyLine[] {
+ *  always uncapped. Mirrors wrapText's "one extra line is shown directly".
+ *  A budget of 0 (grok-style header-only steps) keeps the card to its
+ *  single header row — the hover ▾ indicator and the click still disclose
+ *  the full body — except error text, which always keeps one visible line. */
+function capLines(lines: BodyLine[], max: number, verbose: boolean, isError = false): BodyLine[] {
   if (verbose || lines.length <= max) return lines
+  if (max === 0) return isError ? lines.slice(0, 1) : []
   if (lines.length - max === 1) return lines
   return [
     ...lines.slice(0, max),
@@ -302,6 +310,23 @@ const HEADER_ARGS_BUDGET = 480
 function clipHeaderArgs(args: string): string {
   if (args.length <= HEADER_ARGS_BUDGET) return args
   return `${args.slice(0, HEADER_ARGS_BUDGET)}…`
+}
+
+/** Clip a single-line header string to a DISPLAY-width budget (cells, not
+ *  chars — CJK counts 2). Used by the grok-style one-line terminal header:
+ *  the model summary (or the command's first line) must never wrap. */
+function clipToWidth(text: string, width: number): string {
+  if (width <= 1) return '…'
+  if (stringWidth(text) <= width) return text
+  let used = 0
+  let out = ''
+  for (const ch of text) {
+    const w = stringWidth(ch)
+    if (used + w > width - 1) break
+    out += ch
+    used += w
+  }
+  return `${out}…`
 }
 
 /** Terminal-card header folding shape: the line actually rendered, the source
@@ -376,12 +401,19 @@ function toolCardMetaTooltip(tool: ToolRow, isRunning: boolean, isError: boolean
   return parts.join(' · ')
 }
 
-function HeaderTitle({ name, title, isTerminal, folded, displayArgs, argsLanguage, nameColor, filePath, onOpenFile, metaTooltip, headerTextBudget }: {
+function HeaderTitle({ name, title, isTerminal, folded, summary, collapsed, displayArgs, argsLanguage, nameColor, filePath, onOpenFile, metaTooltip, headerTextBudget }: {
   name: string
   title: string | undefined
   isTerminal: boolean
   /** Terminal-card fold result (multi-line title, folding on, not verbose). */
   folded: FoldedTitle | undefined
+  /** Model-authored one-line summary from the tool call args (`description`
+   *  parameter): shown in place of the command while collapsed (grok-style
+   *  step title); the command stays reachable via verbose/expand + hover. */
+  summary: string | undefined
+  /** True while the card is collapsed (not verbose/expanded) — gates the
+   *  one-line terminal header. */
+  collapsed: boolean
   displayArgs: string
   argsLanguage?: 'json'
   nameColor: keyof Theme
@@ -416,6 +448,7 @@ function HeaderTitle({ name, title, isTerminal, folded, displayArgs, argsLanguag
   const headerTooltip = useTooltip(() => {
     const meta = metaTooltip()
     const withMeta = (full: string): string => (meta === '' ? full : `${full}\n${meta}`)
+    if (summary !== undefined) return withMeta(title ?? '')
     if (folded !== undefined) return withMeta(title ?? '')
     if (title === undefined && clipHeaderArgs(displayArgs) !== displayArgs) return withMeta(displayArgs)
     // Width truncation: only the non-terminal title Text is truncate-end —
@@ -445,22 +478,34 @@ function HeaderTitle({ name, title, isTerminal, folded, displayArgs, argsLanguag
     )
   }
   if (isTerminal) {
+    // Collapsed terminal header is ALWAYS one line (grok-style): the model
+    // summary when present, otherwise the command's first line, both clipped
+    // to the row budget — the full command wraps only in verbose/expanded.
+    if (collapsed) {
+      const first = title === undefined ? '' : title.split('\n')[0] ?? title
+      const moreLines = title !== undefined && title.includes('\n')
+      const budget = Math.max(8, headerTextBudget - stringWidth(name) - 2)
+      const text = summary !== undefined
+        ? ` ${clipToWidth(summary, budget + 1)}`
+        : `(${clipToWidth(`${first}${moreLines ? ' …' : ''}`, budget)})`
+      return (
+        <>
+          <Box flexShrink={0}>
+            <Text bold color={nameColor} wrap="truncate-end">{name}</Text>
+          </Box>
+          <Box flexWrap="nowrap" {...headerTooltip}>
+            <Text wrap="truncate-end">{text}</Text>
+          </Box>
+        </>
+      )
+    }
     return (
       <>
         <Box flexShrink={0}>
           <Text bold color={nameColor} wrap="truncate-end">{name}</Text>
         </Box>
         <Box flexWrap="nowrap" {...headerTooltip}>
-          {folded === undefined ? (
-            <Text>({title})</Text>
-          ) : (
-            <>
-              <Text>({folded.first})</Text>
-              {folded.hiddenLines > 0 && (
-                <Text dimColor>{` ${t('lines-folded-expand', { n: folded.hiddenLines })}`}</Text>
-              )}
-            </>
-          )}
+          <Text>({title})</Text>
         </Box>
       </>
     )
@@ -527,6 +572,7 @@ export function AssistantToolUseMessage({
   onClick,
   footnote,
   diffLayout = 'auto',
+  toolBodyLines,
   toolBackground = 'none',
   onOpenFile,
   foldTerminalCommand = false,
@@ -558,6 +604,17 @@ export function AssistantToolUseMessage({
   // command) — then the call view's title stands.
   const headerTitle = tool.resultView?.title ?? tool.callView?.title
   const headerIsTerminal = view?.card === 'terminal'
+  // grok-style step summary: the bash tool lets the model attach a
+  // `description` argument (one sentence, user's language). Prefer it over
+  // the raw command in the collapsed header; the command stays a click away.
+  const modelSummary = (() => {
+    if (!headerIsTerminal) return undefined
+    const parsed = parseJsonArgs(tool.argsFull ?? tool.argsText)
+    if (parsed === null || typeof parsed !== 'object') return undefined
+    const record = parsed as Record<string, unknown>
+    const value = record['description']
+    return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+  })()
   // Fold the terminal header: multi-line command script (setting-gated) plus
   // the always-on long-line clip, both off once the card is verbose/expanded
   // (Ctrl+O and the row click both land in `verbose`, so expansion reuses the
@@ -620,7 +677,7 @@ export function AssistantToolUseMessage({
       body = [dim(t('tool-running-elapsed', { duration: formatDuration(Math.max(0, Date.now() - (tool.startedAt ?? Date.now()))) }))]
     }
   }
-  const cap = view?.card === 'diff' ? DIFF_BODY_MAX_LINES : TEXT_BODY_MAX_LINES
+  const cap = toolBodyLines ?? (view?.card === 'diff' ? DIFF_BODY_MAX_LINES : TEXT_BODY_MAX_LINES)
   // Long-line clip before anything downstream reads the body: the syntax
   // highlighter walks `bodySource` by line index, so the folded text must be
   // the single source of truth for both.
@@ -629,7 +686,7 @@ export function AssistantToolUseMessage({
   const argsLanguage = jsonArgsLanguage(displayArgs)
   // The footnote rides OUTSIDE the cap: it is a pointer, not content, and a
   // long error body must not be the reason it disappears.
-  const lines = capLines(bodyLines, cap, verbose)
+  const lines = capLines(bodyLines, cap, verbose, isError)
   const rendered: BodyLine[] =
     footnote === undefined ? lines : [...lines, { text: footnote, tone: 'hint' }]
   // Smooth reveal (line-unit, pending CALL body only): model-authored prose
@@ -687,7 +744,7 @@ export function AssistantToolUseMessage({
             isError={isError}
             toolName={tool.name}
           />
-          <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} />
+          <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} summary={verbose ? undefined : modelSummary} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} />
           {!isRunning && (
             <Box flexWrap="nowrap">
               <Text dimColor={!hovered}>{elapsedText}</Text>
@@ -707,7 +764,7 @@ export function AssistantToolUseMessage({
             <SplitDiffView
               diffs={view.diffs}
               width={columns - 4}
-              maxRows={DIFF_BODY_MAX_LINES}
+              maxRows={verbose ? DIFF_BODY_MAX_LINES : cap}
               verbose={verbose}
               toolBackground={ordinaryToolBackground}
               reveal={revealable ? { key: `${revealKey}:split` } : undefined}

@@ -902,6 +902,8 @@ const dict = {
   'hint-adjust-done': { zh: '**←/→** 调整 · Enter/Esc 完成', en: '**←/→** to adjust · Enter/Esc to done' },
   'hint-history-search': { zh: '↑/↓ 选择 · **Enter** 确认 · Esc 取消', en: '↑/↓ to navigate · **Enter** to select · Esc to cancel' },
   'hint-expand-ctrl-o': { zh: '（ctrl+o 展开）', en: '(ctrl+o to expand)' },
+  'thinking-duration': { zh: ' {{duration}}', en: ' for {{duration}}' },
+  'thought-label': { zh: '思考', en: 'Thought' },
   // 转录里的超长单行（utils/fold-long-lines.ts）：行尾内联标记。鼠标点整行
   // （工具卡点卡面）即可展开/收起，键盘走 ctrl+o —— 两种都写进文案。
   'long-line-folded': { zh: '… 已折叠 {{n}} 字符（点击或 ctrl+o 展开）', en: '… {{n}} chars folded (click or ctrl+o to expand)' },
@@ -1009,7 +1011,7 @@ const dict = {
   'thinking-enabled-desc': { zh: '在对话中显示 DeepSeek 的思考过程', en: "Show DeepSeek's reasoning in the conversation" },
   'thinking-disabled': { zh: '隐藏', en: 'Hidden' },
   'thinking-disabled-desc': { zh: '隐藏思考过程；模型仍会照常思考', en: 'Hide reasoning; the model will still think as usual' },
-  'thinking-label': { zh: '思考', en: 'Thinking' },
+  'thinking-running-label': { zh: '思考中', en: 'Thinking' },
 
   // ── components/HistorySearchDialog.tsx ──────────────────────────────
   'history-search-title': { zh: '搜索历史', en: 'Search history' },

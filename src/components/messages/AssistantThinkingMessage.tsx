@@ -1,16 +1,10 @@
 import React from 'react'
-import chalk from 'chalk'
 import { Box, Text } from '../../ui.js'
 import { t } from '../../i18n.js'
 import { StreamingMarkdown } from '../StreamingMarkdown.js'
 import { formatDuration } from '../../terminal-utils/format.js'
-import {
-  THINKING_SPINNER_FRAMES,
-  THINKING_SPINNER_INTERVAL_MS,
-  THINKING_SETTLED_MARKER,
-} from '../../terminal-utils/figures.js'
-import { BRAND, ICE } from '../shimmer.js'
-import { interpolateColor } from '../Spinner/spinnerUtils.js'
+import { THINKING_SETTLED_MARKER } from '../../terminal-utils/figures.js'
+import { useBlink } from '../../hooks/useBlink.js'
 import { isMinimalMode } from '../../minimalMode.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
 
@@ -34,8 +28,8 @@ type Props = {
   /** Show the full text (Ctrl+O, per-row expansion, or live click toggle). */
   verbose: boolean
   /** True while the reasoning block is still streaming — the leading anchor
-   *  becomes a rotating braille spinner (Kimi Code style) and settles back
-   *  to the anchor once the step ends. */
+   *  becomes a blinking diamond (grok-style running bullet) and settles back
+   *  to the static anchor once the step ends. */
   streaming?: boolean
   /** Streaming compact mode (thinkingFold=preview): a 3-row live ticker of
    *  the model's latest reasoning lines instead of the full block —
@@ -49,14 +43,11 @@ type Props = {
 }
 
 /**
- * Thinking block: settled rows fold to `⚓ Thinking` plus the localized
- * ctrl+o expand hint (hint-expand-ctrl-o);
- * streaming rows switch between a three-line preview and the full reasoning
- * text on click. The live leading mark is a rotating braille spinner
- * (`⠋⠙⠹…`, Kimi Code style), settling back to the static anchor (`⚓`). When
- * the channel records the reasoning duration, the label carries it
- * (`⚓ Thinking · 12s …`) — dsh-tui's take on making thinking time visible in
- * the transcript.
+ * Thinking block: settled rows fold to the grok-style single line
+ * (`◆` + thought-label + thinking-duration + hint-expand-ctrl-o);
+ * streaming rows show a blinking diamond plus the bold
+ * thinking-running-label, switching between a three-line preview and the
+ * full reasoning text on click.
  */
 export function AssistantThinkingMessage({
   thinking,
@@ -76,29 +67,20 @@ export function AssistantThinkingMessage({
   // — the revealed slice under smooth streaming, the full text otherwise.
   const tickerText = textFull ?? thinking
 
-  // Spinner frame (80ms cadence, only while the reasoning is still
-  // streaming — same pattern as BtwPanel's answering spinner).
-  const [frame, setFrame] = React.useState(0)
-  React.useEffect(() => {
-    if (!streaming) return
-    const interval = setInterval(() => setFrame(f => f + 1), THINKING_SPINNER_INTERVAL_MS)
-    return () => clearInterval(interval)
-  }, [streaming])
+  // Running bullet: a blinking diamond while the reasoning streams — the
+  // same useBlink cadence as tool rows keeps one glyph language across
+  // steps (grok-style running bullet).
+  const [bulletRef, bulletBlinking] = useBlink(streaming)
 
   const duration =
     durationMs !== undefined && durationMs >= 1000
-      ? ` · ${formatDuration(durationMs)}`
+      ? t('thinking-duration', { duration: formatDuration(durationMs) })
       : ''
 
-  // Kimi Code style blue pulse: the streaming glyph breathes along the
-  // header's brand→ice ladder, one sine period per ~7 frames (≈0.56s) —
-  // lively without strobing. Minimal mode drops the color (plain glyph);
-  // settled always keeps the plain dim anchor.
-  const label = `${t('thinking-label')}${duration}${streaming ? '…' : ` ${t('hint-expand-ctrl-o')}`}`
+  // grok-style header: bold verb ("Thinking…" while running), muted
+  // "for Xs" suffix once settled, one line.
+  const label = `${t('thinking-running-label')}…`
   const minimal = isMinimalMode()
-  const pulse = (Math.sin(frame * 0.9) + 1) / 2
-  const pulseColor = interpolateColor(BRAND, ICE, pulse)
-  const frameText = THINKING_SPINNER_FRAMES[frame % THINKING_SPINNER_FRAMES.length]!
   // Hover 轻指示：可点击折叠时折叠头从 dim 提亮为正常色（不刷整行背景，
   // 转录视觉保持安静）。
   const [hovered, setHovered] = React.useState(false)
@@ -107,13 +89,20 @@ export function AssistantThinkingMessage({
     : {}
   const header =
     streaming ? (
-      <Box flexDirection="row">
-        <Text>{minimal ? frameText : chalk.rgb(pulseColor.r, pulseColor.g, pulseColor.b).bold(frameText)}</Text>
-        {/* 流式行同样可点击折叠（hover 提亮标签给出指示，与落定态一致） */}
-        <Text dimColor={!hovered} color={hovered ? 'text' : undefined} italic>{` ${label}`}</Text>
+      <Box flexDirection="row" ref={bulletRef}>
+        <Text
+          color={minimal || !bulletBlinking ? undefined : 'success'}
+          bold={bulletBlinking}
+        >{`${THINKING_SETTLED_MARKER} `}</Text>
+        {/* 流式行同样可点击折叠；running 标签保持正常亮度，与工具行一致 */}
+        <Text bold>{label}</Text>
       </Box>
     ) : (
-      <Text italic dimColor={!hovered} color={hovered ? 'text' : undefined}>{`${minimal ? '*' : THINKING_SETTLED_MARKER} ${label}`}</Text>
+      <Text dimColor={!hovered} color={hovered ? 'text' : undefined} italic>
+        {`${minimal ? '*' : THINKING_SETTLED_MARKER} `}
+        <Text bold>{t('thought-label')}</Text>
+        <Text>{duration}{streaming ? '…' : ` ${t('hint-expand-ctrl-o')}`}</Text>
+      </Text>
     )
 
   if (preview) {

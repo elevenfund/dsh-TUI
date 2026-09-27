@@ -8,9 +8,8 @@
  *     未截断时浮层不重复标题（只带时间 + cwd）。
  *  H. 状态栏 model/git 字段：悬停 model 弹 provider + ctx 窗口明细；
  *     悬停 git 弹完整分支名（原地明细行契约，与 tps/cost 同款）。
- *  I. 上下文进度条：条上不再有任何文字（内容类型只由颜色表达，唯一的
- *     文本是最右占比）；整条一个悬停目标，悬停任意位置弹【全部内容类型
- *     + free】的色块+数字明细——条没有标签，这行就是它的 legend。
+ *  I. ctx 内联量表：grok 式短条（1/8 格填充 + 轨道）带读数、压力随档
+ *     转色；悬停字段弹【全部内容类型 + free】的数字明细。
  *
  * Run: `node --import tsx/esm scripts/verify-hover-details.tsx`
  */
@@ -22,7 +21,7 @@ const dataDir = mkdtempSync(join(tmpdir(), 'verify-hover-details-data-'))
 process.env.HOME = dataDir
 process.env.USERPROFILE = dataDir
 process.env.DSH_TUI_LANG = 'zh'
-// 组 I 断言条上各段的底色（进度条去掉标签后，颜色是唯一表达），必须开色。
+// 组 I 断言量表填充的前景色（压力分档是量表的唯一用色表达），必须开色。
 process.env.FORCE_COLOR = '3'
 
 const [{ PassThrough, Writable }, React, { Terminal: XTerm }, ui, tooltip, termTest, metrics] = await Promise.all([
@@ -74,6 +73,27 @@ function hoverText(stdin: PassThrough, term: XTerm, needle: string): void {
   const at = findText(term, needle)
   if (at === null) throw new Error(`hover target not found: ${needle}`)
   hover(stdin, at.col + 1, at.row + 1)
+}
+
+/** Foreground of a horizontal run of block chars (the ctx inline gauge's
+ *  fill). Block glyphs occupy two cells under ambiguous-width handling, so
+ *  cell coordinates cannot be derived from string indexes — scan instead.
+ *  Returns the 256-color index, -1 for default fg, -2 when no run found. */
+const blockRunFg = (term: XTerm, runLen: number): number => {
+  for (let row = 0; row < term.rows; row++) {
+    const line = term.buffer.active.getLine(row)
+    if (line === undefined) continue
+    for (let col = 0; col + runLen - 1 < term.cols; col++) {
+      let all = true
+      for (let i = 0; i < runLen; i++) {
+        if (line.getCell(col + i)?.getChars() !== '█') { all = false; break }
+      }
+      if (!all) continue
+      const cell = line.getCell(col)!
+      return cell.isFgDefault() ? -1 : cell.getFgColor() & 0xffffff
+    }
+  }
+  return -2
 }
 
 const { FileSuggestions } = await import('../src/components/FileSuggestions.js')
@@ -225,27 +245,22 @@ try {
   const SEGMENTS = { system: 1200, prompt: 300, assistant: 4000, thinking: 5000, tools: 2000 }
   const USED = 12_500 // input 12000 + cacheRead 500
   {
-    const plain = metrics.renderContextBar(SEGMENTS, USED, 64_000, 60).replace(/\x1b\[[0-9;]*m/g, '')
-    check('I0 条上无类型名：去 ANSI 只剩空格与最右读数',
-      /^\s*13k\/64k 19\.5%$/.test(plain), `plain=${JSON.stringify(plain)}`)
-    const ansi = metrics.renderContextBar(SEGMENTS, USED, 64_000, 60)
-    check('I0 条仍按内容类型着色', ansi.includes('48;2;34;48;95m') && ansi.includes('48;2;90;124;255m'),
-      'system/tools fills present')
-    check('I0 读数阶梯：先给总数+占比，窄了只剩占比',
-      metrics.contextBarReadout(USED, 64_000).join(' | ') === '13k/64k 19.5% | 19.5%',
-      JSON.stringify(metrics.contextBarReadout(USED, 64_000)))
-    // 压力分档与 ctx 悬停量表同阈值（amber ≥ 80 / red ≥ 95）。
-    check('I0 压力分档 80/95 与 ctx 量表一致',
+    // 内联量表的单元格源：整格填充 + 可见 ░ 轨道（grok 式 20 格表）。
+    const cells = metrics.contextBarCells(USED, 64_000) // 19.5% → 4 full cells
+    check('I0 内联量表形状：4 格实填 + 16 格轨道 + success 档',
+      cells.fill === '████' && cells.track === '░'.repeat(16) && cells.pressure === 'success',
+      JSON.stringify(cells))
+    check('I0 压力分档：84.4% 进 warning',
+      metrics.contextBarCells(54_000, 64_000).pressure === 'warning')
+    check('I0 满格封顶不溢出',
+      metrics.contextBarCells(64_000, 64_000).fill === '█'.repeat(20)
+      && metrics.contextBarCells(64_000, 64_000).track === '')
+    check('I0 压力分档 80/95 与读数一致',
       metrics.contextPressureStep(79.9) === undefined
       && metrics.contextPressureStep(80) === 'warning'
       && metrics.contextPressureStep(94.9) === 'warning'
       && metrics.contextPressureStep(95) === 'error',
       [79.9, 80, 94.9, 95].map(p => `${p}:${metrics.contextPressureStep(p) ?? 'none'}`).join(' '))
-    const warm = metrics.renderContextBar(SEGMENTS, 53_760, 64_000, 60) // 84.0%
-    const hot = metrics.renderContextBar(SEGMENTS, 61_440, 64_000, 60) // 96.0%
-    check('I0 压力染色：84% 琥珀 / 96% 红（ANSI 路径）',
-      warm.includes('38;2;202;138;4') && hot.includes('38;2;255;107;128'),
-      `warm=${warm.includes('38;2;202;138;4')} hot=${hot.includes('38;2;255;107;128')}`)
     const wide = metrics.contextBarBreakdown(SEGMENTS, USED, 64_000, 120)
     check('I0 宽终端明细用可读名 + 圆点分隔',
       wide.entries.map(e => e.label).join(wide.separator)
@@ -258,26 +273,22 @@ try {
       `got=${JSON.stringify(narrow.entries.map(e => e.label).join(narrow.separator))}`)
     const empty = metrics.contextBarBreakdown(
       { system: 0, prompt: 0, assistant: 0, thinking: 0, tools: 0 }, 0, 64_000, 120)
-    check('I0 零占用段不进明细（与条上不给列数一致）',
+    check('I0 零占用段不进明细（与量表不给列数一致）',
       empty.entries.length === 1 && empty.entries[0]?.label === 'free 64k',
       `got=${JSON.stringify(empty.entries.map(e => e.label))}`)
-    check('I0 明细色块用各段填充色（颜色↔名字的对应关系）',
-      wide.entries[0]?.color === '#22305F' && wide.entries[3]?.color === '#4D6BFE',
-      JSON.stringify(wide.entries.map(e => e.color)))
   }
 
   // I：真机渲染 + 鼠标。120 列让宽终端阶梯成立（可读名），12 行够放下
-  // 条+状态行+明细行。
+  // 状态行+明细行。
   //
   // 先卸载 F～H 的实例再起第二个：同进程里两个 AlternateScreen 实例并存
-  // 时，后者的首帧会漏掉条那行（实测可复现，与本改动无关；卸载先行即可
+  // 时，后者的首帧会漏字段行（实测可复现，与本改动无关；卸载先行即可
   // 稳定）。
   instance.unmount()
   await sleep(150) // 固定窗:pacing 等第一个实例完全卸载，第二个实例首帧才完整
   const barRig = makeRig(120, 12)
   const barStub = {
     ...channelStub,
-    contextBarEnabled: true,
     contextSegments: SEGMENTS,
     lastUsage: { input: 12_000, output: 0, cacheRead: 500, cacheWrite: 0 },
   }
@@ -293,53 +304,26 @@ try {
   )
   const barTerm = barRig.term
   const barStdin = barRig.stdin
-  check('场景 I 就绪：进度条读数在屏', await settled(() => screenHas(barTerm, '19.5%')))
+  check('场景 I 就绪：ctx 读数在屏', await settled(() => screenHas(barTerm, '20%')))
   {
-    // 条自身那一行：最右读数（总数 + 占比）是全部文字，没有任何类型名。
-    const barRow = findText(barTerm, '19.5%')?.row ?? -1
+    // 状态行一排读到底（grok 式）：model · 条+% · counts · …，无两端分裂。
+    const barRow = findText(barTerm, '20%')?.row ?? -1
     const line = (barRow < 0 ? '' : barTerm.buffer.active.getLine(barRow)?.translateToString(true) ?? '')
-    check('I 条行只有最右读数、无任何类型名',
-      /^\s*13k\/64k 19\.5%$/.test(line), `line=${JSON.stringify(line)}`)
-    // 各段仍是纯色填充：无子节点的 Box 只靠自己的底色铺满（去掉标签后唯一
-    // 的表达方式），底色不画就等于整条消失。
-    const bgAt = (x: number): number =>
-      (barTerm.buffer.active.getLine(barRow)?.getCell(x)?.getBgColor() ?? 0) & 0xffffff
-    check('I 内容类型段仍是实色块（空 Box 由底色铺满）', bgAt(1) === 0x22305f,
-      `system bg=${bgAt(1).toString(16)}`)
-    check('I free 段铺到条尾', [0x2e3440, 0xe8e8e8].includes(bgAt(116)),
-      `free bg=${bgAt(116).toString(16)}`)
+    check('I ctx 字段 = 量表 + 百分比，counts 独立字段（████░░… 20% · 13k/64k）',
+      /████░░░░░░░░░░░░░░░░ 20%.*· 13k\/64k/.test(line), `line=${JSON.stringify(line)}`)
+    // 正常占用的量表填充走 success 色（着色即非默认前景）。
+    check('I 正常占用量表填充着色（success）', blockRunFg(barTerm, 4) > 0,
+      `fg=${blockRunFg(barTerm, 4)}`)
   }
-  // 悬停条最右（free 区）：明细是「全部内容类型」，不只是 free。
-  hoverText(barStdin, barTerm, '19.5%')
-  check('I 悬停条尾弹全量明细（含 system 与 thinking）',
-    await settled(() => screenHas(barTerm, 'system 1.2k') && screenHas(barTerm, 'thinking 5.0k')))
-  check('I 明细同一行带 free 项', screenHas(barTerm, 'free 52k'))
-  {
-    // 色块是这一行的全部意义：数字前的 1 格底必须就是该段在条上的填充色，
-    // 否则「哪个颜色是哪类」无从对应。
-    const chipBg = (needle: string): number => {
-      const at = findText(barTerm, needle)
-      if (at === null || at.col === 0) return 0
-      return (barTerm.buffer.active.getLine(at.row)?.getCell(at.col - 1)?.getBgColor() ?? 0) & 0xffffff
-    }
-    check('I 明细色块 = 条上该段填充色（system/thinking）',
-      chipBg('system 1.2k') === 0x22305f && chipBg('thinking 5.0k') === 0x4d6bfe,
-      `system=${chipBg('system 1.2k').toString(16)} thinking=${chipBg('thinking 5.0k').toString(16)}`)
-    check('I free 明细色块 = 条上 free 段填充色（暗色主题覆盖）', chipBg('free 52k') === 0x2e3440,
-      `free=${chipBg('free 52k').toString(16)}`)
-  }
-  // 悬停条首（system 段）：仍是同一条全量明细 —— 整条一个悬停目标，明细
-  // 不随段落切换而变化（逐段明细是这次去掉的旧行为）。
-  {
-    const barRow = findText(barTerm, '19.5%')?.row ?? 0
-    hover(barStdin, 2, barRow + 1)
-    check('I 悬停条首同样是全量明细（整条一个目标）',
-      await settled(() => screenHas(barTerm, 'tools 2.0k') && screenHas(barTerm, 'free 52k')))
-  }
+  // 悬停 ctx 字段：明细是「全部内容类型」，不只是 free。
+  hoverText(barStdin, barTerm, '20%')
+  check('I 悬停 ctx 弹全量明细（含 sys 与 th）',
+    await settled(() => screenHas(barTerm, 'sys 1.2k') && screenHas(barTerm, 'th 5k')))
+  check('I 明细同一行带 free 项', screenHas(barTerm, 'free 51.5k'))
   hover(barStdin, 1, 1)
-  check('I 移开条即撤下明细', await settled(() => !screenHas(barTerm, 'thinking 5.0k')))
+  check('I 移开即撤下明细', await settled(() => !screenHas(barTerm, 'th 5k')))
 
-  // 压力染色上屏：同一实例改用 84% 占用重渲染，读数文字应转成主题 warning。
+  // 压力染色上屏：同一实例改用 84% 占用重渲染，量表填充应转成主题 warning。
   const { ThemeProvider } = ui
   barInstance.rerender(
     <AlternateScreen>
@@ -353,13 +337,11 @@ try {
       </Box>
     </AlternateScreen>,
   )
-  check('I 高压占用读数在屏（84.4%）', await settled(() => screenHas(barTerm, '84.4%')))
+  check('I 高压占用读数在屏（84%）', await settled(() => screenHas(barTerm, '84%')))
   {
-    const at = findText(barTerm, '84.4%')
-    const fg = at === null
-      ? 0
-      : (barTerm.buffer.active.getLine(at.row)?.getCell(at.col)?.getFgColor() ?? 0) & 0xffffff
-    check('I 读数转琥珀（主题 warning #D8B270）', fg === 0xd8b270, `fg=${fg.toString(16)}`)
+    // 84.375% → 17 格实填；填充随压力转琥珀（#D8B270 的 256 色近似 180）。
+    check('I 高压量表填充转琥珀（warning 256=180）', blockRunFg(barTerm, 17) === 180,
+      `fg=${blockRunFg(barTerm, 17)}`)
   }
   barInstance.unmount()
   await sleep(100) // 固定窗:pacing unmount 收尾输出 flush，无可观测完成条件

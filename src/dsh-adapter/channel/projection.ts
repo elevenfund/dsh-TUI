@@ -273,7 +273,10 @@ export function createChannelProjection(state: ProjectionState, deps: Projection
    *  shrink inside the diff engine's reachable region. Preview mode only
    *  (`full` holds every block open until turn settle by design). */
   const foldLiveReasoning = (where: string): void => {
-    if (reasoning === undefined || state.thinkingFold !== 'preview') return
+    // `full` holds every block open until turn settle by design; `preview`
+    // and `fold` both seal the live row early (duration capture + streaming
+    // flag down) so the settled single-line header carries the real time.
+    if (reasoning === undefined || state.thinkingFold === 'full') return
     const duration = Math.max(0, Date.now() - reasoningStart)
     reasoning.durationMs = duration
     reasoning.streaming = false
@@ -662,7 +665,7 @@ export function createChannelProjection(state: ProjectionState, deps: Projection
           // (/settings opt-in) keeps the block expanded until turn settle
           // — settleStreaming folds the sealed rows then.
           reasoning.durationMs = Math.max(0, Date.now() - reasoningStart)
-          if (state.thinkingFold === 'preview') reasoning.streaming = false
+          if (state.thinkingFold !== 'full') reasoning.streaming = false
           touchRow(reasoning)
           sealedReasoning.push(reasoning)
           logForDebugging(`thinking: step sealed (${reasoning.durationMs}ms), expanded until turn/end`)

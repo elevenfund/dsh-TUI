@@ -1,6 +1,5 @@
 import React from 'react'
-import { Box, Text, useTerminalSize, useTheme } from '../ui.js'
-import type { Color } from '../ink/styles.js'
+import { Box, Text, useTerminalSize } from '../ui.js'
 import { formatTokens } from '../terminal-utils/format.js'
 import { t } from '../i18n.js'
 import { formatContextUsage, DEFAULT_STATUS_BAR, normalizeStatusBar, type StatusBarConfig } from '../tuiDisplayPrefs.js'
@@ -16,15 +15,12 @@ import type { ChannelUi as Channel } from '../adapter/channel/ui-policy.js'
 import type { SelectionSnapshot } from '../dsh-adapter/ide-channel.js'
 import { modeDisplayName } from '../sessionModes.js'
 import { MiniWake } from '../components/trajectory/MiniWake.js'
-import { ContextBarView } from '../components/ContextBarView.js'
 import { TooltipTarget } from '../components/Tooltip.js'
 import { formatProject } from '../sessions/format.js'
 import { homeDir } from '../utils/paths.js'
 import {
-  FREE_SEGMENT_FILL,
   USED_SEGMENTS,
-  contextBarBreakdown,
-  renderMiniContextBar,
+  contextBarCells,
   renderTpsGauge,
   renderTpsSparkline,
   speedColor,
@@ -33,20 +29,16 @@ import {
 import type { WaveBand } from '../dsh-adapter/types.js'
 
 /**
- * The footer under the prompt input: the segmented context progress bar on
- * its own first line, the
- * status line below (left group: model · tokens · think level · cache · tps
- * gauge/sparkline; right group: git · cwd · title · short session id,
- * right-aligned), and the
- * mode/hint line last. The right side of the footer shows the latest
+ * The footer under the prompt input: one grok-style status line read
+ * left-to-right (model · ctx gauge + percent · counts · cache · effort ·
+ * tokens · cost; git · cwd · title · short session id right-aligned), and
+ * the mode/hint line last. The right side of the footer shows the latest
  * transient notification (errors in red, warnings in amber).
  *
  * Every metric field is hover-aware (fullscreen mouse): dwelling on a field
- * swaps the ctx readout for a mini pressure gauge and parks that field's
- * detailed breakdown on the supplemental row where the idle hint lives —
- * the footer stays one line tall, the detail is a peek, not a layout
- * change. The context bar answers the same way: it carries no labels of its
- * own, so hovering it is how its colors get their names and numbers.
+ * parks its detailed breakdown on the supplemental row where the idle hint
+ * lives — the footer stays one line tall, the detail is a peek, not a
+ * layout change.
  */
 
 /**
@@ -74,8 +66,7 @@ const MINIMAL_STATUS_BAR: StatusBarConfig = Object.freeze({
   shortcutHint: false,
 })
 
-/** Footer fields that answer a hover with a supplemental-row detail.
- *  The context bar reports the single `bar` target (see ContextBarView). */
+/** Footer fields that answer a hover with a supplemental-row detail. */
 type HoverTarget =
   | 'ctx'
   | 'cache'
@@ -89,7 +80,6 @@ type HoverTarget =
   | 'sessionId'
   | 'cwd'
   | 'title'
-  | 'bar'
 
 /** One inline footer field: `node` renders inside a shrinkable, optionally
  *  hoverable Box; `key` doubles as the React key in its row. */
@@ -172,7 +162,6 @@ export function StatusLine({
   wake?: { band: WaveBand; hint?: string; tick: number }
 }) {
   const { columns } = useTerminalSize()
-  const [themeName] = useTheme()
   const [hover, setHover] = React.useState<HoverTarget | null>(null)
   const hoverProps = React.useCallback((id: HoverTarget) => ({
     onMouseEnter: () => setHover(id),
@@ -197,10 +186,75 @@ export function StatusLine({
     : usage.input + usage.cacheRead + usage.cacheWrite
   const contextParts: FieldPart[] = []
 
+  const formattedContext = statusBar.contextUsage
+    ? formatContextUsage(contextUsed, channel.contextWindow, statusBar.compact)
+    : undefined
+  // grok-style ctx gauge: whole-cell █ fill over a visible ░ track (drawn
+  // even when the fill is empty — grok's empty bar stays a visible meter),
+  // leading the percent readout. The counts ride as their own field so the
+  // footer separator spaces them exactly like grok's statusline
+  // (`████░░ 19% · 194k/1.0M`). The `contextBar` switch keeps its meaning
+  // as the gauge toggle; hovering either field parks the per-segment
+  // breakdown on the supplemental row.
+  const ctxGauge =
+    formattedContext !== undefined &&
+    statusBar.contextBar &&
+    contextUsed !== undefined &&
+    channel.contextWindow !== undefined
+      ? contextBarCells(contextUsed, channel.contextWindow)
+      : undefined
+  const ctxParts = (() => {
+    if (formattedContext === undefined) return undefined
+    const open = formattedContext.indexOf(' (')
+    if (open < 0) return { percent: formattedContext, counts: undefined }
+    const first = formattedContext.slice(0, open)
+    const second = formattedContext.slice(open + 2, -1)
+    return first.endsWith('%')
+      ? { percent: first, counts: second }
+      : { percent: second, counts: first }
+  })()
+  const ctxField: FieldPart | undefined =
+    formattedContext === undefined || ctxParts === undefined
+      ? undefined
+      : {
+          key: 'ctx',
+          id: 'ctx',
+          node: (
+            <Text color="text">
+              {ctxGauge !== undefined ? (
+                <Text color={ctxGauge.pressure}>{ctxGauge.fill}</Text>
+              ) : null}
+              {ctxGauge !== undefined ? (
+                <Text dimColor>{`${ctxGauge.track} `}</Text>
+              ) : null}
+              {ctxParts.percent}
+            </Text>
+          ),
+        }
+  const ctxCountsField: FieldPart | undefined =
+    ctxParts?.counts === undefined
+      ? undefined
+      : { key: 'ctxCounts', id: 'ctx', node: <Text color="text">{ctxParts.counts}</Text> }
+  if (statusBar.cache) {
+    const cacheRate = formatCacheHitRate(usage)
+    if (cacheRate !== undefined) {
+      contextParts.push({
+        key: 'cache',
+        id: 'cache',
+        node: (
+          <Text color="text">
+            <Text dimColor>{t('status-cache-label')}</Text>{cacheRate}
+          </Text>
+        ),
+      })
+    }
+  }
+  // grok orders the footer `… cache 17% │ effort:high`, so effort and mode
+  // ride after the cache readout rather than leading the row.
   if (statusBar.thinking && channel.reasoningEffort !== undefined) {
     contextParts.push({
       key: 'effort',
-      node: <Text color="inactiveShimmer">{channel.reasoningEffort}</Text>,
+      node: <Text color="text">{channel.reasoningEffort}</Text>,
     })
   }
   const modeNeedsExplicitMarker = channel.mode.plan === true
@@ -217,64 +271,6 @@ export function StatusLine({
         </Text>
       ),
     })
-  }
-
-  const formattedContext = statusBar.contextUsage
-    ? formatContextUsage(contextUsed, channel.contextWindow, statusBar.compact)
-    : undefined
-  // The ctx field's two faces: the idle readout, and the hover state — an
-  // in-place pressure bar (the user-liked "text becomes a bar" morph).
-  //
-  // WIDTH-STABLE BY CONSTRUCTION: the idle variable part is
-  // `P + " (" + C + ")"` (either order; P = percent text, C = counts) —
-  // len(P)+len(C)+3 cells. The hover variant is `▕+bar+▏ + " " + P` —
-  // 3+barLen+len(P) cells. Sizing barLen = len(C) makes them equal, so the
-  // morph swaps glyphs in place and NO sibling field, separator, or the
-  // right-aligned group moves a single cell (the first attempt used a fixed
-  // 10-cell gauge and made the whole row jump).
-  const ctxParts = (() => {
-    if (formattedContext === undefined) return undefined
-    const open = formattedContext.indexOf(' (')
-    if (open < 0) return undefined
-    const first = formattedContext.slice(0, open)
-    const second = formattedContext.slice(open + 2, -1)
-    if (first.endsWith('%')) return { percent: first, counts: second }
-    if (second.endsWith('%')) return { percent: second, counts: first }
-    return undefined
-  })()
-  const ctxHoverBarWidth = ctxParts?.counts.length ?? 0
-  const ctxNode = formattedContext === undefined
-    ? undefined
-    : hover === 'ctx' &&
-        ctxParts !== undefined &&
-        ctxHoverBarWidth > 0 &&
-        contextUsed !== undefined &&
-        channel.contextWindow !== undefined
-      ? (
-        <Text color="inactiveShimmer">
-          <Text dimColor>ctx </Text>
-          {renderMiniContextBar(contextUsed, channel.contextWindow, ctxHoverBarWidth)}
-          {' '}{ctxParts.percent}
-        </Text>
-      )
-      : (
-        <Text color="inactiveShimmer">
-          <Text dimColor>ctx </Text>{formattedContext}
-        </Text>
-      )
-  if (statusBar.cache) {
-    const cacheRate = formatCacheHitRate(usage)
-    if (cacheRate !== undefined) {
-      contextParts.push({
-        key: 'cache',
-        id: 'cache',
-        node: (
-          <Text color="inactiveShimmer">
-            <Text dimColor>{t('status-cache-label')}</Text>{cacheRate}
-          </Text>
-        ),
-      })
-    }
   }
 
   let tpsPart: FieldPart | undefined
@@ -336,8 +332,11 @@ const selectionBadge = formatSelectionBadge(channel.selection)
       }
   const leftFields: FieldPart[] = [
     ...(statusBar.model
-      ? [{ key: 'model', id: 'model' as const, node: <Text color="inactiveShimmer">{channel.model}</Text> }]
+      ? [{ key: 'model', id: 'model' as const, node: <Text color="text">{channel.model}</Text> }]
       : []),
+    // grok order: model → context gauge + percent → counts → cache → effort.
+    ...(ctxField !== undefined ? [ctxField] : []),
+    ...(ctxCountsField !== undefined ? [ctxCountsField] : []),
     ...(tpsPart !== undefined ? [tpsPart] : []),
     ...(jobsPart !== undefined ? [jobsPart] : []),
     ...contextParts,
@@ -346,7 +345,7 @@ const selectionBadge = formatSelectionBadge(channel.selection)
           key: 'tokens',
           id: 'tokens' as const,
           node: (
-            <Text color="inactiveShimmer">
+            <Text color="text">
               {formatTokens(channel.tokens.input)}→{formatTokens(channel.tokens.output)}
             </Text>
           ),
@@ -365,7 +364,7 @@ const selectionBadge = formatSelectionBadge(channel.selection)
               key: 'cost',
               id: 'cost' as const,
               node: (
-                <Text color="inactiveShimmer">
+                <Text color="text">
                   {t('status-cost-label')}¥{estimate.toFixed(2)} {t(isPeakHour() ? 'cost-now-peak' : 'cost-now-idle')}
                 </Text>
               ),
@@ -408,7 +407,7 @@ const selectionBadge = formatSelectionBadge(channel.selection)
           key: 'cwd',
           id: 'cwd' as const,
           node: (
-            <Text color="inactiveShimmer">
+            <Text color="text">
               {statusBar.compact ? basename(displayCwd) : displayCwd}
             </Text>
           ),
@@ -452,33 +451,23 @@ const selectionBadge = formatSelectionBadge(channel.selection)
     activity.phase !== 'idle'
   const showTrajectory = statusBar.trajectory && wake !== undefined
 
-  const barWidth = columns - 4
-  const barColors: { freeFill: Color; freeText: Color } | undefined =
-    themeName === 'light'
-      ? undefined
-      : { freeFill: '#2E3440', freeText: '#8D95A6' }
-  const barVisible =
-    statusBar.contextBar &&
-    channel.contextBarEnabled &&
-    barWidth >= 14 &&
-    usage !== undefined &&
-    channel.contextWindow !== undefined
-
   // The supplemental-row readout for the hovered field: replaces the idle
   // hint (never the activity line) while the pointer dwells on a field.
-  const detail = buildHoverDetail(hover, channel, usage, contextUsed, columns, barColors)
+  const detail = buildHoverDetail(hover, channel, usage, contextUsed)
   const trailer: React.ReactNode = detail !== null
     ? detail
     : hint !== ''
       ? <Text color="inactiveShimmer">{hint}</Text>
       : null
 
+  // grok-style footer: one left-to-right field line (model → ctx gauge →
+  // counts → cache → effort · … · git/cwd right-aligned). The old two-ended
+  // split (metrics left, ctx gauge parked on the right margin) read as two
+  // clusters with dead space between; ctx now lives in the left group, so
+  // compact and full layouts collapse to the same single row shape.
   const compactFields = [...leftFields, ...rightFields]
-  const fullLeftFields = [
-    ...leftFields,
-    ...(ctxNode !== undefined ? [{ key: 'context', id: 'ctx' as const, node: ctxNode }] : []),
-  ]
-  const hasStatusFields = compactFields.length > 0 || ctxNode !== undefined
+  const fullLeftFields = [...leftFields]
+  const hasStatusFields = compactFields.length > 0
   // The supplemental row is PERMANENTLY mounted (height pinned to 1)
   // whenever the footer carries hoverable chrome — mounting it from nothing
   // on hover is what made the footer grow mid-gesture and shoved the
@@ -487,7 +476,7 @@ const selectionBadge = formatSelectionBadge(channel.selection)
   // content. Minimal mode keeps the old contract — no hover details, the
   // row appears only for real content (which its defaults never produce).
   const showSupplementalRow =
-    (!channel.minimal && (hasStatusFields || barVisible)) ||
+    (!channel.minimal && hasStatusFields) ||
     showActivity ||
     showTrajectory ||
     hint !== ''
@@ -496,43 +485,19 @@ const selectionBadge = formatSelectionBadge(channel.selection)
     // Width is pinned to the terminal rather than inherited: `width="100%"`
     // resolves against the *parent's* width, and the bottom chrome this sits
     // in is sized by cross-axis stretch, not by a definite value. Where that
-    // resolution comes back indefinite the column falls to content width — the
-    // context bar (a string sized from `columns`) still spans the terminal
-    // while the two flex rows under it stop short, truncating the session
+    // resolution comes back indefinite the column falls to content width —
+    // the status rows stop short of the terminal, truncating the session
     // title mid-word and leaving the right-aligned wake stranded mid-line.
-    // Taking the width from the same source the bar already uses makes the
-    // three rows agree by construction. verify-trace-scene part D walks a
-    // ladder of widths and asserts the wake reaches the right margin at each.
+    // verify-trace-scene part D walks a ladder of widths and asserts the
+    // wake reaches the right margin at each.
     <Box paddingX={1} width={columns} flexShrink={0}>
       <Box flexDirection="column" width="100%">
-        {/* Row 1: segmented context bar, its own line, first (pi-nano-context
-            placement — the bar sits directly under the transcript). Rendered
-            as per-segment Boxes so the fill can react to the pointer; the bar
-            carries no labels — hovering it parks the breakdown of every
-            content type on the supplemental row. */}
-        {barVisible ? (
-          <ContextBarView
-            segments={channel.contextSegments}
-            usedTokens={contextUsed ?? 0}
-            contextWindow={channel.contextWindow ?? 0}
-            width={barWidth}
-            colors={barColors}
-            onHover={hovered =>
-              setHover(current =>
-                hovered ? 'bar' : current === 'bar' ? null : current)}
-          />
-        ) : null}
-        {/* Row 2: optional status fields — every field is independently gated. */}
+        {/* Row 1: optional status fields — every field is independently gated. */}
         {hasStatusFields ? statusBar.compact ? (
-          <Box flexDirection="row" justifyContent="space-between" gap={2}>
+          <Box flexDirection="row" gap={2}>
             <Box flexGrow={1} flexShrink={1} flexDirection="row" overflow="hidden">
               <FieldLine parts={compactFields} hoverProps={hoverProps} />
             </Box>
-            {ctxNode !== undefined ? (
-              <Box flexShrink={0} {...hoverProps('ctx')}>
-                <Text wrap="truncate">{ctxNode}</Text>
-              </Box>
-            ) : null}
           </Box>
         ) : (
           <Box flexDirection="row" justifyContent="space-between" gap={2}>
@@ -604,45 +569,18 @@ function buildHoverDetail(
   channel: Channel,
   usage: UsageSnapshot | undefined,
   contextUsed: number | undefined,
-  columns: number,
-  barColors: { freeFill: Color; freeText: Color } | undefined,
 ): React.ReactNode | null {
   if (hover === null) return null
   const window = channel.contextWindow
   const dim = (label: string): React.ReactNode => <Text dimColor>{label}</Text>
-
-  if (hover === 'bar') {
-    if (window === undefined || window <= 0 || contextUsed === undefined) return null
-    // The bar's text-free design pays off here: this line is its legend, so
-    // every entry leads with a chip of the very color it names.
-    const { entries, separator } = contextBarBreakdown(
-      channel.contextSegments,
-      contextUsed,
-      window,
-      columns,
-      barColors?.freeFill ?? FREE_SEGMENT_FILL,
-    )
-    if (entries.length === 0) return null
-    return (
-      <Text wrap="truncate">
-        {entries.map((entry, index) => (
-          <React.Fragment key={entry.key}>
-            {index > 0 ? dim(separator) : null}
-            <Text backgroundColor={entry.color}> </Text>
-            {entry.label}
-          </React.Fragment>
-        ))}
-      </Text>
-    )
-  }
 
   switch (hover) {
     case 'ctx': {
       if (contextUsed === undefined || window === undefined || window <= 0) return null
       const free = Math.max(0, window - contextUsed)
       // The hover payoff for the ctx ask: percent + counts + free, then the
-      // segment breakdown as the truncate-able tail (no bar — the row's
-      // in-place morph and the segment bar above already carry the gauge).
+      // segment breakdown as the truncate-able tail (the inline gauge
+      // already carries the occupancy signal).
       const segments = USED_SEGMENTS.map(
         segment => `${segment.labels[1] ?? segment.key} ${formatTokens(channel.contextSegments[segment.key])}`,
       ).join(' · ')

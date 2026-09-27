@@ -7,13 +7,14 @@ import type { HostEffectClass } from '../ports/owner.js'
 
 type MethodKeys<T> = { [K in keyof T]: T[K] extends (...args: never[]) => unknown ? K : never }[keyof T]
 export type ChannelPreferences = Pick<ChannelUi,
-  | 'setDiffLayout' | 'setThinkingFold' | 'setToolBackground' | 'setScrollGutter'
+  | 'setDiffLayout' | 'setThinkingFold' | 'setToolBodyLines' | 'setToolBackground' | 'setScrollGutter'
   | 'setPageMargin' | 'setFoldTerminalCommand' | 'setPromptSessionLabel'
   | 'setExpandEditor' | 'setSmoothStreaming' | 'setStatusBar' | 'setWhale' | 'setWhaleIdle' | 'setMinimal'
 >
 export const CHANNEL_UI_EFFECTS = Object.freeze({
   'setDiffLayout': 'mutate',
   'setThinkingFold': 'mutate',
+  'setToolBodyLines': 'mutate',
   'setToolBackground': 'mutate',
   'setScrollGutter': 'mutate',
   'setPageMargin': 'mutate',
@@ -151,6 +152,7 @@ export const CHANNEL_UI_PROPERTIES = [
   'activityFrames',
   'diffLayout',
   'thinkingFold',
+  'toolBodyLines',
   'toolBackground',
   'scrollGutter',
   'pageMargin',

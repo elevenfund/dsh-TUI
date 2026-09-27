@@ -635,7 +635,8 @@ export async function apply(ctx: Context, runtimeConfig: RuntimeConfig<Config>, 
       tuiSettingsNs,
       Schema.object({
         diffLayout: Schema.union(['auto', 'split', 'unified']).default('auto'),
-        thinkingFold: Schema.union(['preview', 'full']).default('preview'),
+        thinkingFold: Schema.union(['fold', 'preview', 'full']).default('fold'),
+        toolBodyLines: Schema.number().min(0).max(50).default(0),
         toolBackground: Schema.union(['none', 'subtle', 'strong']).default('none'),
         scrollGutter: Schema.union(['timeline', 'scrollbar', 'hidden']).default('timeline'),
         // Preset names AND custom `NxM` specs (the settings field's parse
@@ -722,8 +723,9 @@ export async function apply(ctx: Context, runtimeConfig: RuntimeConfig<Config>, 
       minimal?: boolean
       fullscreen?: boolean
       terminalImages?: boolean
-      thinkingFold?: 'preview' | 'full'
+      thinkingFold?: 'fold' | 'preview' | 'full'
       effortDefault?: string
+      toolBodyLines?: number
       toolBackground?: ToolBackground
       scrollGutter?: ScrollGutterMode
       pageMargin?: PageMarginSetting
@@ -773,7 +775,8 @@ export async function apply(ctx: Context, runtimeConfig: RuntimeConfig<Config>, 
     // live and future render consumers observe the channel version bump.
     const applyDisplay = (value: SettingsValue): void => {
       if (shadow) return
-      channel.setThinkingFold(value.thinkingFold ?? config.thinkingFold ?? 'preview')
+      channel.setThinkingFold(value.thinkingFold ?? config.thinkingFold ?? 'fold')
+      channel.setToolBodyLines(value.toolBodyLines ?? config.toolBodyLines ?? 0)
       channel.setToolBackground(normalizeToolBackground(value.toolBackground ?? config.toolBackground))
       channel.setScrollGutter(normalizeScrollGutter(value.scrollGutter ?? config.scrollGutter))
       // Page margin: the channel carries the mode (tests observe it), the
@@ -1066,9 +1069,18 @@ export async function apply(ctx: Context, runtimeConfig: RuntimeConfig<Config>, 
           hintDescriptions: { zh: '预览模式显示 2-3 行动态思考；展开模式保持至轮末。点击流式思考块可在预览与全文间切换。' },
           kind: 'select',
           options: [
+            { value: 'fold', label: 'Fold (header only)', descriptions: { zh: '折叠（仅单行）' } },
             { value: 'preview', label: 'Preview (2-3 lines)', descriptions: { zh: '预览（2-3 行）' } },
             { value: 'full', label: 'Full until turn end', descriptions: { zh: '展开至轮末' } },
           ],
+        },
+        {
+          path: ['toolBodyLines'],
+          label: 'Tool body lines',
+          descriptions: { zh: '工具卡正文行数' },
+          hint: 'Collapsed tool cards keep at most this many body lines; 0 renders the header row only (grok-style one-line steps). Ctrl+O or a row click still expands the full card.',
+          hintDescriptions: { zh: '折叠的工具卡最多显示这么多正文行；0 表示只显示标题行（grok 式单行步骤）。Ctrl+O 或点击行仍可展开完整卡片。' },
+          kind: 'number',
         },
         {
           path: ['toolBackground'],

@@ -12,12 +12,11 @@ import { SPINNER_VERBS } from '../src/terminal-utils/spinnerVerbs.js'
 import {
   BLACK_CIRCLE,
   BULLET,
+  DIAMOND,
   DOWN_ARROW,
   MULTIPLICATION_X,
   POINTER,
   THINKING_SETTLED_MARKER,
-  THINKING_SPINNER_FRAMES,
-  THINKING_SPINNER_INTERVAL_MS,
   TICK,
   UP_ARROW,
 } from '../src/terminal-utils/figures.js'
@@ -46,8 +45,7 @@ const expectedFigureExports = [
   'MULTIPLICATION_X',
   'UP_ARROW',
   'DOWN_ARROW',
-  'THINKING_SPINNER_FRAMES',
-  'THINKING_SPINNER_INTERVAL_MS',
+  'DIAMOND',
   'THINKING_SETTLED_MARKER',
 ].sort()
 const figureSource = fs.readFileSync(path.join(repoRoot, 'src/terminal-utils/figures.ts'), 'utf8')
@@ -55,9 +53,7 @@ const actualFigureExports = [...figureSource.matchAll(/^export const ([A-Z0-9_]+
   .map(match => match[1]!)
   .sort()
 assert.deepEqual(actualFigureExports, expectedFigureExports, 'figures should contain active glyph exports only')
-assert.equal(THINKING_SPINNER_INTERVAL_MS, 80)
-assert.ok(THINKING_SPINNER_FRAMES.length > 0)
-assert.ok(THINKING_SPINNER_FRAMES.every(frame => stringWidth(frame) === stringWidth(THINKING_SETTLED_MARKER)))
+assert.equal(DIAMOND, THINKING_SETTLED_MARKER)
 assert.ok([BLACK_CIRCLE, POINTER, TICK, BULLET, MULTIPLICATION_X, UP_ARROW, DOWN_ARROW].every(Boolean))
 
 assert.deepEqual(getStallState(3000), { isStalled: false, intensity: 0 })

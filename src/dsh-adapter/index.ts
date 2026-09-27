@@ -95,10 +95,14 @@ export interface Config {
    *  terminals (≥110 cols) and unified below; `split`/`unified` force one
    *  layout. Editable live from the `/settings` screen. */
   diffLayout?: 'auto' | 'split' | 'unified'
-  /** Thinking-block display: `preview` (default) streams a 2-3 line live
-   *  preview and folds each step when it settles; `full` keeps thinking
+  /** Thinking-block display: `fold` (default) streams the single-line
+   *  header only and shows `Thought for Xs` when the step settles;
+   *  `preview` streams a 2-3 line live preview; `full` keeps thinking
    *  expanded until the whole turn ends. Editable live from `/settings`. */
-  thinkingFold?: 'preview' | 'full'
+  thinkingFold?: 'fold' | 'preview' | 'full'
+  /** Collapsed tool-card body line budget; 0 (default) keeps the card to
+   *  its header row only (grok-style one-line steps). */
+  toolBodyLines?: number
   /** Tool-card background strength; defaults to no added background. */
   toolBackground?: ToolBackground
   /** What the fullscreen transcript's right gutter shows (settings
@@ -174,7 +178,8 @@ export const Config: Schema<Config, RuntimeConfig<Config>> = editableConfig<Conf
   lang: Schema.string().required(false),
   preset: Schema.string().required(false),
   diffLayout: Schema.union(['auto', 'split', 'unified']).default('auto'),
-  thinkingFold: Schema.union(['preview', 'full']).default('preview'),
+  thinkingFold: Schema.union(['fold', 'preview', 'full']).default('fold'),
+  toolBodyLines: Schema.number().min(0).max(50).default(0),
   toolBackground: Schema.union(['none', 'subtle', 'strong']).default('none'),
   scrollGutter: Schema.union(['timeline', 'scrollbar', 'hidden']).default('timeline'),
   // Preset names AND custom `NxM` specs must survive validation (a custom

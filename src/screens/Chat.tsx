@@ -29,7 +29,7 @@ import { sessionCwdMatches, type ChatRow, type ComposerImageRef, type EffortOpti
 import type { QuestionStore } from '../dsh-adapter/questions.js'
 import { TuiDialogStore } from '../dsh-adapter/dialogs.js'
 import { TuiStatusStore, type TuiStatusViewUi } from '../dsh-adapter/status.js'
-import { ActivityStore, useActivity } from '../dsh-adapter/activity-store.js'
+import { ActivityPhase, ActivityStore, useActivity } from '../dsh-adapter/activity-store.js'
 import type { TranscriptImage } from '../dsh-adapter/transcript-images.js'
 import type { TuiShortcutHost } from '../dsh-adapter/shortcuts.js'
 import type { TuiThemeHost } from '../dsh-adapter/themes.js'
@@ -211,6 +211,20 @@ function capitalize(text: string): string {
 
 /** Terminal-title spinner frames. */
 const TITLE_SPINNER_FRAMES = ['⠂', '⠐']
+
+/** grok-style working line: the plugin's thinking/waiting `line` carries its
+ *  own elapsed decoration (` · total 3s` / ` · 总3s`) — the bare `phrase` is
+ *  preferred and any trailing elapsed segment is stripped as the fallback,
+ *  keeping the row one clean sentence (the thinking duration lands on the
+ *  settled `◆ Thought for Xs` row instead). Tool/done lines keep their own
+ *  timings, which describe the tool or the turn, not the wait. */
+function grokWorkingLine(
+  activity: { phase: ActivityPhase; line: string; phrase?: string },
+): string {
+  if (activity.phase === 'tool' || activity.phase === 'done') return activity.line
+  if (activity.phrase !== undefined && activity.phrase !== '') return activity.phrase
+  return activity.line.replace(/ · (?:total \S+|总\S+)$/u, '')
+}
 
 /** Searchable transcript text for one row (`/` incsearch):
  *  user text, assistant text, thinking, tool args/results, local output). */
@@ -4028,6 +4042,7 @@ export function Chat({
           model={channel.model}
           diffLayout={channel.diffLayout}
           thinkingFold={channel.thinkingFold}
+          toolBodyLines={channel.toolBodyLines}
           toolBackground={channel.toolBackground}
           foldTerminalCommand={channel.foldTerminalCommand}
           smoothStreaming={channel.smoothStreaming}
@@ -4095,23 +4110,18 @@ export function Chat({
           workingActivity.phase !== 'idle' ? (
             // The working-activity line replaces the random-verb spinner
             // while a turn runs: the plugin's live line (thinking copy /
-            // running tool / narration) is the status, with the spinner
-            // slot's token counter preserved as a suffix. Only real activity
-            // data replaces the spinner — before the first event, or with
-            // `activity: false`, the classic spinner still renders. The line
-            // hugs the left edge (no padding) so the self-narration reads as
-            // part of the transcript, aligned with the `❯` prompt below.
+            // running tool / narration) is the status, led by the shared
+            // blinking-diamond bullet. Only real activity data replaces the
+            // spinner — before the first event, or with `activity: false`,
+            // the classic spinner still renders. The line hugs the left
+            // edge (no padding) so the self-narration reads as part of the
+            // transcript, aligned with the `❯` prompt below.
               <Box marginTop={1}>
                 <ActivityLine
-                  activity={workingActivity}
+                  activity={{ ...workingActivity, line: grokWorkingLine(workingActivity) }}
                   activityFrames={channel.activityFrames}
                   warnPct={activityWarnPct}
                   warnDanger={activityWarnPct !== undefined && activityWarnPct >= 95}
-                  // Upload = real tokens of the last request; download =
-                  // the animated chars/4 estimate, matching the classic
-                  // spinner's counter (the suffix used raw chars before,
-                  // inflating the reading next to a real upload number).
-                  suffix={`${lastUploadTokens > 0 ? ` · ↑ ${formatTokens(lastUploadTokens)}` : ''} · ↓ ${formatTokens(Math.round(channel.responseChars / 4))} tokens`}
                 />
               </Box>
             ) : (

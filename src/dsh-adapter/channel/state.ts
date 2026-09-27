@@ -17,7 +17,9 @@ export interface ChannelLaunchOptions {
   seedActivity?: (session: unknown) => void
   activityFrames?: string
   diffLayout?: 'auto' | 'split' | 'unified'
-  thinkingFold?: 'preview' | 'full'
+  thinkingFold?: 'fold' | 'preview' | 'full'
+  /** Collapsed tool-card body line budget (0 = header-only, grok-style). */
+  toolBodyLines?: number
   toolBackground?: ToolBackground
   scrollGutter?: ScrollGutterMode
   pageMargin?: PageMarginSetting
@@ -56,7 +58,7 @@ export function createInitialChannelView(
   'notifications' | 'contextWindow' | 'reasoningEffort' | 'mode' | 'modeIndex' |
   'activityFrames' | 'configuredProvider' | 'configuredModel' |
   'configuredPreset' | 'configuredActivityFrames' | 'configuredLang' | 'diffLayout' |
-  'thinkingFold' | 'toolBackground' | 'scrollGutter' | 'pageMargin' |
+  'thinkingFold' | 'toolBodyLines' | 'toolBackground' | 'scrollGutter' | 'pageMargin' |
   'foldTerminalCommand' | 'promptSessionLabel' | 'expandEditor' | 'smoothStreaming' |
   'statusBar' | 'whale' | 'whaleIdle' | 'minimal' | 'activityEnabled' | 'contextBarEnabled' |
   'agentPreset' | 'goal' | 'todos' | 'loadedContext' | 'pending' | 'commandList' |
@@ -73,7 +75,8 @@ export function createInitialChannelView(
     activityFrames: normalizeActivityPreset(options.activityFrames), configuredProvider: options.configuredProvider,
     configuredModel: options.configuredModel, configuredPreset: options.configuredPreset,
     configuredActivityFrames: options.configuredActivityFrames, configuredLang: options.configuredLang,
-    diffLayout: options.diffLayout ?? 'auto', thinkingFold: options.thinkingFold ?? 'preview',
+    diffLayout: options.diffLayout ?? 'auto', thinkingFold: options.thinkingFold ?? 'fold',
+    toolBodyLines: options.toolBodyLines ?? 0,
     toolBackground: normalizeToolBackground(options.toolBackground), scrollGutter: normalizeScrollGutter(options.scrollGutter),
     pageMargin: normalizePageMargin(options.pageMargin), foldTerminalCommand: options.foldTerminalCommand === true,
     promptSessionLabel: options.promptSessionLabel === true, expandEditor: options.expandEditor !== false,
