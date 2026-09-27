@@ -69,6 +69,7 @@ export type ChannelActionDelegates = Pick<ChannelState,
   | 'pluginsInfo'
   | 'listSubagents'
   | 'subagentModes'
+  | 'subagentTranscript'
 > & {
   runLocalCommand(command: string, includeInContext: boolean): Promise<void>
 }
@@ -148,6 +149,7 @@ export function createChannelActionMethods(
     pluginsInfo: args => getReadyActions().pluginsInfo(args),
     listSubagents: () => getReadyActions().listSubagents(),
     subagentModes: () => getReadyActions().subagentModes(),
+    subagentTranscript: (agentId: string) => getReadyActions().subagentTranscript(agentId),
   }
 }
 

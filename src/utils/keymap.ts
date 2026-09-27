@@ -178,6 +178,7 @@ export type ShortcutActionId =
   | 'transcript'
   | 'trajectory'
   | 'dashboard'
+  | 'taskCenter'
   | 'contextPanel'
   | 'showAll'
   | 'questionFold'
@@ -200,10 +201,13 @@ export interface ShortcutActionSpec {
 export const SHORTCUT_ACTIONS: readonly ShortcutActionSpec[] = [
   { id: 'paste', defaults: ['ctrl+v', 'alt+v'] },
   { id: 'history', defaults: ['ctrl+r'] },
-  { id: 'editor', defaults: ['ctrl+g'] },
+  // editor moved off ctrl+g (alt+g keeps the mnemonic): ctrl+g now opens the
+  // unified task center (jobs + subagents in one classified panel).
+  { id: 'editor', defaults: ['alt+g'] },
   { id: 'transcript', defaults: ['ctrl+o'] },
   { id: 'trajectory', defaults: ['ctrl+t'] },
   { id: 'dashboard', defaults: ['ctrl+a'] },
+  { id: 'taskCenter', defaults: ['ctrl+g'] },
   { id: 'contextPanel', defaults: ['ctrl+p'] },
   { id: 'showAll', defaults: ['ctrl+e'] },
   { id: 'redraw', defaults: ['ctrl+l'] },

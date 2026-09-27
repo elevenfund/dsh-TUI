@@ -95,6 +95,9 @@ export function HelpMenu({
         <Text dimColor>{t('help-open-editor')}</Text>
       </Box>
       <Box>
+        <Text dimColor>{t('help-open-task-center')}</Text>
+      </Box>
+      <Box>
         <Text dimColor>{t('help-fold-todos', { mod: modLabel })}</Text>
       </Box>
       <Box>

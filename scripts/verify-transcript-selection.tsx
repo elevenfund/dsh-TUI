@@ -114,6 +114,14 @@ const toolResult = Array.from({ length: 60 }, (_, i) => `result-line-${i}`).join
 const listeners = new Set<() => void>()
 const followUpCalls: Array<[string, string]> = []
 const notifyCalls: string[] = []
+const killCalls: string[] = []
+const transcriptEvents = [
+  { type: 'user/message', data: { id: 'm1', source: { kind: 'user' }, content: [{ type: 'text', text: 'count tsx files under src' }] } },
+  { type: 'assistant/chunk', data: { chunk: { type: 'reasoning-delta', text: 'plan first' } } },
+  { type: 'tool/call', data: { callId: 'c1', name: 'Bash', arguments: '{"command":"find src -name *.tsx | wc -l"}' } },
+  { type: 'tool/result', data: { message: { source: { callId: 'c1' }, content: [{ type: 'text', text: '122' }] } } },
+  { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Found **122** tsx files' }] } } },
+]
 const channel: Record<string, unknown> = {
   version: 0,
   rows: [
@@ -164,7 +172,12 @@ const channel: Record<string, unknown> = {
   clear: () => {},
   notify(text: unknown) { notifyCalls.push(String(text)) },
   subagents: [],
+  backgroundJobs: [] as Array<Record<string, unknown>>,
   subagentModes: () => Promise.resolve({ 'sa-1': true, 'sa-2': false }),
+  subagentTranscript: (id: string) => Promise.resolve(id === 'sa-1' ? transcriptEvents : []),
+  jobControl: {
+    kill: (id: string) => { killCalls.push(id); return true },
+  },
   subagentControl: {
     interrupt: () => true,
     followUp: async (id: string, text: string) => { followUpCalls.push([id, text]); return true },
@@ -820,6 +833,53 @@ try {
   channel.subagents = []
   bump()
   await sleep(300) // 固定窗:pacing 等重渲染（chip 消失，不影响后续）
+
+  // T32: task center — unified panel (Ctrl+G), agent strip, and the
+  // transcript detail scene.
+  const saT32 = { agentId: 'sa-1', runId: 'sa-1', description: 'research task', provider: 'subagent', model: 'glm', status: 'running', startedAt: Date.now() - 3000, output: ['scanning docs'], outputEvents: [], toolCalls: [{ name: 'Grep' }] }
+  channel.subagents = [saT32]
+  bump()
+  check('T32a 常驻浮层出现（◍ 描述 + 实时尾行 + ⌃G 提示）',
+    await settled(() => screenHas('◍') && screenHas('research task') && screenHas('⌃G')))
+  stdin.write('\x07') // Ctrl+G → task center
+  await sleep(500) // 固定窗:pacing 等面板挂载
+  check('T32b Ctrl+G 打开任务中心（两区分区标题）',
+    screenHas('Task Center') && screenHas('Tasks (0)') && screenHas('Subagents (1)'))
+  check('T32c 焦点行统计与追问提示', screenHas('research task') && screenHas('m follow up'))
+  stdin.write('\r') // Enter → transcript detail scene
+  await sleep(500) // 固定窗:pacing 等 events 读取与折叠
+  check('T32d 详情=完整对话转录（user prompt + 定稿 assistant + 工具卡）',
+    screenHas('count tsx files under src') && screenHas('Found') && screenHas('122') && screenHas('Bash'),
+    viewportLines().slice(0, 8).join(' | '))
+  stdin.write('m')
+  await sleep(300) // 固定窗:pacing 等输入行
+  stdin.write('go deeper')
+  await sleep(300) // 固定窗:pacing 等输入批次
+  stdin.write('\r')
+  await sleep(500) // 固定窗:pacing 等投递
+  check('T32e 转录场景内追问投递', followUpCalls.some(([id, text]) => id === 'sa-1' && text === 'go deeper'),
+    JSON.stringify(followUpCalls))
+  stdin.write('\x1b') // 回面板
+  await sleep(300) // 固定窗:pacing 等返回
+  // Focus a running job row: seed one, reopen, kill with k.
+  channel.backgroundJobs = [{ id: 'j-9', kind: 'bash', label: 'watch logs', status: 'running', startedAt: Date.now() - 2000, outputLines: ['line-1'] }]
+  channel.subagents = [saT32]
+  bump()
+  await sleep(400) // 固定窗:pacing 等面板重渲染
+  check('T32f 面板含后台任务区行', screenHas('j-9') && screenHas('watch logs'))
+  // Move focus up into the tasks section then kill with k.
+  stdin.write('\x1b[A') // ↑ from subagents row (index 1) to job row (index 0)
+  await sleep(200) // 固定窗:pacing 等焦点移动
+  stdin.write('k')
+  await sleep(300) // 固定窗:pacing 等 kill 派发
+  check('T32g k 终止焦点后台任务', killCalls.length === 1 && killCalls[0] === 'j-9', JSON.stringify(killCalls))
+  stdin.write('\x1b') // 关闭面板
+  await sleep(300) // 固定窗:pacing 等卸载
+  check('T32h Esc 关闭任务中心回主界面', !screenHas('Task Center') && screenHas('◍'))
+  channel.subagents = []
+  channel.backgroundJobs = []
+  bump()
+  await sleep(300) // 固定窗:pacing 等清理重渲染
 
 } finally {
   app.unmount()

@@ -917,6 +917,12 @@ export async function apply(ctx: Context, runtimeConfig: RuntimeConfig<Config>, 
       hintEn: d => `Open the subagent dashboard. Default: ${d}.`,
       hintZh: d => `打开子代理面板。默认 ${d}。`,
     },
+    taskCenter: {
+      label: 'Task center shortcut',
+      zh: '任务中心快捷键',
+      hintEn: d => `Open the unified task center (jobs + subagents). Default: ${d}.`,
+      hintZh: d => `打开任务中心（后台任务 + 子代理同屏分区）。默认 ${d}。`,
+    },
     contextPanel: {
       label: 'Loaded-context panel shortcut',
       zh: '加载上下文面板快捷键',

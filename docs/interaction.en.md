@@ -14,7 +14,8 @@
 | `Alt/Option+Up` | Pull the latest undelivered message back into the editor |
 | `Up/Down` | Select menu items; in ordinary input, browse history or move through multiline text |
 | `Ctrl+V` / `Alt+V` | Insert clipboard text or files; images are sent as durable attachments. Use `Alt+V` when the terminal intercepts `Ctrl+V` |
-| `Ctrl+G` | Edit the current input in an external editor (`$VISUAL` → `$EDITOR`); saving and quitting fills it back, `:cq`/non-zero exit keeps the draft; with neither variable set the TUI asks you to configure one (no `vi` fallback) |
+| `Alt+G` | Edit the current input in an external editor (`$VISUAL` → `$EDITOR`); saving and quitting fills it back, `:cq`/non-zero exit keeps the draft; with neither variable set the TUI asks you to configure one (no `vi` fallback) (was `Ctrl+G`, which now opens the task center) |
+| `Ctrl+G` | Open the **task center**: background tasks and subagents in one classified panel (dedicated section below) |
 | `Ctrl+Shift+E` | Expand the fullscreen draft editor (or click the `⛶` affordance at the end of the input row): line numbers + current-line highlight + live line/char stats<br>`Enter` inserts a newline, `Ctrl+Enter` or the Send button sends, `Esc` or the Collapse button keeps the draft and returns<br>wheel-scrolls freely; click/drag/double-click selection work as in the inline prompt; remappable via `/settings` |
 | `Esc` | Ladder: close help → close the image preview → close the command menu → close the file menu (only the current `@` token)<br>→ **with a selection in the prompt input: only clear it (text untouched)** → interrupt the turn and redeliver pending messages → clear non-empty input → double-tap on empty input = rewind<br>in fullscreen, an active mouse selection is cleared first (not copied) |
 | `Esc` / `Ctrl+C` / `Enter` while an image preview is open | Close the preview and restore the surface underneath; other keys are not passed through |
@@ -145,7 +146,7 @@ prompt.
   - Click positions the caret; drag builds a selection; double-click selects a word; `Ctrl+C` copies the selection. Geometry is corrected for the gutter width.
   - The wheel scrolls the viewport freely: browsing does not snap back to the caret; any caret move re-engages following.
   - The Send/Collapse buttons are clickable with hover feedback.
-- Complements `Ctrl+G`: no `$VISUAL/$EDITOR` needed, never leaves the terminal.
+- Complements `Alt+G`: no `$VISUAL/$EDITOR` needed, never leaves the terminal.
 
 ## @ file references
 
@@ -381,6 +382,21 @@ A full-screen scene (no scrollback pollution) over the whole session timeline:
 | `Esc` | Close the dashboard |
 
 In the detail scene `←/→` page through Summary / Output / Tools (the output page tail-follows while running), `X` interrupts a running child (stops the current turn only; the inbox and descendants stay), `m` follows up, `Esc` returns to the list. A child settling while both surfaces are closed raises a status-line toast.
+
+### Task center (`Ctrl+G`)
+
+`Ctrl+G` opens the unified task center: **background tasks** (bash/pty jobs) and **subagents** classified in one screen (grok-style), one line each — status glyph, label, model, elapsed time, tokens, tool count; the focused row expands a detail block (command/output tail, last tool). The legacy `Ctrl+A` dashboard and the `/jobs` panel remain untouched.
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` | Move the focus across BOTH sections |
+| `Enter` | Open the subagent's **full conversation transcript** (user bubbles, markdown replies, folded reasoning toggled with `l/h`, tool cards — same rendering semantics as the main chat; a streaming child refreshes live with tail-follow) |
+| `k` | Kill the focused running job (`job_kill`) |
+| `X` | Interrupt the focused running subagent (stops the current turn) |
+| `m` | Follow up on the focused continuable subagent (send_message: steer a live child, cold-resume an idle one) |
+| `Esc` | Close |
+
+**Agent strip**: while any background task or subagent runs, a one-line readout appears under the input — one line per item (status glyph, description, live output tail, elapsed, token draw, refreshed every second); clicking a subagent line opens its transcript scene, the trailing `⌃G` hint is the keyboard door; it disappears when everything is idle. The status-line `● N` (jobs) and `⑂ N` (subagents) chips open the task center too.
 
 ### /settings editor
 

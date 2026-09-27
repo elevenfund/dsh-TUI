@@ -1006,6 +1006,7 @@ function createChannelWithOwner(
     pluginsInfo: reportActions.pluginsInfo,
     listSubagents: localActions.listSubagents,
     subagentModes: localActions.subagentModes,
+    subagentTranscript: localActions.subagentTranscript,
   })
 
   // Subagents inherit provider/model from AgentOptions, but resumed TUI

@@ -97,6 +97,9 @@ import { RecapPanel } from '../components/RecapPanel.js'
 import { isValidSessionColor, SESSION_COLOR_NAMES } from '../terminal-utils/sessionColors.js'
 import { TipsPanel } from '../components/TipsPanel.js'
 import { SubagentDashboard } from '../components/SubagentDashboard.js'
+import { TaskCenterPanel } from '../components/TaskCenterPanel.js'
+import { AgentStrip } from '../components/AgentStrip.js'
+import { TaskCenterDetail } from '../components/AgentTranscriptScene.js'
 import { JobsPanel } from '../components/JobsPanel.js'
 import { SubagentDetailScene } from '../components/SubagentDetailScene.js'
 import { FileActionsPanel, FILE_ACTION_COUNT } from '../components/FileActionsPanel.js'
@@ -804,8 +807,14 @@ export function Chat({
   const openJobsPanel = React.useCallback(() => setJobsPanelOpen(true), [])
   // Stable identity for the StatusLine subagents chip's click target.
   const openSubagentDashboard = React.useCallback(() => setSubagentDashboardOpen(true), [])
+  // The strip and the status chips open the unified task center (Ctrl+G).
+  const openTaskCenter = React.useCallback(() => setTaskCenterOpen(true), [])
   /** Detail view for a specific subagent (opened from dashboard). */
   const [subagentDetailId, setSubagentDetailId] = React.useState<string | null>(null)
+  /** Task center (Ctrl+G): the unified classified panel over jobs +
+   * subagents. Legacy Ctrl+A dashboard and /jobs panel stay untouched. */
+  const [taskCenterOpen, setTaskCenterOpen] = React.useState(false)
+  const [taskCenterDetailId, setTaskCenterDetailId] = React.useState<string | null>(null)
   /** Continuable child ids from the host catalog: the follow-up composer is
    * offered only on these rows (one-shot children dispose at settlement).
    * Re-read when the child set changes or the channel is replaced. */
@@ -3681,6 +3690,14 @@ export function Chat({
       event.stopImmediatePropagation()
       return
     }
+    if (actionMatches('taskCenter', input, key)) {
+      // The task center key (default Ctrl+G) opens the unified classified
+      // panel (jobs + subagents). Same consume rule as the dashboard key:
+      // Ctrl+G is also a readline binding (abort line) without the stop.
+      setTaskCenterOpen(true)
+      event.stopImmediatePropagation()
+      return
+    }
     if (actionMatches('contextPanel', input, key) && loadedContextVisible) {
       // The loaded-context panel key (default Ctrl+P) toggles the startup
       // panel while it is on screen (transcript still empty); once rows take
@@ -4138,6 +4155,59 @@ export function Chat({
     return fullscreen ? dashboard : <AlternateScreen>{dashboard}</AlternateScreen>
   }
 
+  // Task center: the unified classified panel (jobs + subagents) with its
+  // own detail scene for subagent rows.
+  if (taskCenterOpen) {
+    const panel = (
+      <TaskCenterPanel
+        jobs={channel.backgroundJobs ?? []}
+        subagents={[...channel.subagents]}
+        continuableIds={subagentContinuableIds}
+        onClose={() => setTaskCenterOpen(false)}
+        onKillJob={(id) => {
+          // Stub channels (verify harnesses) have no jobControl — surface
+          // the same failure toast as a refused kill instead of throwing.
+          if (channel.jobControl?.kill(id) !== true) {
+            channel.notify(t('jobs-kill-failed', { id }), { color: 'error' })
+          }
+        }}
+        onInterrupt={(id) => channel.subagentControl?.interrupt(id)}
+        onFollowUp={followUpSubagent}
+        onOpenSubagent={(id) => {
+          setTaskCenterOpen(false)
+          setTaskCenterDetailId(id)
+        }}
+      />
+    )
+    return fullscreen ? panel : <AlternateScreen>{panel}</AlternateScreen>
+  }
+  if (taskCenterDetailId !== null) {
+    const subagent = (channel.subagents ?? []).find(s => s.agentId === taskCenterDetailId)
+    if (subagent === undefined) {
+      setTaskCenterDetailId(null)
+      setTaskCenterOpen(true)
+    } else {
+      // The transcript scene re-reads on every channel.subagents snapshot
+      // change (streaming bumps) — same defensive optionality as above for
+      // stub verify channels.
+      const detail = (
+        <TaskCenterDetail
+          subagent={subagent}
+          version={channel}
+          readTranscript={(id: string) => channel.subagentTranscript?.(id) ?? Promise.resolve([])}
+          onInterrupt={(id: string) => channel.subagentControl?.interrupt(id)}
+          followUpEnabled={subagentContinuableIds.has(subagent.agentId)}
+          onFollowUp={followUpSubagent}
+          onBack={() => {
+            setTaskCenterDetailId(null)
+            setTaskCenterOpen(true)
+          }}
+        />
+      )
+      return fullscreen ? detail : <AlternateScreen>{detail}</AlternateScreen>
+    }
+  }
+
   /** Prompt input is inert while a modal dialog owns the keyboard. The
    *  overlay union covers every picker/dialog and /tips in one check;
    *  message-selection mode and the /btw panel live outside it. */
@@ -4555,12 +4625,20 @@ export function Chat({
           onDismissCaretPreview={dismissPeek}
           onSubmitted={() => handle?.scrollToBottom()}
         />
+        <AgentStrip
+          jobs={channel.backgroundJobs ?? []}
+          subagents={channel.subagents ?? []}
+          onOpenCenter={openTaskCenter}
+          onOpenSubagent={(id) => {
+            setTaskCenterDetailId(id)
+          }}
+        />
         <StatusLine
           channel={channel}
           activity={workingActivity}
           selectionActive={selectionActive}
           helpOpen={helpOpen}
-          onOpenSubagents={openSubagentDashboard}
+          onOpenSubagents={openTaskCenter}
           wake={
             wakeBand === undefined
               ? undefined

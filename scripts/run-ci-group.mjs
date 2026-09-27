@@ -590,6 +590,7 @@ const GROUPS = {
 // 分代（含上一 epoch 迟到 end 不得错杀）、resume 日志 bootstrap（历史行
 // 不进转录）、会话绑定延迟愈合与 peer 会话不污染。
     ["verify-subagent-panel-sync", ['node', '--import', 'tsx/esm', 'scripts/verify-subagent-panel-sync.tsx']],
+    ["verify-agent-transcript", ['node', '--import', 'tsx/esm', 'scripts/verify-agent-transcript.tsx']],
 // 子进程 stderr 接管回归（issue #17）：inherit 的 MCP 子进程 stderr
 // 不再裸写终端破坏 alt-screen，输出去重聚合为受控通知。
     ["verify-child-stderr", ['node', '--import', 'tsx/esm', 'scripts/verify-child-stderr.tsx']],

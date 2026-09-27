@@ -505,6 +505,9 @@ export interface ChannelUi {
    * One-shot children dispose at settlement and cannot receive mail, so their
    * rows keep the follow-up input hidden. */
   subagentModes(): Promise<Record<string, boolean>>
+  /** Full raw session events of one subagent (live snapshot, else the
+   * durable JSONL log) for the transcript detail scene. */
+  subagentTranscript(agentId: string): Promise<readonly unknown[]>
   /**
    * The agent view row snapshot: every live agent in
    * this process plus every persisted session that no live agent owns,

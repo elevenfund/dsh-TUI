@@ -1,11 +1,13 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { markChannelReadDirty } from '../../adapter/channel/read-view.js'
 import { writeActivityFrames } from '../../activityPrefs.js'
 import { isPresetName, normalizeActivityPreset } from '../../components/activityFrames.js'
 import { t } from '../../i18n.js'
 import { snapshotLiveSessionEvents } from '../compat/liveSession.js'
 import { runForegroundShell, type ForegroundShell } from '../compat/shell.js'
+import { locateSession } from '../sessions/index.js'
+import { decodeTail, readWindow } from '../sessions/frames.js'
 import { LOCAL_OUTPUT_LIMIT, preview, type foldBack as FoldBack } from './transcript.js'
 import type { ChannelState, ToolViewPresenter } from './types.js'
 
@@ -107,6 +109,39 @@ export function createLocalActions(deps: {
         return modes
       } catch {
         return {}
+      }
+    },
+    /**
+     * Full transcript events of one subagent session, newest-first truth:
+     * the live registry snapshot while the child (or its activation) is
+     * in-process, then the durable JSONL log for settled children. Returns
+     * raw session events; the caller folds them for rendering.
+     */
+    async subagentTranscript(agentId: string): Promise<readonly SessionEvent[]> {
+      const agents = ctx.get('agents') as {
+        get(id: unknown): { session: unknown } | undefined
+      } | undefined
+      const live = agents?.get(SessionId(agentId))
+      if (live !== undefined) return snapshotLiveSessionEvents(live.session) as readonly SessionEvent[]
+      const persistence = ctx.get('sessionPersistence')
+      if (persistence === undefined || persistence === null) return []
+      try {
+        const path = await locateSession(persistence as never, agentId)
+        if (path === undefined) return []
+        // The durable log is a chain of zstd frames (session.v4.jsonl.zstd):
+        // read a generous window from the tail and decode frame-tolerantly —
+        // a concurrent writer can flush mid-checksum.
+        const window = readWindow(path, 32 * 1024 * 1024, true)
+        if (window === undefined) return []
+        const events: SessionEvent[] = []
+        for (const line of decodeTail(window)) {
+          const record = line as { type?: string }
+          if (record.type === undefined) continue
+          events.push(line as SessionEvent)
+        }
+        return events
+      } catch {
+        return []
       }
     },
     async runLocalCommand(command: string, includeInContext: boolean): Promise<void> {

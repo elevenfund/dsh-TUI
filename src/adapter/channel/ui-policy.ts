@@ -103,6 +103,7 @@ export const CHANNEL_UI_EFFECTS = Object.freeze({
   'pluginsInfo': 'mutate',
   'listSubagents': 'read-only',
   'subagentModes': 'read-only',
+  'subagentTranscript': 'read-only',
   'agentViewRows': 'read-only',
   'subscribeAgentView': 'subscribe',
   'dispatchBackgroundAgent': 'mutate',
