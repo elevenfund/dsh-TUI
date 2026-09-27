@@ -188,10 +188,11 @@ function clonePermissionPresetSnapshot(snapshot: PermissionPresetSnapshot): Perm
   }
 }
 
-/** Row kinds the message-selection cursor can land on. */
+/** Row kinds the message-selection cursor can land on. Plain assistant
+ * text is excluded (grok-style): it carries no fold to expand, and its
+ * selection highlight reads as an accident, not an affordance. */
 const SELECTABLE_KINDS = new Set<ChatRow['kind']>([
   'user',
-  'assistant',
   'tool',
   'reasoning',
   'interrupt',
@@ -2808,7 +2809,12 @@ export function Chat({
     // this turn (setSelectionActive has not committed yet) — seed the cursor
     // from channel.rows directly or every later move no-ops on a null id.
     const last = channel.rows.findLast(row => SELECTABLE_KINDS.has(row.kind))
-    setSelectedId(last ? last.id : null)
+    if (last) {
+      setSelectedId(last.id)
+      seekRow(last.id)
+    } else {
+      setSelectedId(null)
+    }
   }
   const moveSelection = (delta: 1 | -1) => {
     if (selectedId === null) return
@@ -2816,7 +2822,13 @@ export function Chat({
     if (index < 0) return
     const next = selectableRows[index + delta]
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index
-    if (next) setSelectedId(next.id)
+    if (next) {
+      setSelectedId(next.id)
+      // Keep the cursor on screen: a selection walk off the viewport seeks
+      // the ScrollBox to the newly selected row (force-mounting folded
+      // window rows through the same path as history search).
+      seekRow(next.id)
+    }
   }
   // useCallback: these feed MessageList → MemoRow's shallow compare; fresh
   // closures each render would defeat every row's memo.

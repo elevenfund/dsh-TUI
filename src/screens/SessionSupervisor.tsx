@@ -184,16 +184,17 @@ export function SessionSupervisor({
       return
     }
     if (menuRef.current !== undefined) {
-      if (key.upArrow) {
+      const menuStep = (delta: number): void => {
         const current = menuRef.current
-        const next = { ...current, item: (current.item + MENU_ACTIONS.length - 1) % MENU_ACTIONS.length }
+        if (current === undefined) return
+        const next = { ...current, item: (current.item + MENU_ACTIONS.length + delta) % MENU_ACTIONS.length }
         menuRef.current = next
         setMenu(next)
-      } else if (key.downArrow) {
-        const current = menuRef.current
-        const next = { ...current, item: (current.item + 1) % MENU_ACTIONS.length }
-        menuRef.current = next
-        setMenu(next)
+      }
+      if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) {
+        menuStep(-1)
+      } else if (key.downArrow || (!isMod(key) && !key.meta && input === 'j')) {
+        menuStep(1)
       } else if (isPlainReturn(key)) {
         const current = menuRef.current
         const entry = railEntries.find(candidate => samePath(candidate.path, current.path))
@@ -238,6 +239,22 @@ export function SessionSupervisor({
     }
     if (key.rightArrow) {
       activateList()
+      return
+    }
+    // Vim navigation (h/j/k/l), only while the filter query is empty — a
+    // live query already claims every printable key, and stealing h/j/k/l
+    // mid-search would make those letters untypeable. h/l pick the column
+    // (same as ←/→), j/k walk the focused column (same as ↑/↓).
+    if (queryRef.current.length === 0 && !isMod(key) && !key.meta && !key.super && !key.return && !key.escape && !key.tab && (input === 'h' || input === 'j' || input === 'k' || input === 'l')) {
+      if (input === 'h') activateRail()
+      else if (input === 'l') activateList()
+      else if (input === 'j') {
+        if (activePane === 'rail') moveRail(1)
+        else moveSession(1)
+      } else {
+        if (activePane === 'rail') moveRail(-1)
+        else moveSession(-1)
+      }
       return
     }
     if (key.upArrow || key.wheelUp) {

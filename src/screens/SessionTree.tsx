@@ -441,8 +441,8 @@ export function SessionTree({
     }
 
     if (seat === 'menu') {
-      if (key.upArrow) setMenuIndex(index => wrapIndex(index, -1, options.length))
-      else if (key.downArrow) setMenuIndex(index => wrapIndex(index, 1, options.length))
+      if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) setMenuIndex(index => wrapIndex(index, -1, options.length))
+      else if (key.downArrow || (!isMod(key) && !key.meta && input === 'j')) setMenuIndex(index => wrapIndex(index, 1, options.length))
       else if (key.escape) setMenuNodeId(null)
       else if (isPlainReturn(key)) {
         const option = options[menuIndex]
@@ -455,6 +455,16 @@ export function SessionTree({
       return
     }
 
+    // Vim navigation (h/j/k/l), only while the query is empty — printable
+    // keys feed the live search otherwise. j/k step the tree (same as ↑/↓),
+    // h/l page by half a viewport (same as ←/→).
+    if (query === '' && !isMod(key) && !key.meta && (input === 'h' || input === 'j' || input === 'k' || input === 'l')) {
+      if (input === 'j') step(1)
+      else if (input === 'k') step(-1)
+      else if (input === 'h') step(-1, Math.max(1, Math.floor(listHeightRef.current / 2)))
+      else step(1, Math.max(1, Math.floor(listHeightRef.current / 2)))
+      return
+    }
     if (key.upArrow) step(-1)
     else if (key.downArrow) step(1)
     else if (key.wheelUp) step(-1, 1, false)

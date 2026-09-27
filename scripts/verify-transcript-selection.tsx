@@ -194,21 +194,20 @@ try {
   await sleep(250)
   check('T1 Tab 进入后打字失效', !screenHas('zz'))
 
-  // T2: 进入即选中最后一个可选行（assistant）——背景出现在该行。
+  // T2: 进入即选中最后一个可选行——assistant 纯文本已从可选集剔除，
+  // 末行是 tool；assistant 行保持无高亮。
+  const bashA = findText('Bash(')
   const asst = findText('assistant reply omega')
-  check('T2 进入即选中末行（背景高亮）', asst !== null && bgKey(asst.col, asst.row) !== defaultBg)
+  check('T2 进入即选中末行 tool 行（背景高亮）', bashA !== null && bgKey(bashA.col, bashA.row) !== defaultBg)
+  check('T2b assistant 纯文本不可选中', asst !== null && bgKey(asst.col, asst.row) === defaultBg)
 
-  // T3: ↑ 两次 → tool 行高亮 → user 行高亮（背景转移，光标会移动）。
-  stdin.write('\x1b[A')
-  await sleep(250)
-  const bash1 = findText('Bash(')
-  check('T3a ↑ 后 tool 行高亮', bash1 !== null && bgKey(bash1.col, bash1.row) !== defaultBg)
+  // T3: ↑ 一次到 user 行（中间没有 assistant 可停）。
   stdin.write('\x1b[A')
   await sleep(250)
   const user1 = findText('user line alpha')
   const bash2 = findText('Bash(')
   check(
-    'T3b ↑↑ 后 user 行高亮、tool 行释放',
+    'T3a ↑ 后 user 行高亮、tool 行释放',
     user1 !== null && bash2 !== null && bgKey(user1.col, user1.row) !== defaultBg && bgKey(bash2.col, bash2.row) === defaultBg,
   )
   // T4: ↓ 回到 tool 行，Enter 展开折叠正文。
@@ -233,6 +232,34 @@ try {
   await sleep(250)
   stdin.write('qq')
   check('T6 Esc 退出后打字恢复', await settled(() => screenHas('qq')))
+
+  // T7: 滚动跟随——追加大量行把新 tool 行推出视口，Tab 进入选择模式
+  // 选中它时 seekRow 应把它滚回可视区。
+  ;(channel.rows as Array<Record<string, unknown>>).push(
+    ...Array.from({ length: 60 }, (_, i) => ({ id: 10 + i, kind: 'assistant', text: `filler line ${i}` })),
+    {
+      id: 100,
+      kind: 'tool',
+      text: '',
+      tool: {
+        callId: 'c2',
+        name: 'bash',
+        argsText: '{"command":"tail-check"}',
+        status: 'ok',
+        resultText: 'tail-result-0',
+        startedAt: Date.now() - 1000,
+        durationMs: 30,
+      },
+    },
+  )
+  bump()
+  check('T7a 追加行渲染（sticky 底部跟随）', await settled(() => screenHas('filler line 59')))
+  check('T7b user 首行被推出视口', !screenHas('user line alpha'))
+  stdin.write('\t')
+  await sleep(300)
+  // 一路 ↑ 走到第一个可选行（user，在 60 行 filler 之上、视口之外）。
+  for (let i = 0; i < 70; i++) stdin.write('\x1b[A')
+  check('T7c ↑ 走到顶行时 seekRow 滚入视口', await settled(() => screenHas('user line alpha')))
 } finally {
   app.unmount()
 }

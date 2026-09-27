@@ -553,6 +553,16 @@ function family() {
     check('screen: 鼠标滚轮上移回去', await settled(() => screen().findIndex(line => line.includes('❯')) === wheelRow - 1), screen().filter(line => line.includes('❯')).join('|'))
   }
 
+  // vim 键：query 为空时 j/k 与 ↓/↑ 同步移动光标一行（h/l 与 ←/→ 走同一条
+  // step 半页路径，不单独断言）。
+  {
+    const vimRow = screen().findIndex(line => line.includes('❯'))
+    stdin.write('j')
+    check('screen: j 下移光标一行', await settled(() => screen().findIndex(line => line.includes('❯')) === vimRow + 1), screen().filter(line => line.includes('❯')).join('|'))
+    stdin.write('k')
+    check('screen: k 上移回去', await settled(() => screen().findIndex(line => line.includes('❯')) === vimRow), screen().filter(line => line.includes('❯')).join('|'))
+  }
+
   // Enter 打开操作菜单（焦点在活动叶 = live 会话，无切换选项）
   stdin.write('\r')
   check('screen: Enter 打开操作菜单', await settled(() => text().includes('回退到这里') && text().includes('从这分叉')))

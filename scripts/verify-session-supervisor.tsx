@@ -759,6 +759,49 @@ check(
   text(),
 )
 
+// Vim navigation (h/j/k/l) mirrors the arrows while the query is empty.
+console.log('vim keys h/j/k/l mirror the arrows while the query is empty:')
+stdin.write('l')
+check(
+  'l hands the cursor to the session column (same as →)',
+  await settled(() => !railCursor('▣', 'Alpha')),
+  `alpha=${railCursor('▣', 'Alpha')}`,
+)
+stdin.write('k')
+check(
+  'k walks the session list up to the card (same as ↑)',
+  await settled(() => cardFocus() && !sessionRowFocus('live session')),
+  `card=${cardFocus()} session=${sessionRowFocus('live session')}`,
+)
+stdin.write('j')
+check(
+  'j walks back down to the first session (same as ↓)',
+  await settled(() => sessionRowFocus('live session') && !cardFocus()),
+  `card=${cardFocus()} session=${sessionRowFocus('live session')}`,
+)
+stdin.write('h')
+check(
+  'h hands the cursor back to the rail (same as ←)',
+  await settled(() => railCursor('▣', 'Alpha')),
+  `alpha=${railCursor('▣', 'Alpha')}`,
+)
+// With a live query, the letters must keep feeding the filter, not move the
+// cursor: type a filter term containing j/k and confirm the box captured it.
+stdin.write('l')
+await settled(() => true)
+// Seed the query with a non-vim letter first: h/j/k/l stay navigation keys
+// only while the query is empty; once it holds text they must type in.
+stdin.write('f')
+await settled(() => true)
+stdin.write('jj')
+check(
+  'letters reach the live query instead of moving the cursor',
+  await settled(() => text().includes('fjj')),
+  text(),
+)
+stdin.write('\u007f\u007f\u007f')
+await settled(() => true)
+
 console.log('the pane entry starts a session:')
 // The entry is a full session-card row directly under the filter, so the
 // column-scan click lands on it rather than on a right-aligned header control.
