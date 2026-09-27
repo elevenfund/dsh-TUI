@@ -136,6 +136,9 @@ import { grokWorkingLine } from './chat/working-line.js'
 import { ModelPickerLoading, NewMessagesPill, PinnedTurnHeader, TranscriptSearch } from './chat/chrome.js'
 import { createOverlayKeyHandlers } from './chat/overlay-keys.js'
 import { selectionKeyIntent, selectionRestoreTarget, selectionStepId } from './chat/selection-mode.js'
+import { useSidePanels } from './chat/use-side-panels.js'
+import { peekKey, useImagePreview } from './chat/use-image-preview.js'
+import { useWorkspaceCommands } from './chat/use-workspace-commands.js'
 
 /** Strip the focus/global-input surface even from untyped plugins. Local
  * click, hover, and captured drag stay inside the view and are kept. */
@@ -276,10 +279,6 @@ let fallbackActivityStore: ActivityStore | undefined
 
 /** Identity of one caret-preview dismissal: the token (its title) on the
  *  image, so the same image staged twice is dismissed per token. */
-function peekKey(image: TranscriptImage, title: string | undefined): string {
-  return `${title ?? ''} ${image.id}`
-}
-
 export function Chat({
   channel,
   questionStore,
@@ -604,8 +603,6 @@ export function Chat({
    *  drafts and keyboard; Chat only opens it. */
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [workspaceTargets, setWorkspaceTargets] = React.useState<readonly TuiWorkspaceTarget[]>([])
-  const workspaceFlowRequestRef = React.useRef(0)
-  const workspaceFlowAbortRef = React.useRef<AbortController | null>(null)
   /** `/preset` agent-preset roster (issue #8): loads async, persists. */
   const [presetOptions, setPresetOptions] = React.useState<readonly PresetOption[]>([])
   /** `/effort` adapter levels: load async before the slider opens. */
@@ -622,123 +619,16 @@ export function Chat({
   const [thinkingVisible, setThinkingVisible] = React.useState(true)
   /** ctrl+r history-search entries (loaded on open, persists). */
   const [historyEntries, setHistoryEntries] = React.useState<readonly HistoryEntry[]>([])
+  const {
+    btw, setBtw, btwAbortRef, closeBtw,
+    recap, setRecap, recapAbortRef, closeRecap,
+    balance, setBalance, runBalance,
+  } = useSidePanels(channel)
   const [historyFill, setHistoryFill] = React.useState<string | null>(null)
   /** Monotonic token: only the latest rewind decision may land (a slow
    *  plugin answering after the user moved on must not open a confirm for
    *  a row they are no longer looking at). */
   const rewindRequestRef = React.useRef(0)
-  /** /btw side-question overlay: pure UI state — the answer never
-   *  enters the transcript or the session log. */
-  const [btw, setBtw] = React.useState<{ question: string; answer: string; error?: string; done: boolean } | null>(null)
-  const btwAbortRef = React.useRef<AbortController | null>(null)
-  const closeBtw = () => {
-    btwAbortRef.current?.abort()
-    btwAbortRef.current = null
-    setBtw(null)
-  }
-  /** /recap overlay (pi-recap semantics): pure UI state like /btw — the
-   *  summary never enters the transcript or session log; applying the
-   *  proposed title goes through the normal /rename path. `auto` marks the
-   *  recapOnOpen-triggered run (rendered as the dim AutoRecapRow until
-   *  expanded); `expanded` lifts an auto recap into the full RecapPanel;
-   *  `rowsAtTrigger` is the last user-row id when the auto run started —
-   *  a newer user row (the user starts a new message) retires the recap. */
-  const [recap, setRecap] = React.useState<{
-    raw: string
-    summary: string
-    title?: string
-    error?: string
-    done: boolean
-    titleApplied: boolean
-    auto?: boolean
-    expanded?: boolean
-    rowsAtTrigger?: number
-  } | null>(null)
-  const recapAbortRef = React.useRef<AbortController | null>(null)
-  const closeRecap = () => {
-    recapAbortRef.current?.abort()
-    recapAbortRef.current = null
-    setRecap(null)
-  }
-  /** /balance report (`BalanceReportRow`): pure UI state like /recap — the
-   *  result never enters the transcript or session log. Clicking the row
-   *  re-queries (refreshing keeps the stale summary visible); a session
-   *  switch retires the report. */
-  const [balance, setBalance] = React.useState<{
-    result: BalanceResult | null
-    refreshing: boolean
-  } | null>(null)
-  const balanceSeqRef = React.useRef(0)
-  const runBalance = React.useCallback(() => {
-    const seq = ++balanceSeqRef.current
-    setBalance(prev => ({ result: prev?.result ?? null, refreshing: true }))
-    void channel.balanceInfo().then(result => {
-      if (balanceSeqRef.current !== seq) return
-      setBalance({ result, refreshing: false })
-    })
-  }, [channel])
-  const balanceSessionId = channel.agentId
-  React.useEffect(() => {
-    // Retire every in-flight /balance completion from the previous binding;
-    // the balance seam has no UI session id in its readonly DTO.
-    balanceSeqRef.current += 1
-    setBalance(null)
-  }, [balanceSessionId])
-  // A side question belongs to its captured session just like a recap. Chat
-  // remains mounted across /resume, so explicitly retire its request/UI when
-  // the binding changes instead of allowing a former conversation to finish.
-  React.useEffect(() => {
-    btwAbortRef.current?.abort()
-    btwAbortRef.current = null
-    setBtw(null)
-  }, [channel.agentId])
-  // Auto-recap (`dsh-tui.recapOnOpen`): every time the session switches
-  // (mount = open/resume, rewind/fork included), summarize its tail into
-  // the dim AutoRecapRow. Failures stay silent in auto mode — `/recap`
-  // surfaces them; the summary never enters the transcript or session log.
-  const autoRecapSessionId = channel.agentId
-  React.useEffect(() => {
-    // A session switch retires the previous recap outright — an old
-    // session's 回顾 has no place above a new conversation.
-    setRecap(null)
-    if (!channel.autoRecapOnOpen) return
-    // No conversation yet (/new): nothing to recap, don't even fire.
-    if (!channel.rows.some(row => row.kind === 'user' || row.kind === 'assistant')) return
-    recapAbortRef.current?.abort()
-    const controller = new AbortController()
-    recapAbortRef.current = controller
-    const lastUserId = channel.rows.filter(row => row.kind === 'user').at(-1)?.id ?? -1
-    setRecap({ raw: '', summary: '', error: undefined, done: false, titleApplied: false, auto: true, expanded: false, rowsAtTrigger: lastUserId })
-    void channel.recapRecent({
-      signal: controller.signal,
-      onText: delta => setRecap(prev => (prev ? { ...prev, raw: prev.raw + delta } : prev)),
-    }).then(result => {
-      if (controller.signal.aborted) return
-      setRecap(prev => {
-        if (prev === null || !prev.auto) return prev
-        // Auto mode stays quiet on failure (no activity / llm missing / error).
-        if (result.summary === null) return null
-        return { ...prev, summary: result.summary, title: result.title, error: result.error, done: true }
-      })
-    }).catch(() => {
-      if (!controller.signal.aborted) setRecap(null)
-    })
-    return () => controller.abort()
-  }, [autoRecapSessionId])
-  // The user starts a new message → the auto recap has served its purpose
-  // (catching them up) and bows out. A newer user row is the signal; the
-  // assistant's own streamed rows don't count.
-  const lastUserRowId = channel.rows.filter(row => row.kind === 'user').at(-1)?.id ?? -1
-  React.useEffect(() => {
-    if (
-      recap !== null &&
-      recap.auto &&
-      recap.rowsAtTrigger !== undefined &&
-      lastUserRowId > recap.rowsAtTrigger
-    ) {
-      closeRecap()
-    }
-  }, [lastUserRowId, recap])
   /**
    * Session switches that do not go through `/new` (agent-view attach,
    * backgrounding, `/resume`) remount the transcript tree without resetting
@@ -968,36 +858,6 @@ export function Chat({
     else void setClipboard(path)
   }, [])
 
-  /** Shared open path for the modal image preview: composer `[Image #N]`
-   *  tokens and transcript thumbnails both land here. */
-  const openImagePreview = React.useCallback((image: TranscriptImage, title?: string): void => {
-    // Snapshot only metadata/facades on an explicit open, not on every streamed
-    // token. Unvisited attachments stay lazy and duplicate image occurrences stay distinct.
-    const gallery: { image: TranscriptImage; title?: string }[] = channel.rows.flatMap(row => (row.images ?? []).map(image => ({ image })))
-    let index = gallery.findIndex(entry => entry.image === image)
-    if (index < 0) { index = gallery.length; gallery.push({ image, title }) }
-    dispatchOverlay({
-      type: 'open',
-      overlay: { kind: 'image-preview', image, gallery, index, ...(title === undefined ? {} : { title }) },
-    })
-  }, [channel])
-  // Agent-binding generation is monotonic across every agent replacement
-  // and bumps before the replacement emit, closing the ABA hole where a
-  // resumed session reuses the same id. Partial test/embed channels fall
-  // back to staged-image generation.
-  const previewBindingGeneration = channel.agentBindingGeneration
-    ?? channel.stagedImageGeneration?.()
-    ?? 0
-  const previewGenerationRef = React.useRef(previewBindingGeneration)
-  const imagePreviewOwned = previewGenerationRef.current === previewBindingGeneration
-  React.useEffect(() => {
-    if (previewGenerationRef.current === previewBindingGeneration) return
-    previewGenerationRef.current = previewBindingGeneration
-    dispatchOverlay({ type: 'close-if', kind: 'image-preview' })
-  }, [previewBindingGeneration])
-  // A questionnaire/approval/plugin dialog owns the keyboard while pending
-  // (their guard runs BEFORE the overlay key chain), so a preview left open
-  // underneath would be visually on top yet key-dead. Close it instead.
   const previewBlocked = questionSnapshot !== null || approvalSnapshot !== null || dialogSnapshot !== null
   React.useEffect(() => {
     if (
@@ -1015,42 +875,6 @@ export function Chat({
   // walk from image to image with the card following. Esc (or a click
   // outside the card) dismisses it for THIS token until the caret leaves and
   // comes back; a click on the token always shows it again.
-  const [caretPreview, setCaretPreview] = React.useState<
-    { image: TranscriptImage; title?: string } | null
-  >(null)
-  const [peekSuppressed, setPeekSuppressed] = React.useState<string | null>(null)
-  const handleCaretImage = React.useCallback((
-    image: TranscriptImage | undefined,
-    title: string | undefined,
-    reason: 'caret' | 'click',
-  ): void => {
-    if (image === undefined) {
-      setCaretPreview(null)
-      setPeekSuppressed(null)
-      return
-    }
-    setCaretPreview({ image, ...(title === undefined ? {} : { title }) })
-    const key = peekKey(image, title)
-    setPeekSuppressed(current => reason === 'click' || current !== key ? null : current)
-  }, [])
-  const peekPreview =
-    !previewBlocked && overlay.kind === 'none' && caretPreview !== null
-      && peekSuppressed !== peekKey(caretPreview.image, caretPreview.title)
-      ? caretPreview
-      : null
-  /** Esc / click-outside on the peek: dismissed for this token until the
-   *  caret leaves it. PromptInput's Esc arm calls this first — its listener
-   *  runs before Chat's and the prompt stays live under a peek. */
-  const dismissPeek = (): void => {
-    if (peekPreview !== null) setPeekSuppressed(peekKey(peekPreview.image, peekPreview.title))
-  }
-  /** The card on screen, if any: the modal overlay first, else the peek. */
-  const activePreview: { image: TranscriptImage; title?: string; peek: boolean } | null =
-    !previewBlocked && overlay.kind === 'image-preview'
-      ? { image: overlay.image, ...(overlay.title === undefined ? {} : { title: overlay.title }), peek: false }
-      : peekPreview !== null
-        ? { ...peekPreview, peek: true }
-        : null
 
   const handleOpenTarget = React.useCallback((url: string): void => {
     const classification = classifyOpenTarget(url)
@@ -1165,6 +989,11 @@ export function Chat({
   // non-empty; the double-press exit only arms on an empty input).
   const ownPromptControllerRef = React.useRef<PromptController | null>(null)
   const promptControllerRef = promptControllerRefProp ?? ownPromptControllerRef
+  const {
+    openImagePreview, imagePreviewOwned, handleCaretImage,
+    peekPreview, dismissPeek, activePreview, setPeekSuppressed, stepPreview,
+    previewGallery, previewIndex,
+  } = useImagePreview({ channel, overlay, dispatchOverlay, previewBlocked, promptControllerRef })
   /**
    * Owner of the unsent draft. Every screen this component renders INSTEAD of
    * the conversation (the session screen, the tree, settings, the jobs and
@@ -1267,24 +1096,6 @@ export function Chat({
     }
     promptControllerRef.current?.clear()
   }, [draftSessionId])
-  const previewGallery = activePreview === null ? [] : activePreview.peek
-    ? promptControllerRef.current?.previewImages?.() ?? [activePreview]
-    : overlay.kind === 'image-preview' ? overlay.gallery ?? [activePreview] : []
-  // Peek entries are rebuilt from the prompt every render: match by
-  // attachment id + token title, not facade identity.
-  const previewIndex = activePreview?.peek
-    ? previewGallery.findIndex(entry => entry.image.id === activePreview.image.id && entry.title === activePreview.title)
-    : overlay.kind === 'image-preview' ? overlay.index ?? 0 : -1
-  const stepPreview = (delta: 1 | -1): void => {
-    if (!activePreview?.peek) { dispatchOverlay({ type: 'image-step', delta }); return }
-    const index = previewIndex + delta
-    const entry = previewGallery[index]
-    if (!entry) return
-    // A gallery click promotes the caret peek to a modal without moving or
-    // editing the draft. Suppress the original peek so Esc really closes it.
-    setPeekSuppressed(peekKey(activePreview.image, activePreview.title))
-    dispatchOverlay({ type: 'open', overlay: { kind: 'image-preview', ...entry, gallery: previewGallery, index } })
-  }
   // Publish the external-injection controller (dsh.nvim etc.) every render so
   // the adapter-owned socket can append to the prompt and submit. `submit`
   // mirrors an Enter press: `channel.submit` routes through the DSH inbox
@@ -1406,135 +1217,18 @@ export function Chat({
   useTerminalTitle(
     `${titlePrefix} 🐋 ${channel.sessionTitle}`,
   )
+  const {
+    handleWorkspaceResult,
+    workspaceFlowAbortRef, workspaceFlowRequestRef,
+    runWorkspaceFlowAction, workspaceMenuOptions,
+    openWorkspaceTarget, openWorkspaceResume, runWorkspaceMenuOption,
+  } = useWorkspaceCommands(channel, dispatchOverlay, setWorkspaceTargets)
 
-  const handleWorkspaceResult = (result: TuiWorkspaceCommandResult): void => {
-    workspaceFlowAbortRef.current = null
-    if (result.kind === 'target') {
-      dispatchOverlay({ type: 'close-if', kind: 'workspace-flow' })
-      void channel.switchWorkspace(result.target)
-      return
-    }
-    if (result.choices.length === 0) {
-      dispatchOverlay({ type: 'close-if', kind: 'workspace-flow' })
-      channel.notify(t('workspace-command-empty'))
-      return
-    }
-    // open-if: 'workspace-flow' stays allowed so an in-flow action can
-    // transition to its next stage; a picker the user opened after leaving
-    // the menu wins over a late command result.
-    dispatchOverlay({
-      type: 'open-if',
-      overlay: { kind: 'workspace-flow', flow: result, index: 0, busy: false, input: null },
-      when: ['none', 'workspace-flow'],
-    })
-  }
-
-  const runWorkspaceFlowAction = (
-    action: (signal: AbortSignal) => Promise<TuiWorkspaceCommandResult> | TuiWorkspaceCommandResult,
-  ): void => {
-    const request = ++workspaceFlowRequestRef.current
-    const controller = new AbortController()
-    workspaceFlowAbortRef.current = controller
-    dispatchOverlay({ type: 'flow-busy', busy: true })
-    void Promise.resolve()
-      .then(() => action(controller.signal))
-      .then((result) => {
-        if (request === workspaceFlowRequestRef.current) handleWorkspaceResult(result)
-      })
-      .catch((error: unknown) => {
-        if (request !== workspaceFlowRequestRef.current) return
-        workspaceFlowAbortRef.current = null
-        dispatchOverlay({ type: 'flow-busy', busy: false })
-        channel.notify(
-          t('workspace-command-failed', { err: error instanceof Error ? error.message : String(error) }),
-          { color: 'error', timeoutMs: 8000 },
-        )
-      })
-  }
-
-  /** Bare `/workspace` menu rows: built-in subcommands first, then the
-   *  dynamically registered extensions (same reserved-name filter the Tab
-   *  completion applies). Recomputed per render — the extension list is
-   *  live. */
-  const workspaceMenuOptions: ReadonlyArray<{ id: string; label: string; description: string }> = [
-    { id: 'resume', label: 'resume', description: t('workspace-menu-resume-desc') },
-    { id: 'rename', label: 'rename', description: t('workspace-menu-rename-desc') },
-    { id: 'open', label: 'open', description: t('workspace-menu-open-desc') },
-    // Optional call: verify/repro scripts and embedders stub the channel
-    // without the workspace-commands API — render must not throw for them
-    // (a thrown render unmounts the whole Ink root).
-    ...(channel.workspaceCommands?.() ?? [])
-      .filter(command => !['resume', 'rename', 'open'].includes(command.name.toLowerCase()))
-      .map(command => ({ id: command.name, label: command.name, description: command.description })),
-  ]
-
-  const openWorkspaceTarget = (reference: string): void => {
-    void channel.resolveWorkspace(reference).then((target) => {
-      if (target === undefined) {
-        channel.notify(t('workspace-uri-invalid', { uri: reference }), { color: 'error', timeoutMs: 8000 })
-        return
-      }
-      void channel.switchWorkspace(target)
-    }).catch((error: unknown) => {
-      channel.notify(
-        t('workspace-uri-failed', { err: error instanceof Error ? error.message : String(error) }),
-        { color: 'error', timeoutMs: 8000 },
-      )
-    })
-  }
-
-  const openWorkspaceResume = (): void => {
-    void channel.listWorkspaces().then((targets) => {
-      if (targets.length === 0) {
-        channel.notify(t('workspace-none'))
-        return
-      }
-      setWorkspaceTargets(targets)
-      // open-if: the listing is async — whatever the user opened meanwhile wins.
-      dispatchOverlay({
-        type: 'open-if',
-        overlay: {
-          kind: 'workspace-picker',
-          index: Math.max(0, targets.findIndex(target => target.cwd === channel.cwd)),
-        },
-        when: ['none'],
-      })
-    }).catch((error: unknown) => {
-      channel.notify(
-        t('workspace-list-failed', { err: error instanceof Error ? error.message : String(error) }),
-        { color: 'error' },
-      )
-    })
-  }
-
-  /**
-   * Run one /workspace menu row (Enter path, shared with the mouse click):
-   * built-ins dispatch locally, extension commands go through the channel.
-   */
-  const runWorkspaceMenuOption = (option: { id: string } | undefined): void => {
-    dispatchOverlay({ type: 'close-if', kind: 'workspace-menu' })
-    if (option === undefined) return
-    if (option.id === 'resume') {
-      openWorkspaceResume()
-    } else if (option.id === 'rename') {
-      channel.notify(t('workspace-rename-usage'))
-    } else if (option.id === 'open') {
-      channel.notify(t('workspace-open-usage'))
-    } else {
-      void channel.runWorkspaceCommand(option.id, '').then((result) => {
-        if (result !== undefined) handleWorkspaceResult(result)
-      }).catch((error: unknown) => {
-        channel.notify(
-          t('workspace-command-failed', { err: error instanceof Error ? error.message : String(error) }),
-          { color: 'error', timeoutMs: 8000 },
-        )
-      })
-    }
-  }
 
   /**
    * Dispatch a slash command; false lets the input flow to the model.
-   * Built-in names run the local switch; anything registered by a DSH
+   * Built-in names run the local switch; anyth
+ing registered by a DSH
    * plugin (plan/goal/…) dispatches through the command registry, whose
    * result text lands as a notification. `rawInput` carries the text after
    * the command name (`/plan off` → ` off`).
