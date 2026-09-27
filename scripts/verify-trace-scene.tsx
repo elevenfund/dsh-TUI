@@ -752,6 +752,7 @@ function makeChannel(overrides: Record<string, unknown> = {}): Record<string, un
         || (row !== undefined && stringWidth(row.replace(/\s+$/, '')) === cols - 1)
     })
     const hintRow = findHintRow()
+    if (process.env.WAKE_DEBUG) console.log(`[wake-dbg] cols=${cols} row=${hintRow === undefined ? 'none' : JSON.stringify(hintRow)} width=${hintRow === undefined ? -1 : stringWidth(hintRow.replace(/\s+$/, ''))}`)
     if (hintRow === undefined) {
       // Below `miniWakeWidth`'s floor the strip is meant to be absent; above
       // it, a missing row is itself the failure.
