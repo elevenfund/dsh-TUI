@@ -36,6 +36,32 @@ export interface ActivityLineValue {
   readonly line: string
 }
 
+/** Live thinking tail for the working line: while the model reasons, the
+ * actual streaming reasoning tail replaces the plugin's random thinking
+ * phrases (grok-style one-line thinking flow). Walks back to the CURRENT
+ * turn's reasoning row — settled ones keep their tail through the gap
+ * between two reasoning segments (settling then re-opening), and a user row
+ * bounds the turn, so a previous turn's thinking never leaks. Returns
+ * undefined before this turn's first reasoning delta — callers fall back to
+ * the plugin copy there. */
+export function liveThinkingTail(
+  rows: ReadonlyArray<{ kind: string; text: string; streaming?: boolean }>,
+): string | undefined {
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i]
+    if (row.kind === 'user') return undefined
+    if (row.kind === 'reasoning') {
+      const tail = row.text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line !== '')
+        .pop()
+      return tail !== undefined && tail !== '' ? tail : undefined
+    }
+  }
+  return undefined
+}
+
 export function ActivityLine({
   activity,
   warnPct,

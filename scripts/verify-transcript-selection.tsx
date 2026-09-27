@@ -945,6 +945,18 @@ try {
   bump()
   await sleep(300) // 固定窗:pacing 等清理重渲染
 
+  // T34: the working line's thinking phase shows the live reasoning tail
+  // (grok-style one-line thinking flow) instead of random phrases.
+  {
+    const { liveThinkingTail } = await import('../src/components/ActivityLine.js')
+    check('T34a liveThinkingTail 取流式 reasoning 尾行',
+      liveThinkingTail([{ kind: 'reasoning', text: 'first line\n\n  tail of thinking  ', streaming: true }]) === 'tail of thinking')
+    check('T34b 段间隙已 settle 的 reasoning 保留尾行',
+      liveThinkingTail([{ kind: 'reasoning', text: 'done thinking', streaming: false }]) === 'done thinking')
+    check('T34c 本 turn 无 reasoning（user 边界）回退短语',
+      liveThinkingTail([{ kind: 'assistant', text: 'old', streaming: false }, { kind: 'user', text: 'new turn', streaming: false }, { kind: 'tool', text: '', streaming: false }]) === undefined)
+  }
+
 } finally {
   app.unmount()
 }

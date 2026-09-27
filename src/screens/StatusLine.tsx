@@ -4,7 +4,7 @@ import { formatTokens } from '../terminal-utils/format.js'
 import { t } from '../i18n.js'
 import { formatContextUsage, DEFAULT_STATUS_BAR, normalizeStatusBar, type StatusBarConfig } from '../tuiDisplayPrefs.js'
 import { estimateSessionCostCny, estimateSessionCostSplitCny, isDeepSeekOfficialProvider, isPeakHour } from '../deepseekPricing.js'
-import { ActivityLine, contextPressurePct, type ActivityLineValue } from '../components/ActivityLine.js'
+import { ActivityLine, contextPressurePct, liveThinkingTail, type ActivityLineValue } from '../components/ActivityLine.js'
 import { GoalStatusChip } from '../components/GoalTodoPanel.js'
 import { formatJobDuration, type BackgroundJobState } from '../dsh-adapter/jobs.js'
 import type { SubagentState } from '../dsh-adapter/subagents.js'
@@ -572,7 +572,12 @@ const selectionBadge = formatSelectionBadge(channel.selection)
           >
             {showActivity && activity !== undefined ? (
               <ActivityLine
-                activity={activity}
+                activity={{
+                  ...activity,
+                  line: activity.phase === 'thinking'
+                    ? liveThinkingTail(channel.rows ?? []) ?? activity.line
+                    : activity.line,
+                }}
                 activityFrames={channel.activityFrames}
                 warnPct={contextPressurePct(usage, channel.contextWindow)}
                 warnDanger={

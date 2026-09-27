@@ -65,7 +65,7 @@ import type { BalanceResult } from '../deepseekBalance.js'
 import { LoadedContextPanel } from '../components/LoadedContextPanel.js'
 import { StatusLine } from './StatusLine.js'
 import { WorkingSpinner, useThinkingStatus } from '../components/WorkingSpinner.js'
-import { ActivityLine, contextPressurePct } from '../components/ActivityLine.js'
+import { ActivityLine, contextPressurePct, liveThinkingTail } from '../components/ActivityLine.js'
 import { ModelPicker } from '../components/ModelPicker.js'
 import { PluginSceneBoundary } from '../components/PluginSceneBoundary.js'
 import { PluginStatusViewBoundary } from '../components/PluginStatusViewBoundary.js'
@@ -4461,7 +4461,12 @@ export function Chat({
             // transcript, aligned with the `❯` prompt below.
               <Box marginTop={1}>
                 <ActivityLine
-                  activity={{ ...workingActivity, line: grokWorkingLine(workingActivity) }}
+                  activity={{
+                    ...workingActivity,
+                    line: workingActivity.phase === 'thinking'
+                      ? liveThinkingTail(channel.rows) ?? grokWorkingLine(workingActivity)
+                      : grokWorkingLine(workingActivity),
+                  }}
                   activityFrames={channel.activityFrames}
                   warnPct={activityWarnPct}
                   warnDanger={activityWarnPct !== undefined && activityWarnPct >= 95}
