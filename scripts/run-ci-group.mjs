@@ -186,6 +186,14 @@ const GROUPS = {
 // help 浮层让位、问询面板不让位（面板在转录下方且不消费这对键）、inline
 // 模式不接管（历史在终端原生 scrollback）、窄终端行为一致。
     ["verify-transcript-paging", ['node', 'scripts/verify-transcript-paging.mjs']],
+// 浏览区（选择模式）回归：Tab/Esc 进出与光标恢复、vim 键集（k/j 移动、
+// l/h 折叠、g/G 跳转、Ctrl+F/B 翻页）、Enter 详情卡、浮窗与选择模式内
+// Ctrl+C 三态（working 打断 / idle 退出或关闭）、G 重粘 sticky、浏览态
+// 提交回底、图片浮窗经缩略图点击打开的打断链、鼠标点击输入簇退出。
+    ['verify-transcript-selection', ['node', '--import', 'tsx/esm', 'scripts/verify-transcript-selection.tsx']],
+// 长会话下的浏览区回归：RENDERED_ROW_CAP 折叠区外的 g/G 跳转（forceMount
+// 扩窗）、sticky 底部姿态与折叠生效。
+    ['verify-transcript-selection-long', ['node', '--import', 'tsx/esm', 'scripts/verify-transcript-selection-long.tsx']],
 // zellij 兼容回归（DECSTBM 硬件滚动撤回）：zellij 的 CSI T 只在光标位于
 // 滚动区内时移动行，而渲染器把光标停在整屏最后一行（每个 ScrollBox 之下），
 // 位移被静默吞掉而差分引擎仍当作已发生 → 上滚时旧行残留/错行；zellij 实现了

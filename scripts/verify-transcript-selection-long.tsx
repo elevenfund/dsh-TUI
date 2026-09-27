@@ -180,7 +180,7 @@ const app = await render(
 bump()
 
 try {
-  await sleep(600) // 固定窗:Chat 首帧挂载 + 输入监听挂接，无单一可观测锚点
+  await sleep(600) // 固定窗:pacing 首帧挂载 + 输入监听挂接，无单一可观测锚点
   // S0: sticky 底部姿态 + 折叠生效（首行在折叠区，屏上只有最近窗口的行）。
   check('S0 末行可见（sticky 底部）', await settled(() => screenHas(TAIL_TEXT)))
   check('S0 首行被折叠（首行文本不在屏上）', !screenHas(FIRST_TEXT))
@@ -192,7 +192,7 @@ try {
 
   // L1: Tab 进入选择模式，选中末行 tool。
   stdin.write('\t')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   const lineHighlighted = (s: string): boolean => {
     const lines = viewportLines()
     for (let r = 0; r < lines.length; r++) {
@@ -209,7 +209,7 @@ try {
 
   // L3: g 跳首行 —— 核心：首行被 RENDERED_ROW_CAP 折叠在 visibleRows 之外，
   // forceMount 扩窗够不到，旧行为按 g 完全无反应。
-  await sleep(300) // 分开 data 事件：紧邻写入会被 useInput 合并成 "Gg"，g 分支不触发
+  await sleep(300) // 固定窗:pacing 分开 data 事件：紧邻写入会被 useInput 合并成 "Gg"，g 分支不触发
   stdin.write('g')
   check(
     'L3 g 穿透折叠窗口跳首行（高亮滚入）',
@@ -217,7 +217,7 @@ try {
     `visible=${screenHas(FIRST_TEXT)}`,
   )
   // L4: gg 第二按幂等（仍首行仍高亮）。
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('g')
   check('L4 gg 第二按幂等（仍首行仍高亮）', lineHighlighted(FIRST_TEXT))
 

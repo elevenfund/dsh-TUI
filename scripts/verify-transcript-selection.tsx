@@ -184,7 +184,7 @@ const app = await render(
 bump()
 
 try {
-  await sleep(600) // 固定窗:Chat 首帧挂载 + 输入监听挂接，无单一可观测锚点
+  await sleep(600) // 固定窗:pacing 首帧挂载 + 输入监听挂接，无单一可观测锚点
   check('S0 三行消息渲染', screenHas('user line alpha') && screenHas('Bash(') && screenHas('assistant reply omega'))
 
   // 未选中的折叠 tool 头取 fg 基线（rest 态 dim）。
@@ -199,9 +199,9 @@ try {
 
   // T1: 空闲 Tab 进入选择模式；PromptInput 挂起，打字不落地。
   stdin.write('\t')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('zz')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T1 Tab 进入后打字失效', !screenHas('zz'))
 
   // T2: 进入即选中最后一个可选行——assistant 正文也可达（导航要能到最
@@ -216,14 +216,14 @@ try {
 
   // T3: ↑ 一次到 tool 行、再 ↑ 到 reasoning 行。
   stdin.write('\x1b[A')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   const bash1 = findText('Bash(')
   check(
     'T3a ↑ 后 tool 行高亮且点亮（bg+fg）',
     bash1 !== null && bgKey(bash1.col, bash1.row) !== defaultBg && fgKey(bash1.col, bash1.row) !== dimFg,
   )
   stdin.write('\x1b[A')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   const thought1 = findText('Thought')
   const bash2 = findText('Bash(')
   check(
@@ -232,7 +232,7 @@ try {
   )
   // T4: ↓ 回到 tool 行，l 展开折叠正文。
   stdin.write('\x1b[B')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('l')
   // 60 行正文 > 40 行视口：展开后视口必须 pin 在被展开行的顶部——首行
   // 可见、末行被推出视口（pin 末行方向的回归即在此暴露）。
@@ -245,92 +245,111 @@ try {
 
   // T5: Tab 退出选择模式，打字恢复。
   stdin.write('\t')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('zz')
   check('T5 Tab 退出后打字恢复', await settled(() => screenHas('zz')))
 
   // T6: 再进一次，Esc 也能退出并恢复打字。
   stdin.write('\t')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\x1b')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('qq')
   check('T6 Esc 退出后打字恢复', await settled(() => screenHas('qq')))
 
   // T9: 选择模式里 Ctrl+O 随时生效并覆盖单行展开状态。断言用 reasoning
   // 行的 verbose 差异（展开=全文可见；收起=单行 Thought，正文不可见）。
   for (let i = 0; i < 8; i++) stdin.write('\x1b[5~')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\t')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T9-pre 选择模式已激活', await settled(() => screenHas('esc to return to input')))
   // 进入选择模式的光标现在落在末行 assistant（nearest 底对齐，页面回底）；
   // 先 g 跳回顶部，reasoning/tool 回到屏内，Ctrl+O 的展开才可见。
   stdin.write('g')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\x0f') // Ctrl+O → transcript mode on
-  await sleep(600)
+  await sleep(600) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T9a 选择模式里 Ctrl+O 全局展开（reasoning 全文可见）',
     await settled(() => screenHas('reasoning body marker xyz')),
   )
   stdin.write('\x0f') // Ctrl+O → off，单行 expandedRows 一并清除
-  await sleep(600)
+  await sleep(600) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T9b Ctrl+O 收起覆盖单行展开（reasoning 回折叠）',
     await settled(() => !screenHas('reasoning body marker xyz') && !screenHas('result-line-59')),
   )
   stdin.write('\x1b')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
 
   // T10: vim l/h 定向折叠——l 只展开（并 pin 行首），h 只收起，幂等。
   stdin.write('\t')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T10-pre 选择模式已激活', await settled(() => screenHas('esc to return to input')))
   stdin.write('g')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   const user10 = findText('user line alpha')
   check('T10a g 跳首行并高亮', user10 !== null && bgKey(user10.col, user10.row) !== defaultBg)
   stdin.write('j')
-  await sleep(200)
+  await sleep(200) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('j')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   const bash10 = findText('Bash(')
   check('T10b j j 选中 tool 行', bash10 !== null && bgKey(bash10.col, bash10.row) !== defaultBg)
   stdin.write('l')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T10c l 展开并 pin 首行',
     await settled(() => screenHas('result-line-0') && !screenHas('result-line-59')),
   )
   stdin.write('h')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T10d h 收起', await settled(() => !screenHas('result-line-0') && !screenHas('result-line-59')))
   stdin.write('h') // 已收起：幂等无操作
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   const bash10b = findText('Bash(')
   check('T10e h 幂等（仍收起、仍选中）', bash10b !== null && bgKey(bash10b.col, bash10b.row) !== defaultBg)
 
+  // T10f: 全局展开态独占折叠（Ctrl+O 契约）——l 在已全局展开的行上
+  // 不登记行级展开、不触发 pin 跳页；关回折叠全局态后该行保持折叠
+  // （旧行为会白登记一条，收起后展开残留）。
+  const topOf = (): string => viewportLines().find(line => line.trim() !== '') ?? ''
+  stdin.write('\x0f') // Ctrl+O → transcript mode on（tool 行随之展开）
+  await sleep(600) // 固定窗:pacing 全局重排 + reanchor 落定，无可观测锚点
+  const top10f = topOf()
+  stdin.write('l')
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check(
+    'T10f1 全局展开态 l 不跳页（视口顶不动）',
+    topOf() === top10f,
+  )
+  stdin.write('\x0f') // Ctrl+O → off：无行级登记 → tool 行回折叠
+  await sleep(600) // 固定窗:pacing 全局重排 + reanchor 落定，无可观测锚点
+  check(
+    'T10f2 全局展开态 l 无行级登记（收起后无展开残留）',
+    await settled(() => !screenHas('result-line-0') && !screenHas('result-line-59')),
+  )
+
   // T12: nearest 光标滚动——视口内移动只动光标、页面纹丝不动（旧
   // top-align 行为会把光标行钉到屏幕顶，页面每次跳变）。
-  const topOf = (): string => viewportLines().find(line => line.trim() !== '') ?? ''
   const before12 = topOf()
   stdin.write('k') // reasoning 行在屏内：光标上移，页面不动
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   const thought12 = findText('Thought')
   check(
     'T12a 视口内 k 光标上移、页面不动',
     thought12 !== null && bgKey(thought12.col, thought12.row) !== defaultBg && topOf() === before12,
   )
   stdin.write('j') // 回 tool 行，同样在屏内
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   const bash12 = findText('Bash(')
   check(
     'T12b 视口内 j 光标下移、页面不动',
     bash12 !== null && bgKey(bash12.col, bash12.row) !== defaultBg && topOf() === before12,
   )
   stdin.write('\x1b')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
 
 
 
@@ -355,16 +374,16 @@ try {
   )
   bump()
   stdin.write('\t')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T7a Tab 进入即 seek 到末行', await settled(() => screenHas('tail-check')))
   // 一路 ↑ 走到第一个可选行（user，在 60 行 filler 之上、视口之外）。
   // 单键间隔 100ms（人手速度）：同帧连发时 moveSelection 闭包里的
   // selectedId 是旧值，光标走不动——真实按键每键之间有一次 commit。
   for (let i = 0; i < 70; i++) {
     stdin.write('\x1b[A')
-    await sleep(100)
+    await sleep(100) // 固定窗:pacing 等输入批次与渲染帧排空
   }
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T7b ↑ 走到顶行时 seekRow 滚入视口',
     await settled(() => screenHas('user line alpha')),
@@ -388,7 +407,7 @@ try {
     return false
   }
   stdin.write('G')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   const tail11 = findText('tail-check')
   check(
     'T11a G 跳末行并滚入（高亮）',
@@ -402,7 +421,7 @@ try {
     `visible=${screenHas('user line alpha')}`,
   )
   stdin.write('g')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T11c gg 第二按幂等（仍首行仍高亮）',
     lineHighlighted('user line alpha'),
@@ -411,9 +430,9 @@ try {
   // T15: Tab 退出再进入（中间无输入）恢复光标与视口——旧行为重进时
   // findLast 种末行 + 滚底；只有 rows 变化（提交新消息）才应跟随底部。
   stdin.write('\t') // 退出（Chat 分支消费）
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\t') // 重进（PromptInput 的空闲 Tab）
-  await sleep(350)
+  await sleep(350) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T15a Tab 往返后光标恢复（仍 user 行、视口未跳底）',
     screenHas('esc to return to input') && lineHighlighted('user line alpha') && screenHas('user line alpha'),
@@ -422,34 +441,34 @@ try {
   // T16: 浮窗标题分支——user 行 → User message + 原文；reasoning 行 →
   // Thinking + 时长（T13 只测了 tool 行）。
   stdin.write('\r')
-  await sleep(450)
+  await sleep(450) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T16a user 行浮窗（User message 标题 + 原文）',
     await settled(() => screenHas('User message') && screenHas('user line alpha')),
   )
   stdin.write('\x1b')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('j') // user → reasoning（user 是首个可选行，k 不动）
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\r')
-  await sleep(450)
+  await sleep(450) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T16b reasoning 行浮窗（Thinking 标题）',
     await settled(() => screenHas('Thinking · 0.8s')),
   )
   stdin.write('\x1b')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
 
   // T17: 快照过期分支——退出后有新行（模拟提交），重进必须跟末行
   // 而不是恢复旧光标（"输入了才滚到底"的另一半）。
   stdin.write('\t') // 退出（快照当前 rows）
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   const rowsArr = channel.rows as Array<Record<string, unknown>>
   rowsArr.push({ id: 200, kind: 'user', text: 'fresh turn line' })
   bump()
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\t') // 重进：rows 已变 → 跟末行
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T17 提交新消息后重进跟随末行（非恢复旧光标）',
     screenHas('esc to return to input') && lineHighlighted('fresh turn line'),
@@ -459,32 +478,32 @@ try {
   // 不被 transcript 区域边缘裁掉（标题仍可见）。
   ;(channel as Record<string, unknown>).backgroundAgentsNeedingInput = 1
   bump()
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\r')
-  await sleep(500)
+  await sleep(500) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T18 输入簇增高时浮窗标题不被裁（maxRows=viewport 预算）',
     await settled(() => screenHas('User message')),
   )
   stdin.write('\x1b')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   ;(channel as Record<string, unknown>).backgroundAgentsNeedingInput = undefined
   bump()
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   // 复原 T13 的前提：光标回首个可选行（T13a 从 user jj 到 tool）。
   stdin.write('g')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
 
   // T13: Enter 打开 row-detail 浮窗（grok "Enter details" 语义）——全文在
   // 卡片内滚动阅读；折叠展开归 l/h；Esc/Enter 关闭回选择模式且光标不动。
   stdin.write('j')
-  await sleep(200)
+  await sleep(200) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('j')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T13a jj 光标到 tool 行', lineHighlighted('Bash('))
   stdin.write('\r')
-  await sleep(500)
-  const okTitle = await settled(() => screenHas('bash(seq 1 30)'))
+  await sleep(500) // 固定窗:pacing 等输入批次与渲染帧排空
+  const okTitle = await settled(() => screenHas('Bash(seq 1 30)'))
   const okArgs = screenHas('$ {"command"')
   const okHead = screenHas('result-line-0')
   const okHint = screenHas('j/k scroll')
@@ -504,18 +523,18 @@ try {
     }),
   )
   stdin.write('G')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T13d 浮窗内 G 滚到输出尾部', await settled(() => screenHas('result-line-59') && !screenHas('result-line-0')))
   stdin.write('\x1b')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T13e Esc 关闭浮窗、光标仍在 tool 行',
     !screenHas('j/k scroll') && screenHas('esc to return to input') && lineHighlighted('Bash('),
   )
   stdin.write('\r')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\r')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T13f Enter 关闭浮窗', !screenHas('j/k scroll') && screenHas('esc to return to input'))
 
   // T19/T20: 选择模式下的 Ctrl+C（grok 语义：Cancel turn 全局可达）——
@@ -527,30 +546,30 @@ try {
   }
   ;(channel as Record<string, unknown>).working = true
   bump()
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\x03')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T19a 选择模式 working Ctrl+C 打断（cancel 调用、仍在选择模式）',
     cancelCount === 1 && screenHas('esc to return to input') && lineHighlighted('Bash('),
   )
   ;(channel as Record<string, unknown>).working = false
   bump()
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\x03')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T20 选择模式 idle Ctrl+C 退出选择模式', !screenHas('esc to return to input'))
   stdin.write('\t')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T20b 重进选择模式（光标恢复 tool 行）', screenHas('esc to return to input') && lineHighlighted('Bash('))
 
   // T21: Ctrl+B / Ctrl+F vim 翻页（同 PgUp/PgDn 页大小）——视口移动、
   // selectedId 保留（k/j 把光标行拉回视口，翻页不与选择打架）。
   stdin.write('\x02') // Ctrl+B → page up
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T21a Ctrl+B 翻到会话顶部', await settled(() => screenHas('user line alpha')))
   stdin.write('k') // 光标 tool → reasoning，nearest seek 拉回视口
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T21b 翻页后 selectedId 保留（k 拉回高亮）',
     lineHighlighted('Thought'),
@@ -561,7 +580,7 @@ try {
   let pagedToBottom = false
   for (let i = 0; i < 12 && !pagedToBottom; i++) {
     stdin.write('\x06')
-    await sleep(250)
+    await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
     pagedToBottom = screenHas('fresh turn line') && !screenHas('back to bottom')
   }
   check('T21c Ctrl+F 连续翻页到底部（clamp 后 sticky 恢复、pill 消失）', pagedToBottom)
@@ -569,27 +588,116 @@ try {
   // T22/T23: 浮窗内 Ctrl+C——working 时打断且浮窗保持（grok: Cancel 全局，
   // Esc 才是 close）；idle 时维持关闭语义。
   stdin.write('j') // reasoning → tool
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\r')
-  await sleep(500)
-  check('T22a 浮窗打开', screenHas('bash(seq 1 30)'))
+  await sleep(500) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T22a 浮窗打开', screenHas('Bash(seq 1 30)'))
   ;(channel as Record<string, unknown>).working = true
   bump()
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\x03')
-  await sleep(300)
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
   check(
     'T22b 浮窗内 working Ctrl+C 打断且浮窗保持',
-    cancelCount === 2 && screenHas('bash(seq 1 30)'),
+    cancelCount === 2 && screenHas('Bash(seq 1 30)'),
   )
   ;(channel as Record<string, unknown>).working = false
   bump()
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write('\x03')
-  await sleep(300)
-  check('T23 浮窗内 idle Ctrl+C 关闭浮窗', !screenHas('bash(seq 1 30)') && screenHas('esc to return to input'))
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T23 浮窗内 idle Ctrl+C 关闭浮窗', !screenHas('Bash(seq 1 30)') && screenHas('esc to return to input'))
   stdin.write('\x1b')
-  await sleep(250)
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+
+  // T24: 图片预览浮窗内 Ctrl+C——与 row-detail 同一条全局打断契约：
+  // working 时打断且浮窗保持（Cancel 全局，Esc 才是 close）；idle 时关闭。
+  // 浮窗经缩略图点击打开（完整 Chat 键位链，非组件直渲染）。headless
+  // 终端不应答 alt-screen 探测——同 T14 的 onWrite 应答后 SGR 点击放行。
+  // push 后走 '\t' 进选择模式：enterSelection 的 findLast + 底对齐 seek
+  // 把新行 forceMount 滚入视口（mock 原地 push 不触发 sticky 补画）。
+  ;(channel.rows as Array<Record<string, unknown>>).push({
+    id: 300,
+    kind: 'user',
+    text: 'image turn line',
+    images: [{
+      id: 'img-shot',
+      width: 800,
+      height: 600,
+      name: 'shot.png',
+      async read() { return new Uint8Array() },
+    }],
+  })
+  bump()
+  stdin.write('\t') // 退出选择模式后重进：findLast → 新行滚入
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T24a 缩略图渲染（fallback 文本）', await settled(() => screenHas('[Image · shot.png]')),
+    `screen=${JSON.stringify(viewportLines().filter(l => l.trim() !== '').map(l => l.trim().slice(0, 60)))}`)
+  FakeStdout.onWrite = chunk => {
+    if (chunk.includes('[?1049$p')) {
+      queueMicrotask(() => stdin.write('\x1b[?1049;2$y'))
+    }
+  }
+  stdin.write('\x1b[I') // FOCUS_IN → 触发 alt-screen 探测
+  await sleep(300) // 固定窗:pacing 等探测应答与 altScreenActive 生效，无可观测锚点
+  const thumbRow = (() => {
+    const lines = viewportLines()
+    for (let r = 0; r < lines.length; r++) {
+      if (lines[r]!.includes('Image · shot.png')) return r
+    }
+    return -1
+  })()
+  check('T24b 定位缩略图行', thumbRow >= 0, `row=${thumbRow}`)
+  stdin.write(`\x1b[<0;5;${thumbRow + 1}M`) // press（SGR 坐标 1-based）
+  await sleep(120) // 固定窗:pacing 等输入批次与渲染帧排空
+  stdin.write(`\x1b[<0;5;${thumbRow + 1}m`) // release → dispatchClick
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T24c 点击缩略图打开图片预览浮窗', screenHas('Open original'))
+  ;(channel as Record<string, unknown>).working = true
+  bump()
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  stdin.write('\x03')
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+  check(
+    'T24d 图片浮窗内 working Ctrl+C 打断且浮窗保持',
+    cancelCount === 3 && screenHas('Open original'),
+  )
+  ;(channel as Record<string, unknown>).working = false
+  bump()
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  stdin.write('\x03')
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T24e 图片浮窗内 idle Ctrl+C 关闭浮窗', !screenHas('Open original'))
+
+  // T25: G 重粘 sticky——翻上去（自动跟随断开）→ G 跳末行恢复自动滚动 →
+  // 新行到达无需任何按键即滚入视口（grok 语义：跳到尾 = 重新跟随尾巴）。
+  stdin.write('\x02') // Ctrl+B 翻页离开底部
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T25a Ctrl+B 已离开底部', !screenHas('image turn line'))
+  stdin.write('G')
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T25b G 跳末行（末行滚入）', await settled(() => screenHas('image turn line')))
+  // T25c（真机项，headless 不可测）：G 重粘 sticky 后，流式新行应自动
+  // 滚入。mock 原地 push 不换 rows 引用，挂载窗口与 scrollHeight 互相
+  // 锁死（sticky=true 也不挂尾），headless 复现不了真实 emitStream 的
+  // 跟随链——该语义由真机 tmux 场景验证（见 DEV.md）。
+
+  // T26: 提交新 prompt 自动回底——浏览历史时提交，视图回到对话尾
+  // （新问题的回答在尾部，grok 提交即回底）。
+  stdin.write('\x02') // Ctrl+B 翻上去（断开跟随）
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check('T26a 已离开底部', !screenHas('image turn line'))
+  stdin.write('\x1b') // 退出选择模式回 composer
+  await sleep(250) // 固定窗:pacing 等输入批次与渲染帧排空
+  stdin.write('followme')
+  await sleep(300) // 固定窗:pacing 等输入批次与渲染帧排空
+  stdin.write('\r') // Enter 提交（mock submit 空函数，不落行）
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
+  check(
+    'T26b 提交后自动回底（尾部可见）',
+    await settled(() => screenHas('image turn line')),
+    `screen=${JSON.stringify(viewportLines().filter(l => l.trim() !== '').map(l => l.trim().slice(0, 50)).slice(-6))}`,
+  )
 
   // T14: 鼠标点击输入簇退出选择模式（Tab-back 的鼠标等价）。headless 终端
   // 不应答 alt-screen 探测——onWrite 收到 ?1049$p 时回 DECRPM set，
@@ -601,10 +709,10 @@ try {
     }
   }
   stdin.write('\t')
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T14a 重进选择模式', screenHas('esc to return to input'))
   stdin.write('\x1b[I') // FOCUS_IN → 触发 alt-screen 探测
-  await sleep(300) // 固定窗:等探测应答与 altScreenActive 生效，无可观测锚点
+  await sleep(300) // 固定窗:pacing 等探测应答与 altScreenActive 生效，无可观测锚点
   const inputRow = (() => {
     const lines = viewportLines()
     for (let r = lines.length - 1; r >= 0; r--) {
@@ -614,9 +722,9 @@ try {
   })()
   check('T14b 定位输入行', inputRow >= 0, `row=${inputRow}`)
   stdin.write(`\x1b[<0;5;${inputRow + 1}M`) // press（SGR 坐标 1-based）
-  await sleep(120)
+  await sleep(120) // 固定窗:pacing 等输入批次与渲染帧排空
   stdin.write(`\x1b[<0;5;${inputRow + 1}m`) // release → dispatchClick
-  await sleep(400)
+  await sleep(400) // 固定窗:pacing 等输入批次与渲染帧排空
   check('T14c 点击输入行退出选择模式', !screenHas('esc to return to input'))
   stdin.write('mm')
   check('T14d 退出后打字恢复', await settled(() => screenHas('mm')))

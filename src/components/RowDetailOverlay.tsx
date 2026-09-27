@@ -3,6 +3,7 @@ import { Box, ScrollBox, Text, useTerminalSize, type ScrollBoxHandle } from '../
 import type { ChatRow } from '../adapter/ports/channel-view.js'
 import { truncateToWidth } from '../ink/truncateToWidth.js'
 import { t } from '../i18n.js'
+import { toolDisplayName } from './messages/toolNames.js'
 
 /**
  * First-string argument summary for the card title: most tools put their
@@ -79,7 +80,7 @@ export function RowDetailOverlay({
   const tool = row.kind === 'tool' ? row.tool : undefined
   const isError = tool?.status === 'error'
   const title = tool
-    ? `${tool.name}(${truncateToWidth(summarizeArgs(tool.argsText), 48)}) · ${isError ? 'error' : secondsOf(tool.durationMs ?? 0)}`
+    ? `${toolDisplayName(tool.name)}(${truncateToWidth(summarizeArgs(tool.argsText), 48)}) · ${isError ? t('row-detail-error') : secondsOf(tool.durationMs ?? 0)}`
     : row.kind === 'reasoning'
       ? `${t('row-detail-thinking')} · ${secondsOf(row.durationMs ?? 0)}`
       : row.kind === 'assistant'

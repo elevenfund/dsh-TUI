@@ -11,7 +11,8 @@ import { useTooltip } from '../Tooltip.js'
 import { formatDuration } from '../../terminal-utils/format.js'
 import { formatClock } from '../../trajectory/format.js'
 import { foldLongLines } from '../../utils/fold-long-lines.js'
-import { getLang, t, type I18nKey } from '../../i18n.js'
+import { getLang, t } from '../../i18n.js'
+import { toolDisplayName } from './toolNames.js'
 import type { ToolBackground } from '../../tuiDisplayPrefs.js'
 import type { Theme } from '../../theme.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
@@ -80,32 +81,8 @@ type Props = {
   revealVersion?: number
 }
 
-/** Tool display names localize through the `tool-name-*` dictionary family
- *  (i18n.ts): DSH emits lowercase tool ids (`bash`), display names resolve
- *  per language — proper nouns (Bash, PowerShell) stay identical in zh.
- *  Unmapped ids (plugins, new upstream tools) fall back to the id with its
- *  first letter uppercased: that is a name, not copy — there is nothing to
- *  translate. Keys appear as literals here, so verify-i18n's dead-key scan
- *  sees them without a DYNAMIC_PREFIXES entry. */
-const TOOL_NAME_KEYS: Record<string, I18nKey> = {
-  bash: 'tool-name-bash',
-  powershell: 'tool-name-powershell',
-  read: 'tool-name-read',
-  glob: 'tool-name-glob',
-  grep: 'tool-name-grep',
-  write: 'tool-name-write',
-  edit: 'tool-name-edit',
-  todo_write: 'tool-name-todo_write',
-  subagent: 'tool-name-subagent',
-  web_search: 'tool-name-web_search',
-}
-
-function displayName(name: string): string {
-  const key = TOOL_NAME_KEYS[name]
-  if (key !== undefined) return t(key)
-  if (name.length === 0) return name
-  return name[0]!.toUpperCase() + name.slice(1)
-}
+/** Tool display names localize through the shared `tool-name-*` resolver
+ *  (toolNames.ts, shared with the row-detail card so both surfaces agree). */
 
 function parseJsonArgs(args: string): unknown {
   try { return JSON.parse(args) } catch { return undefined }
@@ -594,7 +571,7 @@ export function AssistantToolUseMessage({
   const isError = tool.status === 'error'
   const displayArgs = verbose ? tool.argsFull ?? tool.argsText : tool.argsText
   const result = tool.resultFull ?? tool.resultText
-  const name = displayName(tool.name)
+  const name = toolDisplayName(tool.name)
   const minWidth = stringWidth(name) + 2
   // The settled view carries the applied diff / actual output; while running,
   // the call view already shows the pending change.

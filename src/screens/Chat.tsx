@@ -3685,8 +3685,10 @@ export function Chat({
       } else if (!isMod(key) && !key.meta && input === 'l' && selectedId !== null) {
         // l expands (vim right = open). Same expanding-edge seek as Enter:
         // the row's head is pinned to the viewport top so the revealed
-        // body reads top-down.
-        if (!expandedRows.has(selectedId)) {
+        // body reads top-down. The global expand state owns fold states
+        // (Ctrl+O contract): when every row already shows expanded, l is
+        // a no-op — no redundant row-local registration, no seek jump.
+        if (!expanded && !expandedRows.has(selectedId)) {
           toggleRowExpanded(selectedId)
           seekRow(selectedId)
         }
@@ -3706,11 +3708,17 @@ export function Chat({
           revealAndSeekRow(first.id, 'nearest')
         }
       } else if (!isMod(key) && !key.meta && input === 'G') {
-        // G → last selectable row, bottom-aligned by the minimal seek.
+        // G → last selectable row AND the live tail: scrollToBottom both
+        // bottom-aligns the row (the last selectable row sits at the
+        // content bottom) and re-pins sticky, so content arriving after
+        // the jump stays in view instead of piling up under a pill —
+        // "jump to the end" means "follow the tail again" (grok semantics).
+        // A seekRowIntoView here would break stickiness (scrollTo-class op)
+        // right after the pin.
         const last = selectableRows[selectableRows.length - 1]
         if (last) {
           setSelectedId(last.id)
-          seekRowIntoView(last.id)
+          handle?.scrollToBottom()
         }
       } else if (plainReturn && selectedId !== null) {
         // grok semantics ("Enter details"): Enter opens the full-content
@@ -4484,6 +4492,7 @@ export function Chat({
           onCaretImage={handleCaretImage}
           caretPreviewOpen={peekPreview !== null}
           onDismissCaretPreview={dismissPeek}
+          onSubmitted={() => handle?.scrollToBottom()}
         />
         <StatusLine
           channel={channel}

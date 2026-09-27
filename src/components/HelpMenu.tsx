@@ -55,6 +55,12 @@ export function HelpMenu({
         <Text dimColor>{t('help-search-history', { mod: modLabel })}</Text>
       </Box>
       <Box>
+        <Text dimColor>{t('help-browse-transcript')}</Text>
+      </Box>
+      <Box>
+        <Text dimColor>{t('help-browse-page')}</Text>
+      </Box>
+      <Box>
         <Text dimColor>{t('help-interrupt')}</Text>
       </Box>
       <Box>
@@ -90,6 +96,12 @@ export function HelpMenu({
       </Box>
       <Box>
         <Text dimColor>{t('help-fold-todos', { mod: modLabel })}</Text>
+      </Box>
+      <Box>
+        <Text dimColor>{t('help-browse-move')}</Text>
+      </Box>
+      <Box>
+        <Text dimColor>{t('help-browse-expand')}</Text>
       </Box>
     </Box>
   )

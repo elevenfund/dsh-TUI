@@ -523,6 +523,14 @@ export interface PromptInputProps {
    */
   caretPreviewOpen?: boolean
   onDismissCaretPreview?(): void
+  /**
+   * A message left the composer (submit / steer / queue). Submitting is a
+   * focus move to the conversation tail — the reply lands at the bottom —
+   * so the caller scrolls the transcript home and re-pins sticky follow
+   * (grok semantics: a new prompt follows the answer, even when the user
+   * had scrolled away to browse history).
+   */
+  onSubmitted?(): void
 }
 
 /**
@@ -575,6 +583,7 @@ export function PromptInput({
   onCaretImage,
   caretPreviewOpen = false,
   onDismissCaretPreview,
+  onSubmitted,
 }: PromptInputProps) {
   const [themeName] = useTheme()
   // Raw stdout writer for OSC 52 clipboard writes (selection copy) — must
@@ -1379,6 +1388,7 @@ export function PromptInput({
     rememberHistory(trimmed, images)
     clearDeliveredDraft()
     channel.submit(trimmed, images)
+    onSubmitted?.()
     if (notice) {
       channel.notify(notice, { timeoutMs: 2500 })
     } else if (channel.working) {
@@ -1400,6 +1410,7 @@ export function PromptInput({
     rememberHistory(trimmed, images)
     clearDeliveredDraft()
     channel.steer(trimmed, images)
+    onSubmitted?.()
     channel.notify(t('input-interrupted-next'), { timeoutMs: 2500 })
   }
 
@@ -1415,6 +1426,7 @@ export function PromptInput({
     rememberHistory(trimmed, images)
     clearDeliveredDraft()
     channel.submit(trimmed, images)
+    onSubmitted?.()
     channel.notify(t('input-queued-after-turn'), { timeoutMs: 2500 })
   }
 

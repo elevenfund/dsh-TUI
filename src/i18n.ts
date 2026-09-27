@@ -806,6 +806,10 @@ const dict = {
   'help-cycle-mode': { zh: 'shift+tab 切换模式', en: 'shift+tab to cycle mode' },
   'help-open-editor': { zh: 'ctrl+g 打开编辑器', en: 'ctrl+g to open editor' },
   'help-fold-todos': { zh: '{{mod}}q 折叠待办', en: '{{mod}}q to fold todos' },
+  'help-browse-transcript': { zh: 'shift+↑/tab 浏览转录', en: 'shift+up/tab browse' },
+  'help-browse-page': { zh: '浏览中 ctrl+f/b 翻页', en: 'browsing: ctrl+f/b page' },
+  'help-browse-move': { zh: '浏览中 k/j/g/G 移动', en: 'browsing: k/j/g/G move' },
+  'help-browse-expand': { zh: '浏览中 l/h/enter 打开', en: 'browsing: l/h/enter open' },
   'goal-todo-fold-hint': { zh: '{{mod}}q 折叠', en: '{{mod}}q to fold' },
   'help-commands-title': { zh: '命令：', en: 'commands:' },
   'help-scroll-hint': {
@@ -897,6 +901,7 @@ const dict = {
   'row-detail-thinking': { zh: '思考过程', en: 'Thinking' },
   'row-detail-user': { zh: '用户消息', en: 'User message' },
   'row-detail-assistant': { zh: '回复', en: 'Reply' },
+  'row-detail-error': { zh: '错误', en: 'error' },
   'row-detail-hint': { zh: 'j/k 滚动 · g/G 首尾 · Esc 关闭', en: 'j/k scroll · g/G top/bottom · Esc close' },
   'statusline-hint-working': { zh: 'esc 中断', en: 'esc to interrupt' },
   'statusline-hint-shortcuts': { zh: '? 查看快捷键', en: '? for shortcuts' },
