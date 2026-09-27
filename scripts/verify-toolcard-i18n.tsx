@@ -106,8 +106,13 @@ const SCENARIOS: Scenario[] = [
       resultFull: '',
     },
     opts: { foldTerminalCommand: true },
-    zh: ['Bash(cd /tmp)', '… +2 行（ctrl+o 展开）'],
-    en: ['Bash(cd /tmp)', '… +2 lines (ctrl+o to expand)'],
+    // The collapsed terminal header shows the FIRST source line plus the
+    // fold ellipsis (`cd /tmp …`) — the full multi-line script only
+    // renders in verbose/expanded. The `+N lines` hint belongs to BODY
+    // folding (body-fold-hint case), not the header fold; this fixture's
+    // empty output has no body to fold.
+    zh: ['Bash(cd /tmp …'],
+    en: ['Bash(cd /tmp …'],
   },
   {
     id: 'exit-code-line',

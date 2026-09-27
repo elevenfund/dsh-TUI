@@ -43,7 +43,14 @@
  */
 
 /** @param {number} ms */
-export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+/**
+ * 测试节奏乘数（issue：93% 墙钟在 sleep）：DSH_TUI_TEST_PACE=n 缩短排空
+ * 等待类固定窗。按键节奏类（< 60ms，实证下限）原样不动——驱动节奏决定
+ * 模拟按键的 latch 语义，压它会引入时序假绿；≥ 60ms 的排空/挂载等待按
+ * 乘数压缩（0.2 ≈ 快 4~5 倍且断言仍过）。默认 1.0 = 现行为。
+ */
+const PACE = Math.max(0.05, Number(process.env.DSH_TUI_TEST_PACE ?? '1') || 1)
+export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms < 60 ? ms : Math.round(ms * PACE)))
 
 // CI 共享 runner 有负载抖动，条件成立即返回，加大上限只影响真失败的耗时。
 const DEFAULT_TIMEOUT_MS = process.env.CI ? 8000 : 4000
