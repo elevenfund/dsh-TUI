@@ -192,6 +192,10 @@ try {
   check('S0 tool 头可见', bashPos0 !== null)
   const dimFg = bashPos0 ? fgKey(bashPos0.col, bashPos0.row) : ''
   const defaultBg = bashPos0 ? bgKey(bashPos0.col, bashPos0.row) : ''
+  // 未选中的 assistant 行首 ● 取 fg 基线（选中态点亮用）。
+  const asstPos0 = findText('●')
+  check('S0 assistant 行可见', asstPos0 !== null)
+  const plainFg = asstPos0 ? fgKey(asstPos0.col, asstPos0.row) : ''
 
   // T1: 空闲 Tab 进入选择模式；PromptInput 挂起，打字不落地。
   stdin.write('\t')
@@ -200,38 +204,35 @@ try {
   await sleep(250)
   check('T1 Tab 进入后打字失效', !screenHas('zz'))
 
-  // T2: 进入即选中最后一个可选行——assistant 纯文本已从可选集剔除，
-  // 末行是 tool；assistant 行保持无高亮。
+  // T2: 进入即选中最后一个可选行——assistant 正文也可达（导航要能到最
+  // 底部的输出）；视觉是 ● 点亮，不刷整行蓝底。
+  const asstA = findText('●')
   const bashA = findText('Bash(')
-  const asst = findText('assistant reply omega')
-  check('T2 进入即选中末行 tool 行（背景高亮）', bashA !== null && bgKey(bashA.col, bashA.row) !== defaultBg)
-  check('T2b assistant 纯文本不可选中', asst !== null && bgKey(asst.col, asst.row) === defaultBg)
+  check(
+    'T2 进入即选中末行 assistant 行（● 点亮、无整行背景）',
+    asstA !== null && fgKey(asstA.col, asstA.row) !== plainFg && bgKey(asstA.col, asstA.row) === defaultBg,
+  )
+  check('T2b tool 行保持无高亮', bashA !== null && bgKey(bashA.col, bashA.row) === defaultBg)
 
-  // T3: ↑ 一次到 reasoning 行、再 ↑ 到 user 行（assistant 不可选）。
+  // T3: ↑ 一次到 tool 行、再 ↑ 到 reasoning 行。
+  stdin.write('\x1b[A')
+  await sleep(250)
+  const bash1 = findText('Bash(')
+  check(
+    'T3a ↑ 后 tool 行高亮且点亮（bg+fg）',
+    bash1 !== null && bgKey(bash1.col, bash1.row) !== defaultBg && fgKey(bash1.col, bash1.row) !== dimFg,
+  )
   stdin.write('\x1b[A')
   await sleep(250)
   const thought1 = findText('Thought')
   const bash2 = findText('Bash(')
   check(
-    'T3a ↑ 后 reasoning 行高亮、tool 行释放',
+    'T3a2 ↑↑ 后 reasoning 行高亮、tool 行释放',
     thought1 !== null && bash2 !== null && bgKey(thought1.col, thought1.row) !== defaultBg && bgKey(bash2.col, bash2.row) === defaultBg,
   )
-  stdin.write('\x1b[A')
-  await sleep(250)
-  const user1 = findText('user line alpha')
-  const bash3a = findText('Bash(')
-  check(
-    'T3a2 ↑↑ 后 user 行高亮、reasoning 释放',
-    user1 !== null && bash3a !== null && bgKey(user1.col, user1.row) !== defaultBg,
-  )
-  // T4: ↓ 两次回到 tool 行，Enter 展开折叠正文。
-  stdin.write('\x1b[B')
-  await sleep(200)
+  // T4: ↓ 回到 tool 行，l 展开折叠正文。
   stdin.write('\x1b[B')
   await sleep(250)
-  // T3c: 选中点亮的 tool 头 fg 与 rest 态不同（dim → lit）。
-  const bash3 = findText('Bash(')
-  check('T3c 选中后 tool 头点亮（fg 变化）', bash3 !== null && fgKey(bash3.col, bash3.row) !== dimFg)
   stdin.write('l')
   // 60 行正文 > 40 行视口：展开后视口必须 pin 在被展开行的顶部——首行
   // 可见、末行被推出视口（pin 末行方向的回归即在此暴露）。
@@ -263,6 +264,10 @@ try {
   stdin.write('\t')
   await sleep(300)
   check('T9-pre 选择模式已激活', await settled(() => screenHas('esc to return to input')))
+  // 进入选择模式的光标现在落在末行 assistant（nearest 底对齐，页面回底）；
+  // 先 g 跳回顶部，reasoning/tool 回到屏内，Ctrl+O 的展开才可见。
+  stdin.write('g')
+  await sleep(400)
   stdin.write('\x0f') // Ctrl+O → transcript mode on
   await sleep(600)
   check(
@@ -353,8 +358,18 @@ try {
   await sleep(400)
   check('T7a Tab 进入即 seek 到末行', await settled(() => screenHas('tail-check')))
   // 一路 ↑ 走到第一个可选行（user，在 60 行 filler 之上、视口之外）。
-  for (let i = 0; i < 70; i++) stdin.write('\x1b[A')
-  check('T7b ↑ 走到顶行时 seekRow 滚入视口', await settled(() => screenHas('user line alpha')))
+  // 单键间隔 100ms（人手速度）：同帧连发时 moveSelection 闭包里的
+  // selectedId 是旧值，光标走不动——真实按键每键之间有一次 commit。
+  for (let i = 0; i < 70; i++) {
+    stdin.write('\x1b[A')
+    await sleep(100)
+  }
+  await sleep(300)
+  check(
+    'T7b ↑ 走到顶行时 seekRow 滚入视口',
+    await settled(() => screenHas('user line alpha')),
+    `uservis=${screenHas('user line alpha')} top=${JSON.stringify((viewportLines().find(l => l.trim() !== '') ?? '').slice(0, 50))} asstvis=${screenHas('assistant reply omega')}`,
+  )
   // T7b 最后一个 forceMount 的清除宏任务（setTimeout 0）此刻可能尚未排空：
   // 窗口还带着旧扩窗、末行 el 仍挂载；紧按 G 会让 scrollToElement 的 anchor
   // 在清除触发的收窄 re-render 里随行一起卸载，anchorTop 读不到、seek 静默

@@ -190,13 +190,16 @@ function clonePermissionPresetSnapshot(snapshot: PermissionPresetSnapshot): Perm
   }
 }
 
-/** Row kinds the message-selection cursor can land on. Plain assistant
- * text is excluded (grok-style): it carries no fold to expand, and its
- * selection highlight reads as an accident, not an affordance. */
+/** Row kinds the message-selection cursor can land on. Assistant text IS
+ *  navigable (the cursor must reach the bottom-most reply — G lands on the
+ *  last row, whatever its kind), but its selection visual is the bullet
+ *  lighting up, not a full-row background (user feedback: a blue assistant
+ *  row reads as an accident, not an affordance). */
 const SELECTABLE_KINDS = new Set<ChatRow['kind']>([
   'user',
   'tool',
   'reasoning',
+  'assistant',
   'interrupt',
   'local',
   'local-output',
@@ -4214,6 +4217,7 @@ export function Chat({
             <RowDetailOverlay
               row={detailRow}
               scrollRef={rowDetailScrollRef}
+              maxRows={handle?.getViewportHeight()}
               onClose={() => dispatchOverlay({ type: 'close-if', kind: 'row-detail' })}
             />
           ) : null

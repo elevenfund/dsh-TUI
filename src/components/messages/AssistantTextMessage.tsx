@@ -33,16 +33,13 @@ export function AssistantTextMessage({
       justifyContent="space-between"
       marginTop={marginTopOnTurn ? 1 : 0}
       width="100%"
-      backgroundColor={
-        isSelected
-          ? 'messageActionsBackground'
-          : isExpanded
-            ? 'userMessageBackgroundHover'
-            : undefined
-      }
+      backgroundColor={isExpanded ? 'userMessageBackgroundHover' : undefined}
     >
       <Box flexDirection="row">
         <NoSelect fromLeftEdge minWidth={2}>
+          {/* Selection cursor lights the bullet only — the row body stays
+              untinted (full-row highlight on plain text reads as an
+              accident, not a cursor affordance). */}
           <Text color={isSelected ? 'suggestion' : 'text'}>{BLACK_CIRCLE}</Text>
         </NoSelect>
         <Box flexDirection="column">

@@ -41,20 +41,26 @@ export function RowDetailOverlay({
   row,
   scrollRef,
   onClose,
+  maxRows,
 }: {
   readonly row: ChatRow
   /** Receives the card body's ScrollBox handle (Chat routes scroll keys). */
   readonly scrollRef?: React.Ref<ScrollBoxHandle>
   readonly onClose: () => void
+  /** Height budget of the mount region (the transcript viewport). The
+   *  card mounts inside it, so sizing from full-screen rows overestimates
+   *  whenever the input cluster grew (queue/btw/background rows) and the
+   *  card's head gets clipped against the region's top edge. */
+  readonly maxRows?: number
 }): React.ReactNode {
   const { columns, rows } = useTerminalSize()
   // The card mounts INSIDE the transcript row, so its height budget must
-  // respect that region, not the screen: ~4 rows of bottom chrome (pill /
-  // prompt / statusline), up to 2 rows of pinned turn header above, and a
-  // breathing margin. Sizing to the full screen would clip the card's top
-  // rows (title, args, first content line) against the region's edge.
+  // respect that region, not the screen: the caller passes the live
+  // viewport height; the rows fallback covers the first frame (and hosts
+  // without a handle). Bottom margin 2 + the region budget itself.
+  const regionRows = maxRows !== undefined && maxRows > 0 ? maxRows : rows - 8
   const cardColumns = Math.max(40, Math.min(columns - 4, Math.floor(columns * 0.95)))
-  const cardRows = Math.max(10, rows - 10)
+  const cardRows = Math.max(6, Math.min(regionRows - 2, rows - 10))
   const left = Math.max(0, Math.floor((columns - cardColumns) / 2))
   const bottom = 2
 
@@ -64,7 +70,9 @@ export function RowDetailOverlay({
     ? `${tool.name}(${truncateToWidth(summarizeArgs(tool.argsText), 48)}) · ${isError ? 'error' : secondsOf(tool.durationMs ?? 0)}`
     : row.kind === 'reasoning'
       ? `${t('row-detail-thinking')} · ${secondsOf(row.durationMs ?? 0)}`
-      : t('row-detail-user')
+      : row.kind === 'assistant'
+        ? t('row-detail-assistant')
+        : t('row-detail-user')
 
   return (
     <>

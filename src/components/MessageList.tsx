@@ -529,8 +529,12 @@ export function MessageList({
   const margins = visibleRowsCacheRef.current!.margins
   // Selection keeps its highlight; expanded rows render with no fill (the
   // diff line tints inside cards are the only backgrounds in the transcript).
-  const rowBackground = (rowId: number) => {
-    const isSelected = selectedId === rowId
+  // Assistant text is the one kind WITHOUT the row fill: its cursor is the
+  // bullet lighting up (AssistantTextMessage), a full-row tint on plain
+  // text reads as an accident rather than a cursor affordance.
+  const rowBackground = (row: ChatRow) => {
+    if (row.kind === 'assistant') return undefined
+    const isSelected = selectedId === row.id
     if (isSelected) return 'messageActionsBackground'
     return undefined
   }
@@ -1256,7 +1260,7 @@ export function MessageList({
               fresh={row.fresh === true}
               revealVersion={revealVersion}
               activityFrames={activityFrames}
-              background={rowBackground(row.id)}
+              background={rowBackground(row)}
               toolCallId={tool?.callId}
               toolName={tool?.name}
               toolArgsText={tool?.argsText}

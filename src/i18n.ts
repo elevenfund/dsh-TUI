@@ -896,6 +896,7 @@ const dict = {
   'statusline-hint-select': { zh: 'esc 返回输入', en: 'esc to return to input' },
   'row-detail-thinking': { zh: '思考过程', en: 'Thinking' },
   'row-detail-user': { zh: '用户消息', en: 'User message' },
+  'row-detail-assistant': { zh: '回复', en: 'Reply' },
   'row-detail-hint': { zh: 'j/k 滚动 · g/G 首尾 · Esc 关闭', en: 'j/k scroll · g/G top/bottom · Esc close' },
   'statusline-hint-working': { zh: 'esc 中断', en: 'esc to interrupt' },
   'statusline-hint-shortcuts': { zh: '? 查看快捷键', en: '? for shortcuts' },
