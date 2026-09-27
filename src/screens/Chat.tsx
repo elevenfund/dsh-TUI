@@ -2807,14 +2807,7 @@ export function Chat({
     // selectableRows is gated on selectionActive and still holds NO_ROWS on
     // this turn (setSelectionActive has not committed yet) — seed the cursor
     // from channel.rows directly or every later move no-ops on a null id.
-    let last: ChatRow | undefined
-    for (let i = channel.rows.length - 1; i >= 0; i -= 1) {
-      const row = channel.rows[i]
-      if (SELECTABLE_KINDS.has(row.kind)) {
-        last = row
-        break
-      }
-    }
+    const last = channel.rows.findLast(row => SELECTABLE_KINDS.has(row.kind))
     setSelectedId(last ? last.id : null)
   }
   const moveSelection = (delta: 1 | -1) => {
@@ -3527,12 +3520,10 @@ export function Chat({
         moveSelection(1)
       } else if (plainReturn && selectedId !== null) {
         toggleRowExpanded(selectedId)
-      } else if (key.tab && !key.shift) {
+      } else if ((key.tab && !key.shift) || key.escape) {
         // Tab mirrors grok's focus rotation: the same key that handed the
-        // keyboard to the transcript hands it back to the composer.
-        setSelectionActive(false)
-        setSelectedId(null)
-      } else if (key.escape) {
+        // keyboard to the transcript hands it back to the composer. Esc
+        // exits the same way.
         setSelectionActive(false)
         setSelectedId(null)
       }

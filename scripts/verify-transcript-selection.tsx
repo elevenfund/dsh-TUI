@@ -179,7 +179,6 @@ bump()
 
 try {
   await sleep(600) // 固定窗:Chat 首帧挂载 + 输入监听挂接，无单一可观测锚点
-  if (process.env.VTS_DUMP) console.error(viewportLines().map((l, i) => `${String(i).padStart(2)}|${l}`).join('\n'))
   check('S0 三行消息渲染', screenHas('user line alpha') && screenHas('Bash(') && screenHas('assistant reply omega'))
 
   // 未选中的折叠 tool 头取 fg 基线（rest 态 dim）。
