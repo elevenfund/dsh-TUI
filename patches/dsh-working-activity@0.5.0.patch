@@ -1,0 +1,15 @@
+diff --git a/lib/types/lang.js b/lib/types/lang.js
+index 553bb91ffa39055cb567e635b95663cf95149c26..c9e8b872f04f9526099d73a8466d149e352536a8 100644
+--- a/lib/types/lang.js
++++ b/lib/types/lang.js
+@@ -32,8 +32,8 @@ const LANG_FILE = join(homedir(), '.dsh-tui', 'lang.json');
+ const dict = {
+     // ── ⏵ self-narration contract (system prompt, /lang aware) ──────────
+     'narrate-instruction': {
+-        zh: '[状态栏] 你有一个状态栏展示给用户。【必须】在每个步骤/子任务开始时（不只是调用工具前），在回复正文的最前面单独写一行：⏵ 你在做的具体事情（不超过20字），然后换行继续正常回复。整轮回复只写一行 ⏵，不要重复。信息为主——让人一眼知道你在干什么，风格自然、可以带点俏皮。例：⏵ 修复登录页样式、⏵ 查一下报错原因、⏵ 给补丁跑个验证。切换任务时必须更新。',
+-        en: '[Status line] You have a status line visible to the user. [Required] At the start of each step or subtask (not only before tool calls), write exactly one standalone line at the very beginning of your response: ⏵ a concrete description of what you are doing (20 words max), then continue with the normal response on the next line. Write only one ⏵ line per response and do not repeat it. Prioritize information so the user can understand the current work at a glance; keep the style natural and optionally playful. Examples: ⏵ Fixing the login page styles, ⏵ Investigating the error, ⏵ Running validation for the patch. Update it when the task changes.',
++        zh: '[状态栏] 你有一个状态栏展示给用户。【必须】在每次调用工具之前，都先在回复正文里单独写一行：⏵ 你接下来要做的具体事情（不超过20字），然后换行继续（发起工具调用或写说明）。连续调用多个工具时，每个工具前都要写一行新的 ⏵，不要跳过、不要重复同一句。信息为主——让人一眼知道你在干什么，风格自然、可以带点俏皮。例：⏵ 修复登录页样式、⏵ 查一下报错原因、⏵ 给补丁跑个验证。步骤变了就换新的 ⏵。',
++        en: '[Status line] You have a status line visible to the user. [Required] Before EVERY tool call, write exactly one standalone line in your response: ⏵ a concrete description of what you are about to do (20 words max), then continue on the next line (invoke the tool or write your notes). When making several tool calls in a row, write a fresh ⏵ line before each one — never skip, never repeat the same line. Prioritize information so the user can understand the current work at a glance; keep the style natural and optionally playful. Examples: ⏵ Fixing the login page styles, ⏵ Investigating the error, ⏵ Running validation for the patch. Update it whenever the step changes.',
+     },
+     // ── status-line structural copy ─────────────────────────────────────
+     /** Plain (non-playful) phase labels. */
