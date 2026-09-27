@@ -132,6 +132,10 @@ import {
   type WorkspaceFlowInput,
 } from './chatOverlay.js'
 import type { Key } from '../ink/events/input-event.js'
+import { grokWorkingLine } from './chat/working-line.js'
+import { ModelPickerLoading, NewMessagesPill, PinnedTurnHeader, TranscriptSearch } from './chat/chrome.js'
+import { createOverlayKeyHandlers } from './chat/overlay-keys.js'
+import { selectionKeyIntent, selectionRestoreTarget, selectionStepId } from './chat/selection-mode.js'
 
 /** Strip the focus/global-input surface even from untyped plugins. Local
  * click, hover, and captured drag stay inside the view and are kept. */
@@ -222,20 +226,6 @@ function capitalize(text: string): string {
 
 /** Terminal-title spinner frames. */
 const TITLE_SPINNER_FRAMES = ['⠂', '⠐']
-
-/** grok-style working line: the plugin's thinking/waiting `line` carries its
- *  own elapsed decoration (` · total 3s` / ` · 总3s`) — the bare `phrase` is
- *  preferred and any trailing elapsed segment is stripped as the fallback,
- *  keeping the row one clean sentence (the thinking duration lands on the
- *  settled `◆ Thought for Xs` row instead). Tool/done lines keep their own
- *  timings, which describe the tool or the turn, not the wait. */
-function grokWorkingLine(
-  activity: { phase: ActivityPhase; line: string; phrase?: string },
-): string {
-  if (activity.phase === 'tool' || activity.phase === 'done') return activity.line
-  if (activity.phrase !== undefined && activity.phrase !== '') return activity.phrase
-  return activity.line.replace(/ · (?:total \S+|总\S+)$/u, '')
-}
 
 /** Searchable transcript text for one row (`/` incsearch):
  *  user text, assistant text, thinking, tool args/results, local output). */
@@ -2930,43 +2920,32 @@ export function Chat({
     // selectableRows is selectionActive-gated and still NO_ROWS on this
     // turn (setSelectionActive has not committed) — seed or restore the
     // cursor from channel.rows directly or every later move no-ops on a
-    // null id.
+    // null id. Restore logic lives in selection-mode.ts (pure).
     setSelectionActive(true)
-    // Restore the pre-exit cursor when the transcript is unchanged; a new
-    // turn (submitted while the keyboard was with the composer) follows the
-    // bottom row instead, matching where sticky streaming left the page.
-    const snap = selectionEpochRef.current
-    const unchanged =
-      snap !== null &&
-      channel.rows.length === snap.count &&
-      channel.rows.reduce((max, row) => Math.max(max, row.id), 0) === snap.maxId
-    const restored =
-      unchanged && selectedId !== null
-        ? channel.rows.find(row => row.id === selectedId && SELECTABLE_KINDS.has(row.kind))
-        : undefined
-    const target = restored ?? channel.rows.findLast(row => SELECTABLE_KINDS.has(row.kind))
-    if (target) {
-      setSelectedId(target.id)
+    const targetId = selectionRestoreTarget(
+      channel.rows,
+      selectionEpochRef.current,
+      selectedId,
+      row => SELECTABLE_KINDS.has(row.kind),
+    )
+    if (targetId !== null) {
+      setSelectedId(targetId)
       // Minimal alignment: a restored on-screen row leaves the viewport
       // exactly where the user left it (no jump to the bottom).
-      seekRowIntoView(target.id)
+      seekRowIntoView(targetId)
     } else {
       setSelectedId(null)
     }
   }
   const moveSelection = (delta: 1 | -1) => {
-    if (selectedId === null) return
-    const index = selectableRows.findIndex(row => row.id === selectedId)
-    if (index < 0) return
-    const next = selectableRows[index + delta]
-    // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index
-    if (next) {
-      setSelectedId(next.id)
-      // Minimal alignment (grok-style browsing): a step inside the
-      // viewport moves only the cursor; the page starts scrolling when
-      // the cursor reaches the edge, one row per step (force-mounting
-      // folded window rows through the same path as history search).
-      seekRowIntoView(next.id)
+    // Minimal alignment (grok-style browsing): a step inside the
+    // viewport moves only the cursor; the page starts scrolling when
+    // the cursor reaches the edge, one row per step (force-mounting
+    // folded window rows through the same path as history search).
+    const nextId = selectionStepId(selectableRows, selectedId, delta)
+    if (nextId !== null) {
+      setSelectedId(nextId)
+      seekRowIntoView(nextId)
     }
   }
   // useCallback: these feed MessageList → MemoRow's shallow compare; fresh
@@ -3013,529 +2992,26 @@ export function Chat({
   const lastModalEnterAtRef = React.useRef(0)
 
   // ── Overlay keyboard routing ─────────────────────────────────────────
-  // Each open overlay kind's key handling lives in one function below; the
-  // `overlayKeyHandlers` table maps kind → handler and `runOverlayKeys`
-  // dispatches. Handlers are closures over the same state the old inline
-  // if-chain saw — extraction is behavior-preserving. A handler decides for
-  // itself whether to stopImmediatePropagation (e.g. thinking does not, so
-  // the prompt still sees plain keys while that picker is up).
-  type OverlayKeyEvent = { stopImmediatePropagation(): void }
-  type OverlayKeyHandler = (input: string, key: Key, plainReturn: boolean, event: OverlayKeyEvent) => void
-  const onImagePreviewKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
-    // Modal gallery owns plain left/right. Caret peeks below still leave
-    // navigation with PromptInput. Esc/Ctrl+C/Enter keep their close
-    // semantics — except Ctrl+C while a turn runs, which stays an
-    // interrupt (grok keeps Cancel global; Esc still closes).
-    if (key.ctrl && input === 'c' && channel.working) {
-      interruptRunningTurn()
-    } else if (key.escape || (key.ctrl && input === 'c') || plainReturn) {
-      dispatchOverlay({ type: 'close' })
-    } else if (!key.ctrl && !key.meta && !key.shift && (key.leftArrow || key.rightArrow)) {
-      dispatchOverlay({ type: 'image-step', delta: key.leftArrow ? -1 : 1 })
-    }
-    event.stopImmediatePropagation()
-  }
-  const onRowDetailKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
-    // The detail card owns the keyboard while up: scroll keys go to its
-    // ScrollBox, Esc/Enter/q close back into selection mode (the cursor
-    // stays on the row that opened the card). Same vim set as selection
-    // mode so the hands never switch rows.
-    const detail = rowDetailScrollRef.current
-    if (key.ctrl && input === 'c' && channel.working) {
-      // Ctrl+C while a turn runs stays an interrupt even with the card
-      // up (grok keeps Cancel global); the card stays, Esc/Enter/q still
-      // close it.
-      interruptRunningTurn()
-    } else if (key.escape || (key.ctrl && input === 'c') || plainReturn || (!isMod(key) && !key.meta && input === 'q')) {
-      dispatchOverlay({ type: 'close' })
-    } else if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) {
-      detail?.scrollBy(-1)
-    } else if (key.downArrow || (!isMod(key) && !key.meta && input === 'j')) {
-      detail?.scrollBy(1)
-    } else if (key.pageUp || (isMod(key) && input === 'b') || (!isMod(key) && !key.meta && input === 'u')) {
-      detail?.scrollBy(-Math.max(1, Math.floor((detail?.getViewportHeight() ?? 20) / 2)))
-    } else if (key.pageDown || (isMod(key) && input === 'f') || (!isMod(key) && !key.meta && input === 'd')) {
-      detail?.scrollBy(Math.max(1, Math.floor((detail?.getViewportHeight() ?? 20) / 2)))
-    } else if (key.home || (!isMod(key) && !key.meta && input === 'g')) {
-      detail?.scrollTo(0)
-    } else if (key.end || (!isMod(key) && !key.meta && input === 'G')) {
-      detail?.scrollTo(Math.max(0, detail?.getScrollHeight() ?? 0))
-    }
-    event.stopImmediatePropagation()
-  }
-  const onSearchKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
-    // Transcript search bar (less-style): edit the query, Enter commits
-    // (query persists for n/N), Esc/ctrl+c cancels back to the anchor.
-    if (key.escape || (key.ctrl && input === 'c')) {
-      dispatchOverlay({ type: 'close' })
-      setHighlight('')
-      handle?.scrollTo(searchAnchorRef.current)
-    } else if (plainReturn) {
-      // Enter commits; 0-match junk queries don't persist.
-      if (searchCount === 0) setSearchQuery('')
-      dispatchOverlay({ type: 'close' })
-    } else if (key.backspace) {
-      if (searchCursor > 0) {
-        setSearchQuery(searchQuery.slice(0, searchCursor - 1) + searchQuery.slice(searchCursor))
-        setSearchCursor(searchCursor - 1)
-      }
-    } else if (key.delete) {
-      if (searchCursor < searchQuery.length) {
-        setSearchQuery(searchQuery.slice(0, searchCursor) + searchQuery.slice(searchCursor + 1))
-      }
-    } else if (key.leftArrow) {
-      setSearchCursor(c => Math.max(0, c - 1))
-    } else if (key.rightArrow) {
-      setSearchCursor(c => Math.min(searchQuery.length, c + 1))
-    } else if (key.home) {
-      setSearchCursor(0)
-    } else if (key.end) {
-      setSearchCursor(searchQuery.length)
-    } else if (!key.ctrl && !key.meta && !key.super && input) {
-      const next = searchQuery.slice(0, searchCursor) + input + searchQuery.slice(searchCursor)
-      setSearchQuery(next)
-      setSearchCursor(searchCursor + input.length)
-    }
-    event.stopImmediatePropagation()
-  }
-  const onThinkingKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: 2 })
-    } else if (plainReturn) {
-      const visible = (overlay as Extract<ChatOverlay, { kind: 'thinking' }>).focus === 0
-      setThinkingVisible(visible)
-      dispatchOverlay({ type: 'close' })
-      channel.notify(t('thinking-toggled', { state: visible ? t('thinking-on') : t('thinking-off') }))
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onWorkspaceFlowKeys: OverlayKeyHandler = (input, key, plainReturn, _event) => {
-    const { flow, busy, input: flowInput } = overlay as Extract<ChatOverlay, { kind: 'workspace-flow' }>
-    if (key.escape) {
-      if (flowInput !== null && !busy) {
-        dispatchOverlay({ type: 'flow-input', input: null })
-        return
-      }
-      workspaceFlowAbortRef.current?.abort()
-      workspaceFlowAbortRef.current = null
-      workspaceFlowRequestRef.current += 1
-      dispatchOverlay({ type: 'close' })
-      return
-    }
-    if (busy) return
-    if (flowInput !== null) {
-      const choice = flow.choices.find(candidate => candidate.id === flowInput.choiceId)
-      const editor = choice?.input
-      if (plainReturn) {
-        const value = flowInput.value.trim()
-        if (value.length === 0) {
-          channel.notify(t('workspace-flow-input-empty'), { color: 'warning' })
-        } else if (editor !== undefined) {
-          runWorkspaceFlowAction(signal => editor.submit(value, signal))
-        }
-      } else if (key.backspace && flowInput.cursor > 0) {
-        dispatchOverlay({
-          type: 'flow-input-edit',
-          value: flowInput.value.slice(0, flowInput.cursor - 1) + flowInput.value.slice(flowInput.cursor),
-          cursor: flowInput.cursor - 1,
-        })
-      } else if (key.delete && flowInput.cursor < flowInput.value.length) {
-        dispatchOverlay({
-          type: 'flow-input-edit',
-          value: flowInput.value.slice(0, flowInput.cursor) + flowInput.value.slice(flowInput.cursor + 1),
-          cursor: flowInput.cursor,
-        })
-      } else if (key.leftArrow) {
-        dispatchOverlay({
-          type: 'flow-input-edit',
-          value: flowInput.value,
-          cursor: Math.max(0, flowInput.cursor - 1),
-        })
-      } else if (key.rightArrow) {
-        dispatchOverlay({
-          type: 'flow-input-edit',
-          value: flowInput.value,
-          cursor: Math.min(flowInput.value.length, flowInput.cursor + 1),
-        })
-      } else if (input.length > 0 && !key.ctrl && !key.meta && !key.super && !key.tab) {
-        dispatchOverlay({
-          type: 'flow-input-edit',
-          value: flowInput.value.slice(0, flowInput.cursor) + input + flowInput.value.slice(flowInput.cursor),
-          cursor: flowInput.cursor + input.length,
-        })
-      }
-      return
-    }
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: flow.choices.length })
-    } else if (key.tab && !key.shift) {
-      const choice = flow.choices[(overlay as Extract<ChatOverlay, { kind: 'workspace-flow' }>).index]
-      if (choice?.input !== undefined) {
-        const value = choice.input.initialValue ?? ''
-        const flowInputNext: WorkspaceFlowInput = {
-          choiceId: choice.id,
-          value,
-          cursor: value.length,
-          ...(choice.input.placeholder === undefined ? {} : { placeholder: choice.input.placeholder }),
-        }
-        dispatchOverlay({ type: 'flow-input', input: flowInputNext })
-      }
-    } else if (plainReturn) {
-      const choice = flow.choices[(overlay as Extract<ChatOverlay, { kind: 'workspace-flow' }>).index]
-      if (choice !== undefined) {
-        runWorkspaceFlowAction(signal => choice.choose(signal))
-      }
-    }
-  }
-  const onWorkspacePickerKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: workspaceTargets.length })
-    } else if (plainReturn) {
-      const target = workspaceTargets[(overlay as Extract<ChatOverlay, { kind: 'workspace-picker' }>).index]
-      dispatchOverlay({ type: 'close' })
-      if (target !== undefined) void channel.switchWorkspace(target)
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onWorkspaceMenuKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    const menu = workspaceMenuOptions
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: menu.length })
-    } else if (plainReturn) {
-      const option = menu[(overlay as Extract<ChatOverlay, { kind: 'workspace-menu' }>).index]
-      runWorkspaceMenuOption(option)
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onModelKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    // Two-level picker: group rows at the top (Enter drills in), one
-    // provider's models below (Enter switches, the same live-fork path as
-    // the flat picker always had). Esc/⌫ climbs one level and only closes
-    // at the top; a single-group catalog never shows the group level, so
-    // Esc there closes directly.
-    const rowCount = activeModelGroup === undefined ? modelGroups.length : groupModels.length
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: rowCount })
-    } else if (plainReturn) {
-      if (activeModelGroup === undefined) {
-        const group = modelGroups[(overlay as Extract<ChatOverlay, { kind: 'model' }>).index]
-        if (!group) {
-          dispatchOverlay({ type: 'close' })
-          return
-        }
-        setModelGroup(group.provider)
-        // The recents group opens on its most-recent entry; a provider
-        // group on its current model when it owns one, else its first row.
-        if (group.provider === RECENTS_GROUP_PROVIDER) {
-          dispatchOverlay({ type: 'set-index', kind: 'model', index: 0 })
-          return
-        }
-        const landing = modelPickerLanding(
-          models.filter(model => model.provider === group.provider),
-          channel.provider,
-          channel.model,
-        )
-        dispatchOverlay({ type: 'set-index', kind: 'model', index: landing.index })
-        return
-      }
-      const model = groupModels[(overlay as Extract<ChatOverlay, { kind: 'model' }>).index]
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index on an empty list
-      if (model) {
-        // Enter switches the live model right away: the conversation is
-        // forked at its end and continued with an agent routed to the new
-        // model (history replays unchanged) — and feeds the recents group.
-        dispatchOverlay({ type: 'close' })
-        void switchModelRecorded(model.provider, model.id, model.name)
-      } else {
-        dispatchOverlay({ type: 'close' })
-      }
-    } else if (key.escape || key.backspace) {
-      if (activeModelGroup !== undefined && modelGroups.length > 1 && !modelPickerDirect) {
-        setModelGroup(undefined)
-        const groupIndex = Math.max(0, modelGroups.findIndex(group => group.provider === activeModelGroup))
-        dispatchOverlay({ type: 'set-index', kind: 'model', index: groupIndex })
-      } else {
-        dispatchOverlay({ type: 'close' })
-      }
-    }
-  }
-  const onSkillsKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    const list = skillsList ?? []
-    if (key.upArrow || key.downArrow) {
-      // count 0 (snapshot still loading) is a no-op inside the reducer.
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: list.length })
-    } else if (plainReturn) {
-      const skill = list[(overlay as Extract<ChatOverlay, { kind: 'skills' }>).index]
-      dispatchOverlay({ type: 'close' })
-      // 可直调技能 Enter 填入 `/name `——与 / 菜单选中技能同一条
-      // completion-only 分发路径；模型专用技能（userInvocable=false）只关闭。
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index on an empty list
-      if (skill?.userInvocable) setHistoryFill(`/${skill.name} `)
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onActivityKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: PRESET_NAMES.length })
-    } else if (plainReturn) {
-      const name = PRESET_NAMES[(overlay as Extract<ChatOverlay, { kind: 'activity' }>).index]
-      dispatchOverlay({ type: 'close' })
-      if (name) channel.setActivityFrames(name)
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onColorKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: SESSION_COLOR_NAMES.length })
-    } else if (plainReturn) {
-      const name = SESSION_COLOR_NAMES[(overlay as Extract<ChatOverlay, { kind: 'color' }>).index]
-      dispatchOverlay({ type: 'close' })
-      if (name) {
-        channel.setSessionColor(name)
-        channel.notify(t('color-set', { name }), { color: 'success' })
-      }
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onEffortKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.leftArrow || key.rightArrow) {
-      const delta = key.leftArrow ? -1 : 1
-      // The same wrap rule the reducer applies — computed here too so the
-      // newly focused level is applied in this very keystroke.
-      const next = wrapIndex((overlay as Extract<ChatOverlay, { kind: 'effort' }>).index, delta, effortOptions.length)
-      dispatchOverlay({ type: 'move', delta, count: effortOptions.length })
-      const option = effortOptions[next]
-      // Live-apply: the slider IS the control; Esc does not revert.
-      if (option) void channel.setEffort(option.id)
-    } else if (plainReturn || key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onPresetKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: presetOptions.length })
-    } else if (plainReturn) {
-      const option = presetOptions[(overlay as Extract<ChatOverlay, { kind: 'preset' }>).index]
-      dispatchOverlay({ type: 'close' })
-      if (option) void channel.switchPreset(option.id)
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onPermissionKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      const currentIndex = permissionOverlayFocusRef.current?.overlay === overlay
-        ? permissionOverlayFocusRef.current.index
-        : (overlay as Extract<ChatOverlay, { kind: 'permission' }>).index
-      const nextIndex = wrapIndex(currentIndex, key.upArrow ? -1 : 1, (overlay as Extract<ChatOverlay, { kind: 'permission' }>).snapshot.options.length)
-      permissionOverlayFocusRef.current = { overlay, index: nextIndex }
-      dispatchOverlay({ type: 'set-index', kind: 'permission', index: nextIndex })
-    } else if (plainReturn) {
-      const currentIndex = permissionOverlayFocusRef.current?.overlay === overlay
-        ? permissionOverlayFocusRef.current.index
-        : (overlay as Extract<ChatOverlay, { kind: 'permission' }>).index
-      const option = (overlay as Extract<ChatOverlay, { kind: 'permission' }>).snapshot.options[currentIndex]
-      permissionOverlayFocusRef.current = null
-      dispatchOverlay({ type: 'close' })
-      if (option !== undefined) void runPermissionCommand(` ${option.value}`)
-    } else if (key.escape) {
-      permissionOverlayFocusRef.current = null
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onPlanKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: 2 })
-    } else if (plainReturn) {
-      const on = (overlay as Extract<ChatOverlay, { kind: 'plan' }>).index === 0
-      dispatchOverlay({ type: 'close' })
-      void runExternalCommand('plan', on ? '' : ' off')
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onLangKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: 2 })
-    } else if (plainReturn) {
-      const lang = LANGS[(overlay as Extract<ChatOverlay, { kind: 'lang' }>).index]
-      dispatchOverlay({ type: 'close' })
-      if (lang !== undefined) applyLang(lang)
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onThemeKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    const options = getThemeOptions(themeHost)
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: options.length })
-    } else if (plainReturn) {
-      dispatchOverlay({ type: 'close' })
-      const name = options[(overlay as Extract<ChatOverlay, { kind: 'theme' }>).index]?.value
-      if (name !== undefined) {
-        const ok = setTheme(name)
-        channel.notify(
-          ok ? t('theme-switched-saved', { name }) : t('theme-switch-failed', { name }),
-          { color: ok ? 'success' : 'error' },
-        )
-      }
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onHistoryKeys: OverlayKeyHandler = (input, key, plainReturn, _event) => {
-    const { query, cursor, focus } = overlay as Extract<ChatOverlay, { kind: 'history' }>
-    if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    } else if (key.ctrl && (input === 'c' || input === 'd')) {
-      // History search cancels on ctrl+c/ctrl+d too.
-      dispatchOverlay({ type: 'close' })
-    } else if (plainReturn) {
-      const entry = historyMatches[focus]
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index on an empty match list
-      if (entry) {
-        setHistoryFill(entry.text)
-        dispatchOverlay({ type: 'close' })
-      }
-    } else if (key.upArrow) {
-      if (historyMatches.length > 0) {
-        dispatchOverlay({ type: 'move', delta: -1, count: historyMatches.length })
-      }
-    } else if (key.downArrow || actionMatches('history', input, key)) {
-      // History search next — ↓ and the history key (default Ctrl+R)
-      // walk to the next match.
-      if (historyMatches.length > 0) {
-        dispatchOverlay({ type: 'move', delta: 1, count: historyMatches.length })
-      }
-    } else if (key.backspace) {
-      if (cursor > 0) {
-        dispatchOverlay({
-          type: 'history-edit',
-          query: query.slice(0, cursor - 1) + query.slice(cursor),
-          cursor: cursor - 1,
-          focus: 0,
-        })
-      }
-    } else if (key.delete) {
-      if (cursor < query.length) {
-        dispatchOverlay({
-          type: 'history-edit',
-          query: query.slice(0, cursor) + query.slice(cursor + 1),
-          focus: 0,
-        })
-      }
-    } else if (key.leftArrow) {
-      // Step by code point, not UTF-16 unit: an emoji is two units, and
-      // a mid-pair caret offset would split it in the SearchBox render.
-      if (cursor > 0) {
-        const ch = [...query.slice(0, cursor)].pop()!
-        dispatchOverlay({ type: 'history-edit', cursor: cursor - ch.length })
-      }
-    } else if (key.rightArrow) {
-      if (cursor < query.length) {
-        const ch = [...query.slice(cursor)][0]!
-        dispatchOverlay({ type: 'history-edit', cursor: cursor + ch.length })
-      }
-    } else if (key.home) {
-      dispatchOverlay({ type: 'history-edit', cursor: 0 })
-    } else if (key.end) {
-      dispatchOverlay({ type: 'history-edit', cursor: query.length })
-    } else if (!key.ctrl && !key.meta && !key.super && input) {
-      dispatchOverlay({
-        type: 'history-edit',
-        query: query.slice(0, cursor) + input + query.slice(cursor),
-        cursor: cursor + input.length,
-        focus: 0,
-      })
-    }
-  }
-  const onRewindKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    // While the plugin decision is in flight the picker is read-only;
-    // Esc abandons the wait (the stale answer is dropped by the token).
-    const rewindOverlay = overlay as Extract<ChatOverlay, { kind: 'rewind' }>
-    if (rewindOverlay.busy) {
-      if (key.escape) {
-        rewindRequestRef.current += 1
-        dispatchOverlay({ type: 'rewind-busy', busy: false })
-      }
-      return
-    }
-    if (rewindOverlay.confirm !== null) {
-      const row = rewindOverlay.confirm
-      if (rewindOverlay.modes !== null) {
-        // Plugin offered modes: the confirm pane is a choice list —
-        // option 0 is always the built-in conversation-only rewind.
-        const optionCount = rewindOverlay.modes.length + 1
-        if (key.upArrow || key.downArrow) {
-          dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: optionCount })
-        } else if (plainReturn) {
-          const mode = rewindOverlay.modeIndex === 0 ? null : (rewindOverlay.modes[rewindOverlay.modeIndex - 1]?.id ?? null)
-          dispatchOverlay({ type: 'close' })
-          void performRewind(row, mode)
-        } else if (key.escape) {
-          dispatchOverlay({ type: 'rewind-back' })
-        }
-        return
-      }
-      // Confirmation state: Enter rewinds, Esc backs out to the list.
-      if (plainReturn) {
-        dispatchOverlay({ type: 'close' })
-        void performRewind(row)
-      } else if (key.escape) {
-        dispatchOverlay({ type: 'rewind-back' })
-      }
-    } else if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: rewindRows.length })
-    } else if (plainReturn) {
-      const row = rewindRows[rewindOverlay.index]
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index on an empty list
-      if (row) void requestRewindConfirm(row)
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const onFileActionsKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    // Click-to-act file menu: ↑/↓ move, Enter runs the focused action,
-    // Esc closes.
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: FILE_ACTION_COUNT })
-    } else if (plainReturn) {
-      const path = (overlay as Extract<ChatOverlay, { kind: 'file-actions' }>).path
-      dispatchOverlay({ type: 'close' })
-      runFileAction((overlay as Extract<ChatOverlay, { kind: 'file-actions' }>).index, path)
-    } else if (key.escape) {
-      dispatchOverlay({ type: 'close' })
-    }
-  }
-  const overlayKeyHandlers: Partial<Record<ChatOverlay['kind'], OverlayKeyHandler>> = {
-    'image-preview': onImagePreviewKeys,
-    'row-detail': onRowDetailKeys,
-    search: onSearchKeys,
-    thinking: onThinkingKeys,
-    'workspace-flow': onWorkspaceFlowKeys,
-    'workspace-picker': onWorkspacePickerKeys,
-    'workspace-menu': onWorkspaceMenuKeys,
-    model: onModelKeys,
-    skills: onSkillsKeys,
-    activity: onActivityKeys,
-    color: onColorKeys,
-    effort: onEffortKeys,
-    preset: onPresetKeys,
-    permission: onPermissionKeys,
-    plan: onPlanKeys,
-    lang: onLangKeys,
-    theme: onThemeKeys,
-    history: onHistoryKeys,
-    rewind: onRewindKeys,
-    'file-actions': onFileActionsKeys,
-  }
-  const runOverlayKeys = (kind: ChatOverlay['kind'], input: string, key: Key, plainReturn: boolean, event: OverlayKeyEvent): boolean => {
+  // Table-driven dispatch (src/screens/chat/overlay-keys.tsx): per-kind
+  // handler bodies are the old inline useInput branches verbatim; deps are
+  // passed fresh each render so the closures see current state exactly as
+  // the inline branches did.
+  const overlayKeyHandlers = createOverlayKeyHandlers({
+    overlay, dispatchOverlay, channel, handle,
+    searchAnchorRef, searchQuery, searchCount, searchCursor,
+    setHighlight, setSearchQuery, setSearchCursor,
+    setThinkingVisible, interruptRunningTurn, rowDetailScrollRef,
+    workspaceFlowAbortRef, workspaceFlowRequestRef, runWorkspaceFlowAction,
+    workspaceTargets, workspaceMenuOptions, runWorkspaceMenuOption,
+    activeModelGroup, modelGroups, groupModels, setModelGroup, models,
+    switchModelRecorded, modelPickerDirect,
+    skillsList, setHistoryFill, effortOptions, presetOptions,
+    permissionOverlayFocusRef, runPermissionCommand,
+    runExternalCommand, applyLang, themeHost, setTheme,
+    historyMatches, rewindRequestRef, performRewind, rewindRows,
+    requestRewindConfirm, runFileAction,
+  })
+  const runOverlayKeys = (kind: ChatOverlay['kind'], input: string, key: Key, plainReturn: boolean, event: { stopImmediatePropagation(): void }): boolean => {
     if (overlay.kind !== kind) return false
     const handler = overlayKeyHandlers[kind]
     if (handler === undefined) return false
@@ -3749,95 +3225,91 @@ export function Chat({
     if (key.shift && key.upArrow && !selectionActive && !helpOpen) {
       enterSelection()
     } else if (selectionActive) {
-      if (key.ctrl && !key.meta && input === 'c') {
-        // Ctrl+C keeps its global interrupt meaning inside selection mode
-        // (grok's "Cancel turn" works from the transcript too); idle, the
-        // key just leaves the mode — same muscle memory as Esc/Tab. The
-        // hidden composer draft is never cleared from selection mode.
-        if (channel.working) interruptRunningTurn()
-        else exitSelection()
-        event.stopImmediatePropagation()
-      } else if (key.ctrl && !key.meta && input === 'f') {
-        // Ctrl+F / Ctrl+B: vim paging over the transcript, same page size
-        // as the global PgUp/PgDn keys. The cursor row stays put; the next
-        // j/k pulls it back into view, so paging never fights selection.
-        handle?.scrollBy(transcriptPageStep())
-        event.stopImmediatePropagation()
-      } else if (key.ctrl && !key.meta && input === 'b') {
-        handle?.scrollBy(-transcriptPageStep())
-        event.stopImmediatePropagation()
-      } else if (actionMatches('transcript', input, key) && !helpOpen) {
-        // Ctrl+O stays live inside selection mode: the global expand/collapse
-        // owns row fold states and must not wait for the composer to regain
-        // the keyboard.
-        toggleTranscriptMode()
-      } else if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) {
-        moveSelection(-1)
-      } else if (key.downArrow || (!isMod(key) && !key.meta && input === 'j')) {
-        moveSelection(1)
-      } else if (!isMod(key) && !key.meta && input === 'l' && selectedId !== null) {
-        // l expands (vim right = open). Same expanding-edge seek as Enter:
-        // the row's head is pinned to the viewport top so the revealed
-        // body reads top-down. Only fold-bearing kinds respond (reasoning,
-        // tool): assistant text and user prompts have no collapsed form,
-        // so expanding there would register an expansion nothing renders
-        // (plus a seek jump) — grok's row-level expand applies to thinking
-        // and tool cards only. The global expand state owns fold states
-        // (Ctrl+O contract): when every row already shows expanded, l is
-        // a no-op — no redundant row-local registration, no seek jump.
-        const selectedRow = selectableRows.find(row => row.id === selectedId)
-        if (
-          selectedRow !== undefined &&
-          (selectedRow.kind === 'reasoning' || selectedRow.kind === 'tool') &&
-          !expanded && !expandedRows.has(selectedId)
-        ) {
-          toggleRowExpanded(selectedId)
-          seekRow(selectedId)
+      // Pure key→intent mapping in chat/selection-mode.ts; effects stay
+      // here (setters, seeks, overlays). stopImmediatePropagation stays
+      // exactly where the old inline branches had it.
+      const selectedRow = selectedId !== null ? selectableRows.find(row => row.id === selectedId) : undefined
+      const intent = selectionKeyIntent(input, key, {
+        working: channel.working,
+        helpOpen,
+        plainReturn,
+        selectedId,
+        selectedKind: selectedRow?.kind,
+        expanded,
+        expandedRows,
+      })
+      switch (intent.type) {
+        case 'interrupt-or-exit': {
+          // Ctrl+C keeps its global interrupt meaning inside selection
+          // mode (grok's "Cancel turn" works from the transcript too);
+          // idle, the key just leaves the mode. The hidden composer
+          // draft is never cleared from selection mode.
+          if (channel.working) interruptRunningTurn()
+          else exitSelection()
+          event.stopImmediatePropagation()
+          break
         }
-      } else if (!isMod(key) && !key.meta && input === 'h' && selectedId !== null) {
-        // h collapses (vim left = close). No seek: the shrink leaves the
-        // cursor row where it is. Same fold-bearing kind gate as l.
-        const selectedRow = selectableRows.find(row => row.id === selectedId)
-        if (
-          selectedRow !== undefined &&
-          (selectedRow.kind === 'reasoning' || selectedRow.kind === 'tool') &&
-          expandedRows.has(selectedId)
-        ) toggleRowExpanded(selectedId)
-      } else if (!isMod(key) && !key.meta && input === 'g') {
-        // g / gg → first selectable row (single g is the less habit,
-        // double gg the vim one; the second press re-selects an
-        // already-first cursor and the minimal seek no-ops). In a long
-        // session the first row sits behind the recent-rows fold — the
-        // reveal opens it so forceMount can actually mount the row.
-        const first = selectableRows[0]
-        if (first) {
-          setSelectedId(first.id)
-          revealAndSeekRow(first.id, 'nearest')
+        case 'page': {
+          // Ctrl+F / Ctrl+B: vim paging over the transcript, same page
+          // size as the global PgUp/PgDn keys. The cursor row stays put;
+          // the next j/k pulls it back into view.
+          handle?.scrollBy(intent.delta * transcriptPageStep())
+          event.stopImmediatePropagation()
+          break
         }
-      } else if (!isMod(key) && !key.meta && input === 'G') {
-        // G → last selectable row AND the live tail: scrollToBottom both
-        // bottom-aligns the row (the last selectable row sits at the
-        // content bottom) and re-pins sticky, so content arriving after
-        // the jump stays in view instead of piling up under a pill —
-        // "jump to the end" means "follow the tail again" (grok semantics).
-        // A seekRowIntoView here would break stickiness (scrollTo-class op)
-        // right after the pin.
-        const last = selectableRows[selectableRows.length - 1]
-        if (last) {
-          setSelectedId(last.id)
-          handle?.scrollToBottom()
+        case 'toggle-transcript-mode':
+          toggleTranscriptMode()
+          break
+        case 'move':
+          moveSelection(intent.delta)
+          break
+        case 'expand':
+          // l expands (vim right = open): head pinned to the viewport top
+          // so the revealed body reads top-down. The expand/collapse gate
+          // lives in the pure intent (fold-bearing kinds only).
+          if (selectedId !== null) {
+            toggleRowExpanded(selectedId)
+            seekRow(selectedId)
+          }
+          break
+        case 'collapse':
+          // h collapses (vim left = close). No seek: the shrink leaves
+          // the cursor row where it is.
+          if (selectedId !== null) toggleRowExpanded(selectedId)
+          break
+        case 'jump-top': {
+          // g / gg → first selectable row. In a long session the first
+          // row sits behind the recent-rows fold — the reveal opens it
+          // so forceMount can actually mount the row.
+          const first = selectableRows[0]
+          if (first) {
+            setSelectedId(first.id)
+            revealAndSeekRow(first.id, 'nearest')
+          }
+          break
         }
-      } else if (plainReturn && selectedId !== null) {
-        // grok semantics ("Enter details"): Enter opens the full-content
-        // viewer for the row under the cursor; fold/unfold is l/h's job
-        // (grok's → / ←). The viewport can never hold a 500-line output,
-        // so full reading lives in the card, not in the scroll.
-        dispatchOverlay({ type: 'open', overlay: { kind: 'row-detail', rowId: selectedId } })
-      } else if ((key.tab && !key.shift) || key.escape) {
-        // Tab mirrors grok's focus rotation: the same key that handed the
-        // keyboard to the transcript hands it back to the composer. Esc
-        // exits the same way.
-        exitSelection()
+        case 'jump-bottom': {
+          // G → last selectable row AND the live tail: scrollToBottom
+          // both bottom-aligns the row and re-pins sticky ("jump to the
+          // end" means "follow the tail again" — grok semantics).
+          const last = selectableRows[selectableRows.length - 1]
+          if (last) {
+            setSelectedId(last.id)
+            handle?.scrollToBottom()
+          }
+          break
+        }
+        case 'open-detail':
+          // Enter opens the full-content viewer ("Enter details"); the
+          // viewport can never hold a 500-line output.
+          if (selectedId !== null) dispatchOverlay({ type: 'open', overlay: { kind: 'row-detail', rowId: selectedId } })
+          break
+        case 'exit':
+          // Tab mirrors grok's focus rotation; Esc exits the same way.
+          exitSelection()
+          break
+        case 'none':
+          break
       }
     } else if (key.escape && channel.working && !helpOpen && !promptControllerRef.current?.vimActive()) {
       // Esc interrupts a running turn (the prompt input
@@ -5043,138 +4515,5 @@ export function Chat({
           预览挂在上面的 transcript 行内，见 imagePreviewNode。 */}
       {promptEditorOpen && imagePreviewNode}
     </Box>
-  )
-}
-
-/**
- * The pinned prompt header shown above the ScrollBox while the user has
- * scrolled up. It pins the user message the transcript viewport is currently
- * showing — the topmost visible user message, or the nearest one above when only assistant
- * content fills the view — so it tracks which turn the user is reading
- * instead of always carrying the latest prompt. Fixed at 1 row so the
- * ScrollBox never shifts when the text changes.
- */
-function PinnedTurnHeader({
-  text,
-  onClick,
-}: {
-  text: string
-  onClick: () => void
-}): React.ReactNode {
-  const { columns } = useTerminalSize()
-  // A one-row Box does not clip its children. Flatten hard line breaks before
-  // truncating, otherwise later prompt lines paint down the transcript gutter.
-  const label = cleanRenderText(`${POINTER} ${text}`, Math.max(1, columns - 1))
-  return (
-    <Box
-      flexShrink={0}
-      width="100%"
-      height={1}
-      overflow="hidden"
-      paddingRight={1}
-      onClick={onClick}
-    >
-      <Text color="userPromptLabel" bold wrap="truncate-end">
-        {label}
-      </Text>
-    </Box>
-  )
-}
-
-/** The `↓ N new messages` pill shown while scrolled up with new content. */
-function NewMessagesPill({
-  count,
-  onClick,
-}: {
-  count: number
-  onClick: () => void
-}): React.ReactNode {
-  const [hover, setHover] = React.useState(false)
-  return (
-    // noSelect: the pill is chrome (a button), not transcript. Without this,
-    // its text row is ordinary selectable cells — a selection anchored at
-    // the screen bottom (or extended across it) captures
-    // "↓ 回到底部（Enter/End）" into the copy on release. noSelect keeps the
-    // click/hover wiring (dispatchClick ignores noSelect) and only removes
-    // the cells from the highlight and getSelectedText.
-    <NoSelect paddingX={2} paddingTop={1}>
-      <Box
-        backgroundColor={hover ? 'userMessageBackgroundHover' : 'background'}
-        onClick={onClick}
-        onMouseEnter={() =>{  setHover(true) }}
-        onMouseLeave={() =>{  setHover(false) }}
-      >
-        <Text color="inverseText" bold>
-          {' '}
-          {count > 0
-            ? t(count === 1 ? 'new-message' : 'new-messages', { n: count })
-            : t('back-to-bottom')}
-          {' '}
-        </Text>
-      </Box>
-    </NoSelect>
-  )
-}
-
-/** /model while the provider catalog is still loading. */
-function ModelPickerLoading(): React.ReactNode {
-  return (
-    <Pane color="permission">
-      <Box flexDirection="column" gap={1}>
-        <Text bold color="permission">
-          {t('picker-title-model')}
-        </Text>
-        <LoadingState
-          message={t('model-loading')}
-          bold
-          subtitle={t('model-loading-subtitle')}
-        />
-      </Box>
-    </Pane>
-  )
-}
-
-/**
- * The `/` incsearch bar: a
- * single row above the prompt input with the query, a block cursor, and the
- * match counter (`current/count`) or a red `no matches` when nothing hits.
- */function TranscriptSearch({
-  query,
-  cursorOffset,
-  count,
-  current,
-}: {
-  query: string
-  cursorOffset: number
-  count: number
-  current: number
-}): React.ReactNode {
-  const cursorChar = cursorOffset < query.length ? query[cursorOffset] : ' '
-  return (
-    // noSelect: the bar's own text must not match the search query (the
-    // screen-space highlight would self-match).
-    <NoSelect
-      borderTopDimColor
-      borderBottom={false}
-      borderLeft={false}
-      borderRight={false}
-      borderStyle="single"
-      marginTop={1}
-      paddingLeft={2}
-      width="100%"
-    >
-      <Text>/</Text>
-      <Text>{query.slice(0, cursorOffset)}</Text>
-      <Text inverse>{cursorChar}</Text>
-      {cursorOffset < query.length && <Text>{query.slice(cursorOffset + 1)}</Text>}
-      <Box flexGrow={1} />
-      {query && count === 0 ? (
-        <Text color="error">{t('search-no-matches')} </Text>
-      ) : count > 0 ? (
-        <Text dimColor>
-          {Math.min(current + 1, count)}/{count}{'  '}
-        </Text>
-      ) : null}
-    </NoSelect>
   )
 }
