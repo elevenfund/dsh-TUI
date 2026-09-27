@@ -140,6 +140,9 @@ import { useSidePanels } from './chat/use-side-panels.js'
 import { peekKey, useImagePreview } from './chat/use-image-preview.js'
 import { useWorkspaceCommands } from './chat/use-workspace-commands.js'
 import { createRunCommand } from './chat/run-command.js'
+import { createRewindCommands } from './chat/rewind.js'
+import { useTrajectory } from './chat/use-trajectory.js'
+import { useSeek } from './chat/use-seek.js'
 
 /** Strip the focus/global-input surface even from untyped plugins. Local
  * click, hover, and captured drag stay inside the view and are kept. */
@@ -626,10 +629,6 @@ export function Chat({
     balance, setBalance, runBalance,
   } = useSidePanels(channel)
   const [historyFill, setHistoryFill] = React.useState<string | null>(null)
-  /** Monotonic token: only the latest rewind decision may land (a slow
-   *  plugin answering after the user moved on must not open a confirm for
-   *  a row they are no longer looking at). */
-  const rewindRequestRef = React.useRef(0)
   /**
    * Session switches that do not go through `/new` (agent-view attach,
    * backgrounding, `/resume`) remount the transcript tree without resetting
@@ -771,11 +770,7 @@ export function Chat({
 
   /** Open the scene, mark failures seen, and retire the key hint for good. */
   const openScene = React.useCallback(() => {
-    seenFailuresRef.current = trajectoryRef.current?.counts.errors ?? 0
-    setTrajectorySeen(previous => {
-      if (!previous) writeTrajectorySeen()
-      return true
-    })
+    markFailuresSeen()
     setSceneOpen(true)
   }, [])
 
@@ -1075,7 +1070,6 @@ export function Chat({
    * consumed in the very commit this effect judges, and clearing it there would
    * wipe the message the user just got back.
    */
-  const pendingFillRef = React.useRef<string | null>(null)
   /**
    * Drop the composer's text when the session underneath it is replaced.
    *
@@ -1344,24 +1338,17 @@ ing registered by a DSH
       .filter(row => row.kind === 'user' && row.label === undefined)
       .reverse()
     : NO_ROWS
-  /** Open the rewind picker (from PromptInput's double-Esc on an empty input). */
-  const openRewind = () => {
-    // The overlay is not 'rewind' yet this render, so rewindRows is empty —
-    // scan directly instead of reading the gated list.
-    const candidates = channel.rows
-      .filter(row => row.kind === 'user' && row.label === undefined)
-      .reverse()
-    if (candidates.length === 0) {
-      channel.notify(t('rewind-none'))
-      return
-    }
-    rewindRequestRef.current += 1
-    dispatchOverlay({
-      type: 'open',
-      overlay: { kind: 'rewind', index: 0, confirm: null, modes: null, modeIndex: 0, busy: false },
-    })
-  }
 
+  const {
+    trajectory, terminalColumns, markFailuresSeen, pageInsetX, wakeBand, wakeTickRef, wakeTime,
+    trajectorySeen, setTrajectorySeen, unreadFailures, failureHintRowId,
+  } = useTrajectory(channel, trajectorySeenProp)
+  const rewindRequestRef = React.useRef(0)
+  const pendingFillRef = React.useRef<string | null>(null)
+  const { openRewind, requestRewindConfirm, performRewind } = createRewindCommands({
+    channel, dispatchOverlay, rewindRequestRef, pendingFillRef, setHistoryFill,
+  })
+  const { forceMountRowId, seekRow, seekRowIntoView, revealAndSeekRow } = useSeek(handle, rowRefsRef, showAllMessages, setShowAllMessages)
   const runCommand = createRunCommand({
     channel, t, dispatchOverlay, handle, expanded, models,
     applyLang, backgroundToAgentView, btwAbortRef, handleWorkspaceResult, questionStore,
@@ -1379,160 +1366,8 @@ ing registered by a DSH
     setLogoNonce, suppressLogoIntroRef, recapAbortRef, agentViewOpenSessionRef,
     runPermissionCommand, openRewind,
   })
-  /**
-   * Enter on a rewind candidate: ask the plugins first (tui/rewind-prompt).
-   * A veto keeps the list open; offered modes turn the confirm pane into a
-   * choice list; "no opinion" lands on the plain confirm as before.
-   */
-  const requestRewindConfirm = async (row: ChatRow) => {
-    const token = ++rewindRequestRef.current
-    dispatchOverlay({ type: 'rewind-busy', busy: true })
-    const decision = await channel.promptRewind(row)
-    if (token !== rewindRequestRef.current) return
-    if (decision === 'cancel') {
-      dispatchOverlay({ type: 'rewind-busy', busy: false })
-      return
-    }
-    dispatchOverlay({ type: 'rewind-decision', confirm: row, modes: decision?.modes ?? null })
-  }
-  /** Execute the confirmed rewind; the message comes back into the input. */
-  const performRewind = async (row: ChatRow, mode: string | null = null) => {
-    const text = await channel.rewindTo(row, mode)
-    if (text !== null) {
-      // The restored message belongs to the binding `rewindTo` just created,
-      // not to the one it replaced: it is the user's choice, and the switch
-      // effect must not treat it as the old conversation's leftovers.
-      pendingFillRef.current = String(channel.agentId)
-      // Put the restored message back in the prompt for re-editing.
-      setHistoryFill(text)
-      channel.notify(t('rewind-done'))
-    }
-  }
 
-  /**
-   * The session's trajectory projection, folded here rather than inside the
-   * scene.
-   *
-   * Two things fall out of owning it at this level: the status-line chip can
-   * show live counters without a second fold, and opening the scene is
-   * instant because the build is already warm. The fold is incremental — it
-   * consumes only events appended since the last render — so an idle
-   * conversation pays nothing for it.
-   */
-  const trajectoryRef = React.useRef<TrajBuild | null>(null)
-  trajectoryRef.current = extendTrajectory(
-    trajectoryRef.current,
-    // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: headless hosts render Chat with a partial channel
-    channel.traceEvents?.() ?? NO_EVENTS,
-  )
-  const trajectory = trajectoryRef.current
 
-  /**
-   * The status-line wake.
-   *
-   * Projected onto a dozen-odd columns and memoized against the ledger's row
-   * count, so it recomputes when the session actually grows rather than on
-   * every animation tick. The tick only re-colours the cells it already has.
-   */
-  const { columns: terminalColumns } = useTerminalSize()
-  const pageInsetX = usePageInset().x
-  const wakeWidth = miniWakeWidth(terminalColumns)
-  const wakeBand = React.useMemo(
-        () =>
-      wakeWidth === 0
-        ? undefined
-        // `sequence`, not the scene's `compressed`: at sixteen columns an idle
-        // gap cannot express how long it was, so it only reads as a broken
-        // strip. Equal-width columns give a continuous silhouette, which is
-        // the only thing this size can actually say.
-        // Width is also clamped to the row count: with fewer rows than
-        // columns the strip would be mostly gaps, which reads as broken
-        // rather than as short. It simply grows as the session does.
-        : projectWave(trajectory.nodes, Math.min(wakeWidth, trajectory.nodes.length), 'sequence'),
-    // The node array is mutated in place by the incremental fold, so its
-    // length is the honest dependency; its identity never changes.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-    [trajectory.nodes, trajectory.counts.rows, wakeWidth],
-  )
-  const [wakeTickRef, wakeTime] = useAnimationFrame(channel.working ? 120 : null)
-  /**
-   * The key hint beside the strip retires itself once the trajectory has been
-   * opened — teaching belongs in the first minute, not on every frame forever.
-   */
-  const [trajectorySeen, setTrajectorySeen] = React.useState(() => trajectorySeenProp ?? readTrajectorySeen())
-
-  /**
-   * The one failure worth pointing at.
-   *
-   * Only the LATEST failed tool row carries the footnote, and only while its
-   * failures are unseen. Repeating it under every historical failure would be
-   * exactly the clutter the whole entry design is trying to avoid — one
-   * pointer, at the newest problem, is enough to find the rest.
-   */
-  const seenFailuresRef = React.useRef(0)
-  const unreadFailures = Math.max(0, trajectory.counts.errors - seenFailuresRef.current)
-  const failureHintRowId = React.useMemo(() => {
-    if (unreadFailures === 0) return null
-    for (let index = channel.rows.length - 1; index >= 0; index--) {
-      const row = channel.rows[index]
-      if (row?.kind === 'tool' && row.tool?.status === 'error') return row.id
-    }
-    return null
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel.rows, channel.version, unreadFailures])
-
-  // Row seeking under layout virtualization: a mounted row seeks directly;
-  // an unmounted one is force-mounted first, then sought by the completion
-  // effect below once its ref lands. The seek mode travels with the
-  // deferred seek so the completion effect replays the same alignment.
-  const [forceMountRowId, setForceMountRowId] = React.useState<number | null>(null)
-  const forceMountSeekModeRef = React.useRef<'top' | 'nearest'>('top')
-  const seekRowAligned = (rowId: number, mode: 'top' | 'nearest'): void => {
-    const el = rowRefsRef.current.get(rowId)
-    if (el) {
-      handle?.scrollToElement(el, 0, mode)
-      return
-    }
-    forceMountSeekModeRef.current = mode
-    setForceMountRowId(rowId)
-  }
-  /** Top-align seek: the row's head becomes the viewport's top line. */
-  const seekRow = (rowId: number): void => seekRowAligned(rowId, 'top')
-  /**
-   * Minimal seek (grok-style cursor navigation): a row already on screen
-   * leaves the page in place — the cursor moves, the viewport doesn't;
-   * only an off-screen row scrolls, by the shortest distance that
-   * reveals it at the near edge.
-   */
-  const seekRowIntoView = (rowId: number): void => seekRowAligned(rowId, 'nearest')
-  /**
-   * Reveal-and-seek for a row folded behind the recent-rows window (the
-   * rail's tick for an old turn, the doc's revealAndSeekRow, selection
-   * mode's g): expand the fold first, then the ordinary seek takes over —
-   * the completion effect below force-mounts the row and scrollToElement
-   * lands it once its ref (and Yoga top) exist. The fold toggle is
-   * idempotent, so calling this for an already-revealed row is harmless.
-   * Without the reveal, forceMount only widens within MessageList's
-   * visibleRows — a row sliced off by RENDERED_ROW_CAP never mounts and
-   * the seek silently no-ops (long-session g-to-top bug).
-   */
-  const revealAndSeekRow = (rowId: number, mode: 'top' | 'nearest' = 'top'): void => {
-    if (!showAllMessages) setShowAllMessages(true)
-    seekRowAligned(rowId, mode)
-  }
-  React.useLayoutEffect(() => {
-    if (forceMountRowId === null) return
-    const el = rowRefsRef.current.get(forceMountRowId)
-    if (el) {
-      handle?.scrollToElement(el, 0, forceMountSeekModeRef.current)
-      // Clear deferred to a macrotask: clearing here would let React's
-      // synchronous re-render narrow the virtualization window and unmount
-      // the row BEFORE the renderer's deferred pass reads its Yoga top
-      // (scrollAnchor processing runs in a microtask) — the seek would
-      // silently no-op (detached anchor element).
-      setTimeout(() => setForceMountRowId(null), 0)
-    }
-  })
 
   // `/` transcript search: rows whose searchable text contains the query.
   // Computed per render — `channel.rows` is a live in-place array (see
