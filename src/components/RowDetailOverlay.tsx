@@ -26,6 +26,18 @@ function summarizeArgs(argsText: string): string {
 const secondsOf = (ms: number): string => `${(Math.round(ms / 100) / 10).toFixed(1)}s`
 
 /**
+ * One Text per source line. Ink's Text does not break on `\n` — folding a
+ * multi-line payload into a single node swallows the newlines and renders
+ * one run-on line that only soft-wraps by width (seq's 60 lines showed as
+ * "1 2 3 … 60"). Long lines still soft-wrap through Text's default wrap.
+ */
+function multiline(text: string, keyPrefix: string, color?: 'error'): React.ReactNode[] {
+  return text.split('\n').map((line, index) => (
+    <Text key={`${keyPrefix}${index}`} color={color}>{line}</Text>
+  ))
+}
+
+/**
  * The selection-mode Enter viewer (grok's "Enter details"): the selected
  * row's COMPLETE content in a centered card over a dim click-catcher — the
  * transcript viewport can never hold a 500-line tool output, so full
@@ -110,16 +122,18 @@ export function RowDetailOverlay({
           <Box flexDirection="column" paddingLeft={1} paddingRight={1}>
             {tool ? (
               <>
-                <Text wrap="truncate-end">{'$ '}{tool.argsText}</Text>
+                {tool.argsText.split('\n').map((line, index) => (
+                  <Text key={`a${index}`} wrap="wrap">{index === 0 ? `$ ${line}` : line}</Text>
+                ))}
                 {tool.errorText !== undefined && tool.errorText.length > 0
-                  ? <Text color="error">{tool.errorText}</Text>
+                  ? multiline(tool.errorText, 'e', 'error')
                   : null}
                 {tool.resultText !== undefined && tool.resultText.length > 0
-                  ? <Text>{tool.resultText}</Text>
+                  ? multiline(tool.resultText, 'r')
                   : null}
               </>
             ) : (
-              <Text>{row.text}</Text>
+              multiline(row.text, 't')
             )}
           </Box>
         </ScrollBox>

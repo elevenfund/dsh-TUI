@@ -427,6 +427,15 @@ try {
     `title=${okTitle} args=${okArgs} head=${okHead} hint=${okHint} top=${JSON.stringify((viewportLines().find(l => l.trim() !== '') ?? '').slice(0, 70))}`,
   )
   check('T13c 60 行输出尾部初始在浮窗外', !screenHas('result-line-59'))
+  check(
+    'T13c2 浮窗内源换行保真（一行独占一个 result-line-N，非软折行连排）',
+    await settled(() => {
+      // 行形态 `│ result-line-N   │`：卡片边框与内容同视觉行，底层 dim 文字
+      // 可能从背板透出（◆/● 前缀）——按边框+文本匹配，不要求整行相等。
+      const lines = viewportLines()
+      return lines.some(l => l.includes('│ result-line-3')) && lines.some(l => l.includes('│ result-line-4'))
+    }),
+  )
   stdin.write('G')
   await sleep(400)
   check('T13d 浮窗内 G 滚到输出尾部', await settled(() => screenHas('result-line-59') && !screenHas('result-line-0')))
