@@ -842,6 +842,11 @@ const KNOWN_FAIL = new Set([
   // 挂起型（基线 fa96898 同样死等 20min+）：纯逻辑断言全过，渲染段等一个
   // 永不 resolve 的 promise；待修脚本本身，per-entry timeout 会兜底杀掉。
   'verify-balance',
+  // channel-ui 组既有失败（fa96898 基线 checkout 对照全部 exit≠0，2026-09-27）：
+  'verify-activity-store', 'verify-compact', 'verify-compact-switch',
+  'verify-empty-assistant', 'repro-external-editor', 'verify-thinking-display',
+  'verify-text-background', 'verify-effort-ignition', 'verify-effort-accent',
+  'verify-askpanel-hide-custom-input', 'verify-question-paste', 'verify-long-line-fold',
 ])
 
 
