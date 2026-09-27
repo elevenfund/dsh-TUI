@@ -419,6 +419,62 @@ try {
     screenHas('esc to return to input') && lineHighlighted('user line alpha') && screenHas('user line alpha'),
   )
 
+  // T16: 浮窗标题分支——user 行 → User message + 原文；reasoning 行 →
+  // Thinking + 时长（T13 只测了 tool 行）。
+  stdin.write('\r')
+  await sleep(450)
+  check(
+    'T16a user 行浮窗（User message 标题 + 原文）',
+    await settled(() => screenHas('User message') && screenHas('user line alpha')),
+  )
+  stdin.write('\x1b')
+  await sleep(300)
+  stdin.write('j') // user → reasoning（user 是首个可选行，k 不动）
+  await sleep(300)
+  stdin.write('\r')
+  await sleep(450)
+  check(
+    'T16b reasoning 行浮窗（Thinking 标题）',
+    await settled(() => screenHas('Thinking · 0.8s')),
+  )
+  stdin.write('\x1b')
+  await sleep(300)
+
+  // T17: 快照过期分支——退出后有新行（模拟提交），重进必须跟末行
+  // 而不是恢复旧光标（"输入了才滚到底"的另一半）。
+  stdin.write('\t') // 退出（快照当前 rows）
+  await sleep(300)
+  const rowsArr = channel.rows as Array<Record<string, unknown>>
+  rowsArr.push({ id: 200, kind: 'user', text: 'fresh turn line' })
+  bump()
+  await sleep(400)
+  stdin.write('\t') // 重进：rows 已变 → 跟末行
+  await sleep(400)
+  check(
+    'T17 提交新消息后重进跟随末行（非恢复旧光标）',
+    screenHas('esc to return to input') && lineHighlighted('fresh turn line'),
+  )
+
+  // T18: 浮窗区域预算——输入簇增高（背景 agent 提示行 +1）时卡片顶部
+  // 不被 transcript 区域边缘裁掉（标题仍可见）。
+  ;(channel as Record<string, unknown>).backgroundAgentsNeedingInput = 1
+  bump()
+  await sleep(400)
+  stdin.write('\r')
+  await sleep(500)
+  check(
+    'T18 输入簇增高时浮窗标题不被裁（maxRows=viewport 预算）',
+    await settled(() => screenHas('User message')),
+  )
+  stdin.write('\x1b')
+  await sleep(300)
+  ;(channel as Record<string, unknown>).backgroundAgentsNeedingInput = undefined
+  bump()
+  await sleep(300)
+  // 复原 T13 的前提：光标回首个可选行（T13a 从 user jj 到 tool）。
+  stdin.write('g')
+  await sleep(400)
+
   // T13: Enter 打开 row-detail 浮窗（grok "Enter details" 语义）——全文在
   // 卡片内滚动阅读；折叠展开归 l/h；Esc/Enter 关闭回选择模式且光标不动。
   stdin.write('j')
