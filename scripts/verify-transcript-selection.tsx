@@ -105,7 +105,7 @@ const bgKey = (col: number, row: number): string => JSON.stringify(buf().getLine
 /** Stable string key for a cell's foreground color. */
 const fgKey = (col: number, row: number): string => JSON.stringify(buf().getLine(buf().baseY + row)?.getCell(col)?.getFgColor() ?? null)
 
-const toolResult = Array.from({ length: 30 }, (_, i) => `result-line-${i}`).join('\n')
+const toolResult = Array.from({ length: 60 }, (_, i) => `result-line-${i}`).join('\n')
 const listeners = new Set<() => void>()
 const channel: Record<string, unknown> = {
   version: 0,
@@ -217,7 +217,13 @@ try {
   const bash3 = findText('Bash(')
   check('T3c 选中后 tool 头点亮（fg 变化）', bash3 !== null && fgKey(bash3.col, bash3.row) !== dimFg)
   stdin.write('\r')
-  check('T4 Enter 展开折叠 tool 正文', await settled(() => screenHas('result-line-0') && screenHas('result-line-29')))
+  // 60 行正文 > 40 行视口：展开后视口必须 pin 在被展开行的顶部——首行
+  // 可见、末行被推出视口（pin 末行方向的回归即在此暴露）。
+  check(
+    'T4 Enter 展开后视口 pin 首行',
+    await settled(() => screenHas('result-line-0') && !screenHas('result-line-59')),
+    `line0=${screenHas('result-line-0')} line59=${screenHas('result-line-59')}`,
+  )
 
   // T5: Tab 退出选择模式，打字恢复。
   stdin.write('\t')
@@ -233,8 +239,10 @@ try {
   stdin.write('qq')
   check('T6 Esc 退出后打字恢复', await settled(() => screenHas('qq')))
 
-  // T7: 滚动跟随——追加大量行把新 tool 行推出视口，Tab 进入选择模式
-  // 选中它时 seekRow 应把它滚回可视区。
+
+
+  // T7: 滚动跟随——追加大量行后，Tab 进入选择模式会 findLast 末行并
+  // seekRow 滚入；随后一路 ↑ 到顶，顶行也要滚入视口。
   ;(channel.rows as Array<Record<string, unknown>>).push(
     ...Array.from({ length: 60 }, (_, i) => ({ id: 10 + i, kind: 'assistant', text: `filler line ${i}` })),
     {
@@ -253,13 +261,13 @@ try {
     },
   )
   bump()
-  check('T7a 追加行渲染（sticky 底部跟随）', await settled(() => screenHas('filler line 59')))
-  check('T7b user 首行被推出视口', !screenHas('user line alpha'))
   stdin.write('\t')
-  await sleep(300)
+  await sleep(400)
+  check('T7a Tab 进入即 seek 到末行', await settled(() => screenHas('tail-check')))
   // 一路 ↑ 走到第一个可选行（user，在 60 行 filler 之上、视口之外）。
   for (let i = 0; i < 70; i++) stdin.write('\x1b[A')
-  check('T7c ↑ 走到顶行时 seekRow 滚入视口', await settled(() => screenHas('user line alpha')))
+  check('T7b ↑ 走到顶行时 seekRow 滚入视口', await settled(() => screenHas('user line alpha')))
+
 } finally {
   app.unmount()
 }

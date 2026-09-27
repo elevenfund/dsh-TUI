@@ -147,6 +147,13 @@ export default class Ink {
   private backFrame: Frame;
   private lastPoolResetTime = performance.now();
   private drainTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Trailing hover replay after wheel scrolling (see dispatchWheelAt): the
+   * pointer sits still while content moves under it, and hover enter/leave
+   * otherwise waits for the next physical mouse motion — a fold affordance
+   * that only renders on hover then reads as dead until the pointer twitches.
+   */
+  private hoverReplayTimer: ReturnType<typeof setTimeout> | null = null;
   // Every scheduled microtask carries the generation that created it. Immediate
   // renders invalidate older trailing work before it can append an old frame.
   private renderGeneration = 0;
@@ -510,6 +517,10 @@ export default class Ink {
     if (this.terminalQueryResumeTimer !== null) {
       clearTimeout(this.terminalQueryResumeTimer);
       this.terminalQueryResumeTimer = null;
+    }
+    if (this.hoverReplayTimer !== null) {
+      clearTimeout(this.hoverReplayTimer);
+      this.hoverReplayTimer = null;
     }
     // Replies cannot be routed while the child owns stdin. Release every
     // query hold before cooked mode is restored; an interrupted first Kitty
@@ -1473,6 +1484,10 @@ export default class Ink {
       clearTimeout(this.terminalQueryResumeTimer);
       this.terminalQueryResumeTimer = null;
     }
+    if (this.hoverReplayTimer !== null) {
+      clearTimeout(this.hoverReplayTimer);
+      this.hoverReplayTimer = null;
+    }
     // Delete Kitty placements before terminal mode cleanup. This write uses
     // the renderer's own ordered stream, matching the rest of this shutdown
     // path and leaving unmount's synchronous cleanup safely idempotent.
@@ -2357,6 +2372,18 @@ export default class Ink {
     const handled = dispatchWheel(this.rootNode, col, row, deltaY, deltaX, button);
     if (handled) {
       logMouseDebug('dispatchWheelAt consumed', { col, row, deltaY, deltaX });
+      // Scroll moved content under a stationary pointer: schedule one hover
+      // replay for when scrolling settles. The 50ms trailing edge coalesces
+      // a scroll burst (wheel reports arrive every ~15ms) and lands after
+      // the ScrollBox's 16ms-throttled scroll render, so hit-test geometry
+      // is fresh. dispatchHover diffs hoveredNodes, so replaying when the
+      // pointer's target did not change is a no-op.
+      if (this.hoverReplayTimer !== null) clearTimeout(this.hoverReplayTimer);
+      this.hoverReplayTimer = setTimeout(() => {
+        this.hoverReplayTimer = null;
+        logMouseDebug('hover replay after scroll', { col, row });
+        this.dispatchHover(col, row);
+      }, 50);
     }
     return handled;
   }
@@ -2708,6 +2735,10 @@ export default class Ink {
     if (this.terminalQueryResumeTimer !== null) {
       clearTimeout(this.terminalQueryResumeTimer);
       this.terminalQueryResumeTimer = null;
+    }
+    if (this.hoverReplayTimer !== null) {
+      clearTimeout(this.hoverReplayTimer);
+      this.hoverReplayTimer = null;
     }
 
     // @ts-ignore -- runtime/type-definition mismatch: updateContainerSync exists in react-reconciler but not in @types/react-reconciler

@@ -1265,11 +1265,13 @@ function renderNodeToOutput(
         // → firstVisible wrong. Also: SCROLL_MIN_PER_FRAME=4 with snap-at-1
         // ping-ponged forever at delta=2. Smooth needs drain-end notify
         // plumbing; shipping instant first. stickyScroll overrides.
+        let anchorConsumed = false
         if (node.scrollAnchor) {
           const anchorTop = node.scrollAnchor.el.yogaNode?.getComputedTop()
           if (anchorTop != null) {
             node.scrollTop = anchorTop + node.scrollAnchor.offset
             node.pendingScrollDelta = undefined
+            anchorConsumed = true
           }
           node.scrollAnchor = undefined
         }
@@ -1299,6 +1301,16 @@ function renderNodeToOutput(
         // transient measurement drops below the viewport. Freeze the
         // position for that frame; the next growth frame re-validates it.
         const shrunk = scrollHeight < prevScrollHeight
+        // Follow suppression opened by a consumed scrollAnchor: a row
+        // expansion reveals its body over SEVERAL frames (smooth reveal), so
+        // a single-frame pass-through would let the positional at-bottom
+        // follow re-capture the viewport mid-burst. The suppression stays
+        // sticky across the growth burst and clears on the first no-growth
+        // frame.
+        if (anchorConsumed) node.suppressFollowGrowth = true
+        const suppressFollow =
+          anchorConsumed || (node.suppressFollowGrowth === true && grew)
+        if (!grew) node.suppressFollowGrowth = false
         // Only real growth (or a settled measurement) refreshes the trusted
         // maxScroll used by the positional at-bottom check — otherwise the
         // frame AFTER an artifact shrink compares against the shrunken
@@ -1315,7 +1327,7 @@ function renderNodeToOutput(
           sticky ||
           (scrollTopBeforeFollow >= prevMaxScroll &&
             (grew || scrollTopBeforeFollow >= maxScroll))
-        if (atBottom && (node.pendingScrollDelta ?? 0) >= 0 && !shrunk) {
+        if (atBottom && (node.pendingScrollDelta ?? 0) >= 0 && !shrunk && !suppressFollow) {
           node.scrollTop = maxScroll
           node.pendingScrollDelta = undefined
           // Sync flag so useVirtualScroll's isSticky() agrees with positional

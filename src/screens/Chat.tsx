@@ -6,6 +6,7 @@ import { readModelPref } from '../modelPrefs.js'
 import { readActivityFrames } from '../activityPrefs.js'
 import { envThemeOverride } from '../components/design-system/ThemeProvider.js'
 import { hasPath } from '../dsh-adapter/settingsEditor.js'
+import { isMod } from '../utils/modifiers.js'
 import { planReload, type ReloadKind } from '../reload.js'
 import { AlternateScreen, Box, Image, Text, useInput, ScrollBox, type ScrollBoxHandle, useTheme, useTerminalSize } from '../ui.js'
 import * as tuiKit from '../ui.js'
@@ -3526,12 +3527,18 @@ export function Chat({
     if (key.shift && key.upArrow && !selectionActive && !helpOpen) {
       enterSelection()
     } else if (selectionActive) {
-      if (key.upArrow) {
+      if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) {
         moveSelection(-1)
-      } else if (key.downArrow) {
+      } else if (key.downArrow || (!isMod(key) && !key.meta && input === 'j')) {
         moveSelection(1)
       } else if (plainReturn && selectedId !== null) {
+        // Seek only on the expanding edge: a collapse shrinks content (the
+        // follow leaves scrollTop alone) and re-seeking would yank the row
+        // to the viewport top; an expansion grows it below the cursor and
+        // needs the row pinned as the viewport's top anchor.
+        const expanding = !expandedRows.has(selectedId)
         toggleRowExpanded(selectedId)
+        if (expanding) seekRow(selectedId)
       } else if ((key.tab && !key.shift) || key.escape) {
         // Tab mirrors grok's focus rotation: the same key that handed the
         // keyboard to the transcript hands it back to the composer. Esc

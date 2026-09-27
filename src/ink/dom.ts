@@ -92,6 +92,11 @@ export type DOMElement = {
   // bottom/top. Shrink frames keep the last trusted value; only real
   // growth (or a settled measurement) refreshes it.
   scrollPrevMax?: number
+  /** Sticky follow suppression opened by a consumed scrollAnchor: the growth
+   *  burst an expansion/reveal opens under the anchor must not let the
+   *  positional at-bottom follow re-capture the viewport; cleared on the
+   *  first no-growth frame (see render-node-to-output.ts). */
+  suppressFollowGrowth?: boolean
   stickyScroll?: boolean
   // Renderer → React notification channel, set by ScrollBox to its
   // subscriber-notify. Invoked when the RENDERER restores stickyScroll on
