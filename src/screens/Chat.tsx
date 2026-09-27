@@ -2833,6 +2833,24 @@ export function Chat({
   }
   // useCallback: these feed MessageList → MemoRow's shallow compare; fresh
   // closures each render would defeat every row's memo.
+  /** Global transcript-mode toggle (default Ctrl+O). The mode OWNS row fold
+   *  states: collapsing clears per-row toggles so the transcript reads one
+   *  way instead of a mix of global and row-local expansion. */
+  const toggleTranscriptMode = () => {
+    const next = !expanded
+    setExpanded(next)
+    if (!next) setExpandedRows(new Set())
+    // The toggle rewrites every thinking row's layout at once. The
+    // ordinary scroll-based diff pushes rows into terminal scrollback on
+    // each expand and nothing removes them on collapse — rapid toggling
+    // drifts the virtual↔scrollback mapping until writes misland
+    // (garbled transcript, duplicated rows). Re-anchor the next frame:
+    // in-place viewport repaint, nothing added to scrollback. Lookup
+    // falls back to the only live instance for embedders whose stdout
+    // isn't process.stdout (test harnesses).
+    const ink = instances.get(process.stdout) ?? instances.values().next().value
+    ink?.reanchorViewport()
+  }
   const toggleRowExpanded = React.useCallback((rowId: number) => {
     setExpandedRows((previous) => {
       const next = new Set(previous)
@@ -3527,7 +3545,12 @@ export function Chat({
     if (key.shift && key.upArrow && !selectionActive && !helpOpen) {
       enterSelection()
     } else if (selectionActive) {
-      if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) {
+      if (actionMatches('transcript', input, key) && !helpOpen) {
+        // Ctrl+O stays live inside selection mode: the global expand/collapse
+        // owns row fold states and must not wait for the composer to regain
+        // the keyboard.
+        toggleTranscriptMode()
+      } else if (key.upArrow || (!isMod(key) && !key.meta && input === 'k')) {
         moveSelection(-1)
       } else if (key.downArrow || (!isMod(key) && !key.meta && input === 'j')) {
         moveSelection(1)
@@ -3572,17 +3595,7 @@ export function Chat({
       // overlay is invisible, then the next `/` unexpectedly opens
       // transcript search instead of slash-command completion after Help
       // closes.
-      setExpanded(previous => !previous)
-      // The toggle rewrites every thinking row's layout at once. The
-      // ordinary scroll-based diff pushes rows into terminal scrollback on
-      // each expand and nothing removes them on collapse — rapid toggling
-      // drifts the virtual↔scrollback mapping until writes misland
-      // (garbled transcript, duplicated rows). Re-anchor the next frame:
-      // in-place viewport repaint, nothing added to scrollback. Lookup
-      // falls back to the only live instance for embedders whose stdout
-      // isn't process.stdout (test harnesses).
-      const ink = instances.get(process.stdout) ?? instances.values().next().value
-      ink?.reanchorViewport()
+      toggleTranscriptMode()
     } else if (input === '/' && !key.ctrl && !key.meta && !key.super && !helpOpen) {
       // `/` in transcript mode (Ctrl+O expanded):
       // search is active on the transcript screen where `/` isn't a command).
@@ -3785,6 +3798,7 @@ export function Chat({
         channel={channel}
         home={homeDir()}
         onClose={closeHome}
+        onToggleTranscript={toggleTranscriptMode}
         approval={approvalSnapshot}
         onApprove={outcome => approvals.decide(outcome)}
         onOpenSession={async (sessionId) => {
@@ -3834,6 +3848,7 @@ export function Chat({
       <SessionTree
         channel={channel}
         currentSessionId={channel.agentId}
+        onToggleTranscript={toggleTranscriptMode}
         onClose={() => setTreeOpen(false)}
         onRestoreText={(text) => {
           // The tree rewound to a node and is handing that turn's prompt back,

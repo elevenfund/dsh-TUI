@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { basename } from 'node:path'
 import { Box, Text, useInput, useTerminalSize } from '../ui.js'
 import { t } from '../i18n.js'
+import { actionMatches } from '../utils/keymap.js'
 import type { ContextMenuEvent } from '../ink/events/context-menu-event.js'
 import type { ClickEvent } from '../ink/events/click-event.js'
 import type { WheelEvent } from '../ink/events/wheel-event.js'
@@ -66,6 +67,7 @@ export function SessionSupervisor({
   approval,
   onApprove,
   liveStateOf,
+  onToggleTranscript,
 }: {
   channel: Channel
   /** Home directory, for collapsing paths to `~`. */
@@ -91,6 +93,9 @@ export function SessionSupervisor({
    * overview's own rows by construction.
    */
   liveStateOf(sessionId: string): SupervisorLiveState | undefined
+  /** Global transcript-mode toggle (Ctrl+O) stays live on this screen: the
+   *  host re-renders the conversation with the new fold state on close. */
+  onToggleTranscript?(): void
 }): React.ReactNode {
   const { columns, rows } = useTerminalSize()
   const inset = React.useContext(PageInsetContext)
@@ -205,6 +210,13 @@ export function SessionSupervisor({
       return
     }
 
+    // Global transcript-mode toggle (Ctrl+O) works from this screen too —
+    // the mode is the conversation's, and the user should not have to close
+    // the session browser to flip it.
+    if (actionMatches('transcript', input, key)) {
+      onToggleTranscript?.()
+      return
+    }
     if (key.escape) {
       if (notice !== undefined) {
         setNotice(undefined)

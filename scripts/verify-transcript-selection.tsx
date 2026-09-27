@@ -111,6 +111,7 @@ const channel: Record<string, unknown> = {
   version: 0,
   rows: [
     { id: 1, kind: 'user', text: 'user line alpha' },
+    { id: 5, kind: 'reasoning', text: 'reasoning body marker xyz', durationMs: 800 },
     {
       id: 2,
       kind: 'tool',
@@ -201,16 +202,26 @@ try {
   check('T2 进入即选中末行 tool 行（背景高亮）', bashA !== null && bgKey(bashA.col, bashA.row) !== defaultBg)
   check('T2b assistant 纯文本不可选中', asst !== null && bgKey(asst.col, asst.row) === defaultBg)
 
-  // T3: ↑ 一次到 user 行（中间没有 assistant 可停）。
+  // T3: ↑ 一次到 reasoning 行、再 ↑ 到 user 行（assistant 不可选）。
+  stdin.write('\x1b[A')
+  await sleep(250)
+  const thought1 = findText('Thought')
+  const bash2 = findText('Bash(')
+  check(
+    'T3a ↑ 后 reasoning 行高亮、tool 行释放',
+    thought1 !== null && bash2 !== null && bgKey(thought1.col, thought1.row) !== defaultBg && bgKey(bash2.col, bash2.row) === defaultBg,
+  )
   stdin.write('\x1b[A')
   await sleep(250)
   const user1 = findText('user line alpha')
-  const bash2 = findText('Bash(')
+  const bash3a = findText('Bash(')
   check(
-    'T3a ↑ 后 user 行高亮、tool 行释放',
-    user1 !== null && bash2 !== null && bgKey(user1.col, user1.row) !== defaultBg && bgKey(bash2.col, bash2.row) === defaultBg,
+    'T3a2 ↑↑ 后 user 行高亮、reasoning 释放',
+    user1 !== null && bash3a !== null && bgKey(user1.col, user1.row) !== defaultBg,
   )
-  // T4: ↓ 回到 tool 行，Enter 展开折叠正文。
+  // T4: ↓ 两次回到 tool 行，Enter 展开折叠正文。
+  stdin.write('\x1b[B')
+  await sleep(200)
   stdin.write('\x1b[B')
   await sleep(250)
   // T3c: 选中点亮的 tool 头 fg 与 rest 态不同（dim → lit）。
@@ -238,6 +249,28 @@ try {
   await sleep(250)
   stdin.write('qq')
   check('T6 Esc 退出后打字恢复', await settled(() => screenHas('qq')))
+
+  // T9: 选择模式里 Ctrl+O 随时生效并覆盖单行展开状态。断言用 reasoning
+  // 行的 verbose 差异（展开=全文可见；收起=单行 Thought，正文不可见）。
+  for (let i = 0; i < 8; i++) stdin.write('\x1b[5~')
+  await sleep(300)
+  stdin.write('\t')
+  await sleep(300)
+  check('T9-pre 选择模式已激活', await settled(() => screenHas('esc to return to input')))
+  stdin.write('\x0f') // Ctrl+O → transcript mode on
+  await sleep(600)
+  check(
+    'T9a 选择模式里 Ctrl+O 全局展开（reasoning 全文可见）',
+    await settled(() => screenHas('reasoning body marker xyz')),
+  )
+  stdin.write('\x0f') // Ctrl+O → off，单行 expandedRows 一并清除
+  await sleep(600)
+  check(
+    'T9b Ctrl+O 收起覆盖单行展开（reasoning 回折叠）',
+    await settled(() => !screenHas('reasoning body marker xyz') && !screenHas('result-line-59')),
+  )
+  stdin.write('\x1b')
+  await sleep(250)
 
 
 

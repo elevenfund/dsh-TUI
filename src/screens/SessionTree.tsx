@@ -1,5 +1,6 @@
 import React from 'react'
 import { Box, Text, useInput, useTerminalSize } from '../ui.js'
+import { actionMatches } from '../utils/keymap.js'
 import type { WheelEvent } from '../ink/events/wheel-event.js'
 import { Divider } from '../components/design-system/Divider.js'
 import { HintLine } from '../components/design-system/HintLine.js'
@@ -173,6 +174,7 @@ export function SessionTree({
   currentSessionId,
   onClose,
   onRestoreText,
+  onToggleTranscript,
 }: {
   channel: Channel
   /** Live session id at open time (adopt-live refusal, menu labels). */
@@ -180,6 +182,8 @@ export function SessionTree({
   onClose: () => void
   /** The dropped turn's prompt goes back into the input for re-editing. */
   onRestoreText: (text: string) => void
+  /** Global transcript-mode toggle (Ctrl+O) stays live on this screen. */
+  onToggleTranscript?: () => void
 }): React.ReactNode {
   const { columns, rows } = useTerminalSize()
   const isTerminalFocused = useTerminalFocus()
@@ -433,6 +437,12 @@ export function SessionTree({
     // would drop the user back into a half-swapped session.
     if (busy) return
     if (notice !== undefined) setNotice(undefined)
+
+    // Global transcript-mode toggle (Ctrl+O) works from this screen too.
+    if (actionMatches('transcript', input, key)) {
+      onToggleTranscript?.()
+      return
+    }
 
     if (seat === 'confirm' && confirmState !== null) {
       if (isPlainReturn(key)) performConfirm(confirmState)
