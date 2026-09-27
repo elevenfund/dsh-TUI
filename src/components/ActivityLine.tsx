@@ -81,11 +81,15 @@ export function ActivityLine({
     activity.phase === 'done' || activity.phase === 'tool'
       ? 'accent'
       : 'activity'
+  // Grok's thinking flow is a bare text line — no leading bullet. The
+  // blinking diamond stays on the waiting/tool phases where the line is a
+  // status, not content.
+  const showsBullet = activity.phase !== 'done' && activity.phase !== 'thinking'
 
   return (
     <Box flexDirection="row" ref={bulletRef}>
       <Text wrap="truncate">
-        {activity.phase !== 'done' && (
+        {showsBullet && (
           <Text
             color={bulletBlinking ? 'success' : undefined}
             bold={bulletBlinking}

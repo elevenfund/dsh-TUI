@@ -3894,10 +3894,12 @@ export function Chat({
       // only with unseen rows).
       handle?.scrollToBottom()
     } else if (key.end && !isSticky) {
-      // End = jump to bottom, less/vim semantics. Global on the chat
-      // screen (search/history overlays consume their own End first —
-      // cursor-to-line-end there). At the bottom already: no-op, so the
-      // key stays harmless in muscle memory.
+      // End = jump to bottom, less/vim semantics (G stays selection-mode
+      // only: the composer is focused while browsing, and a printable
+      // binding here would eat every capital G the user types). Global on
+      // the chat screen (search/history overlays consume their own End
+      // first — cursor-to-line-end there). At the bottom already: no-op,
+      // so the key stays harmless in muscle memory.
       handle?.scrollToBottom()
       event.stopImmediatePropagation()
     } else if (extensionShortcuts !== undefined && extensionShortcuts.dispatch(input, key)) {

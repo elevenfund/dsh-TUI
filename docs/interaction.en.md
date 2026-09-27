@@ -390,7 +390,7 @@ In the detail scene `←/→` page through Summary / Output / Tools (the output 
 | Key | Action |
 | --- | --- |
 | `↑` / `↓` / `k` / `j` | Move the focus across BOTH sections (vim keys) |
-| `Enter` | Open the subagent's **full conversation transcript** (user bubbles, markdown replies, folded reasoning toggled with `l/h`, tool cards — same rendering semantics as the main chat; a streaming child refreshes live with tail-follow; `↑/↓/j/k` scroll) |
+| `Enter` | Open the subagent's **full conversation transcript** (user bubbles, markdown replies, folded reasoning toggled with `l/h`, tool cards — same rendering semantics as the main chat; a streaming child refreshes live with tail-follow; `↑/↓/j/k` scroll, `g`/`G` top/bottom, `Ctrl+F/B` (plus `PageUp/PageDown`, `u/d`) half-page) |
 | `x` | Stop the focused running row: kill a job (`job_kill`), interrupt a running subagent (stops the current turn) |
 | `d` | Drop the focused settled subagent from the list (persisted preference — restarts and log replay do not resurrect it; stop it first; the transcript card in the main conversation stays) |
 | `m` | Follow up on the focused continuable subagent (send_message: steer a live child, cold-resume an idle one) |

@@ -118,6 +118,32 @@ export function AgentTranscriptScene({
       scrollRef.current?.scrollBy(1)
       return
     }
+    // Half-page paging: Ctrl+F/B mirror the row-detail card's vim set
+    // (u/d as the classic half-page aliases, PageUp/PageDown as the native
+    // spelling).
+    const viewport = Math.max(1, Math.floor((scrollRef.current?.getViewportHeight() ?? terminalRows - 10) / 2))
+    if (key.pageUp || (key.ctrl && input === 'b') || (!key.ctrl && !key.meta && input === 'u')) {
+      event.stopImmediatePropagation()
+      scrollRef.current?.scrollBy(-viewport)
+      return
+    }
+    if (key.pageDown || (key.ctrl && input === 'f') || (!key.ctrl && !key.meta && input === 'd')) {
+      event.stopImmediatePropagation()
+      scrollRef.current?.scrollBy(viewport)
+      return
+    }
+    if (key.home || (!key.ctrl && !key.meta && input === 'g')) {
+      // g / gg → top (single g is the less habit; the second press re-seeks
+      // the same top and no-ops).
+      event.stopImmediatePropagation()
+      scrollRef.current?.scrollTo(0)
+      return
+    }
+    if (key.end || (!key.ctrl && !key.meta && input === 'G')) {
+      event.stopImmediatePropagation()
+      scrollRef.current?.scrollToBottom()
+      return
+    }
     // l/h toggle the last reasoning fold (vim expand/collapse, matching
     // the main transcript's selection-mode keys).
     if (input === 'l' || input === 'h') {
@@ -187,7 +213,7 @@ export function AgentTranscriptScene({
 
       <Divider color="subtle" title="" />
       <Box marginTop={0} flexDirection="row">
-        <Text dimColor>{`↑/↓ ${t('subagent-hint-scroll')} · l/h ${t('agent-transcript-think-toggle')}`}</Text>
+        <Text dimColor>{`↑/↓/j/k ${t('subagent-hint-scroll')} · l/h ${t('agent-transcript-think-toggle')} · g/G ${t('agent-transcript-jump-hint')}`}</Text>
         {followUpEnabled && onFollowUp && <Text dimColor>{` · ${t('subagent-followup-key-hint')}`}</Text>}
         {running && onInterrupt && <Text dimColor>{` · ${t('subagent-interrupt-key-hint')}`}</Text>}
         <Text dimColor>{` · Esc ${t('subagent-hint-back')}`}</Text>

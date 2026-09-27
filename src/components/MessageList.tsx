@@ -20,7 +20,7 @@ import { TurnInterruptedRow } from './TurnInterruptedRow.js'
 import { LogoV2 } from './LogoV2.js'
 import { StreamingMarkdown } from './StreamingMarkdown.js'
 import { MessageMetadata } from './messages/MessageMetadata.js'
-import { stripNarration } from '../utils/narration.js'
+import { extractNarration, stripNarration } from '../utils/narration.js'
 import { foldLongLines } from '../utils/fold-long-lines.js'
 import { stringWidth } from '../ink/stringWidth.js'
 import { truncateToWidth } from '../ink/truncateToWidth.js'
@@ -78,12 +78,23 @@ const NOOP_TOGGLE_STREAM_VIEW = (_rowId: number): void => {}
 // until it catches up — settling mid-reveal must not snap (that is the
 // "non-streaming delivery becomes a smooth flow" contract).
 
-function assistantRevealText(row: ChatRow, enabled: boolean): string {
-  const stripped = stripNarration(row.text)
-  return revealTextOf(`a${row.id}`, stripped, {
+/** The display text of an assistant row: the `⏵` narration line verbatim
+ * (it renders as the step title, outside the reveal animation) followed by
+ * the reveal-animated body. */
+function assistantDisplayText(row: ChatRow, enabled: boolean): string {
+  const { narration, body } = extractNarration(row.text)
+  const revealed = revealTextOf(`a${row.id}`, body, {
     enabled,
     active: row.streaming === true || row.fresh === true,
   })
+  return narration !== undefined ? `⏵ ${narration}\n${revealed}` : revealed
+}
+
+/** True while an assistant row's reveal cursor is still catching up. */
+function assistantRevealActive(row: ChatRow, enabled: boolean): boolean {
+  if (row.streaming === true) return true
+  if (!enabled) return false
+  return revealDisplayLen(row, true) !== row.text.length
 }
 
 function reasoningRevealText(row: ChatRow, enabled: boolean): string {
@@ -93,11 +104,12 @@ function reasoningRevealText(row: ChatRow, enabled: boolean): string {
 /** Display length only (layout signature; no slice allocation). */
 function revealDisplayLen(row: ChatRow, enabled: boolean): number {
   if (row.kind === 'assistant') {
-    const stripped = stripNarration(row.text)
-    return revealLengthOf(`a${row.id}`, stripped, {
+    const { narration, body } = extractNarration(row.text)
+    const len = revealLengthOf(`a${row.id}`, body, {
       enabled,
       active: row.streaming === true || row.fresh === true,
     })
+    return narration !== undefined ? narration.length + 3 + len : len
   }
   if (row.kind === 'reasoning') {
     return revealLengthOf(`r${row.id}`, row.text, { enabled, active: row.streaming === true })
@@ -475,16 +487,14 @@ export function MessageList({
     // that is STILL STREAMING keeps its place even with empty text — the
     // live dot is the "model is answering" affordance and content may yet
     // arrive.
-    // The emptiness test must match what RENDERING shows: the `⏵`
-    // self-narration line (dsh-working-activity narrate contract) is
-    // stripped at render (stripNarration below), so a narration-only step —
-    // thinking, `⏵ …` line, straight to a tool call — has non-empty raw
-    // text but RENDERS as that same lone `●`. Test the stripped text, or
-    // the raw-text check lets the dot through forever.
+    // The emptiness test must match what RENDERING shows. The `⏵`
+    // narration line (dsh-working-activity narrate contract) now RENDERS as
+    // the turn's step title, so a narration-only step shows real content —
+    // only a reply with no text AND no narration renders empty.
     const rendersEmptyAssistant = (row: ChatRow): boolean =>
       row.kind === 'assistant' &&
       row.streaming !== true &&
-      stripNarration(row.text ?? '').trim() === '' &&
+      (row.text ?? '').trim() === '' &&
       (row.images?.length ?? 0) === 0
     let hasEmptyAssistant = false
     for (const row of sliced) {
@@ -1222,14 +1232,10 @@ export function MessageList({
           let displayText = row.text
           let displayStreaming = row.streaming === true
           if (row.kind === 'assistant' && smoothStreaming) {
-            const stripped = stripNarration(row.text)
-            displayText = revealTextOf(`a${row.id}`, stripped, {
-              enabled: true,
-              active: displayStreaming || row.fresh === true,
-            })
-            displayStreaming = displayStreaming || displayText.length !== stripped.length
+            displayText = assistantDisplayText(row, true)
+            displayStreaming = assistantRevealActive(row, true)
           } else if (row.kind === 'assistant') {
-            displayText = stripNarration(row.text)
+            displayText = row.text
           } else if (row.kind === 'reasoning' && smoothStreaming) {
             displayText = revealTextOf(`r${row.id}`, row.text, { enabled: true, active: displayStreaming })
           }
@@ -1540,10 +1546,18 @@ function TranscriptRow({
             <Text color="text">●</Text>
           </Box>
           <Box flexDirection="column">
-            {/* The ⏵ self-narration line (working-activity narrate contract)
-              is stripped here: the live working line on the status bar
-              already shows it. */}
-            <StreamingMarkdown>{stripNarration(displayText)}</StreamingMarkdown>
+            {/* The ⏵ narration line renders as the turn's dim step title
+              (AssistantTextMessage extracts it) — the live working line on
+              the status bar shows the same text while the turn streams. */}
+            {(() => {
+              const { narration, body } = extractNarration(displayText)
+              return (
+                <>
+                  {narration !== undefined && <Text dimColor>{`⏵ ${narration}`}</Text>}
+                  {body !== '' && <StreamingMarkdown>{body}</StreamingMarkdown>}
+                </>
+              )
+            })()}
             {images !== undefined && <TranscriptImages images={images} indent={0} onPreview={onPreviewImage} suppressGraphics={suppressImageGraphics} />}
           </Box>
         </Box>
@@ -1566,7 +1580,7 @@ function TranscriptRow({
             </Box>
           )}
           <AssistantTextMessage
-            text={stripNarration(displayText)}
+            text={displayText}
             marginTopOnTurn={marginTopOnTurn}
             isSelected={isSelected}
             isExpanded={isExpanded}

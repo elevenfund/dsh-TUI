@@ -1138,6 +1138,7 @@ const dict = {
   'agent-transcript-loading': { zh: '读取中…', en: 'loading…' },
   'agent-transcript-empty': { zh: '暂无转录记录', en: 'no transcript yet' },
   'agent-transcript-think-toggle': { zh: '思考展开', en: 'think toggle' },
+  'agent-transcript-jump-hint': { zh: '首尾 · Ctrl+F/B 翻页', en: 'top/bottom · Ctrl+F/B page' },
   'subagent-followup-key-hint': { zh: 'm 追问', en: 'm follow up' },
   'subagent-followup-prompt': { zh: '输入追问后回车发送…', en: 'type a follow-up, Enter to send…' },
   'subagent-followup-sending': { zh: '发送中…', en: 'sending…' },
