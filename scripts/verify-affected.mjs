@@ -14,7 +14,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -138,18 +138,35 @@ if (hits.length === 0) {
 // ---- run the hit set through a parallel pool (same isolation as run-ci-group) ----
 const jobs = Math.max(1, Math.min(16, Number(process.env.DSH_TUI_TEST_JOBS ?? '8') || 8))
 const env = { NODE_ENV: 'production', ...process.env }
+// Strip the host tmux session and apply GROUPS extraEnv pins so an affected
+// run sees the same environment as the cascade gate: colorize.ts clamps
+// chalk to 256 colors under $TMUX (truecolor assertions go false-red), and
+// zh-contract suites fail bare because their in-file pins hoist away behind
+// static imports.
+const groupExtras = (() => {
+  const src = readFileSync(join(ROOT, 'scripts/run-ci-group.mjs'), 'utf8')
+  const map = new Map()
+  for (const m of src.matchAll(/\[\s*['"]([\w.-]+)['"]\s*,\s*\[[^\]]*\]\s*,\s*\{\s*((?:[A-Za-z_]\w*\s*:\s*['"][^'"]*['"]\s*,?\s*)+)\}\s*\]/g)) {
+    const env = {}
+    for (const p of m[2].matchAll(/([A-Za-z_]\w*)\s*:\s*['"]([^'"]*)['"]/g)) env[p[1]] = p[2]
+    map.set(m[1], env)
+  }
+  return map
+})()
+const { TMUX: _hostTmux, ...childEnv } = env
 const results = []
 const queue = [...hits]
 const runOne = async (script) => {
   const suffix = script.endsWith('.mjs') ? [] : ['--import', 'tsx/esm']
   const argv = ['node', ...suffix, script]
   const scriptHome = mkdtempSync(join(tmpdir(), 'dsh-tui-affected-home-'))
+  const extraEnv = groupExtras.get(basename(script).replace(/\.[^.]+$/, '')) ?? {}
   const chunks = []
   const startedAt = performance.now()
   const status = await new Promise((resolve) => {
     const child = spawn(argv[0], argv.slice(1), {
       cwd: ROOT,
-      env: { ...env, HOME: scriptHome, USERPROFILE: scriptHome },
+      env: { ...childEnv, HOME: scriptHome, USERPROFILE: scriptHome, ...extraEnv },
       shell: false,
     })
     child.stdout.on('data', d => chunks.push(d))
