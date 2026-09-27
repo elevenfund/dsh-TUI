@@ -141,6 +141,9 @@ import { peekKey, useImagePreview } from './chat/use-image-preview.js'
 import { useWorkspaceCommands } from './chat/use-workspace-commands.js'
 import { createRunCommand } from './chat/run-command.js'
 import { createRewindCommands } from './chat/rewind.js'
+import { InputCluster } from './chat/InputCluster.js'
+import { useTranscriptSearch } from './chat/use-transcript-search.js'
+import { inputGuardAction } from './chat/input-guard.js'
 import { useTrajectory } from './chat/use-trajectory.js'
 import { useSeek } from './chat/use-seek.js'
 
@@ -1370,41 +1373,11 @@ ing registered by a DSH
 
 
   // `/` transcript search: rows whose searchable text contains the query.
-  // Computed per render — `channel.rows` is a live in-place array (see
-  // selectableRows); a useMemo would freeze the match list at mount.
-  const searchMatches = (() => {
-    const q = searchQuery.toLowerCase()
-    if (!q) return []
-    return channel.rows
-      .map((row, index) => ({ row, index, text: searchableText(row).toLowerCase() }))
-      .filter(m => m.text.includes(q))
-  })()
-
-  // Incsearch: highlight all matches (screen-space overlay) and keep the
-  // current match row in view as the query changes.
-  React.useEffect(() => {
-    if (!searchActive) return
-    setHighlight(searchQuery)
-    const count = searchMatches.length
-    setSearchCount(count)
-    const current = Math.min(searchCurrent, Math.max(0, count - 1))
-    setSearchCurrent(current)
-    const target = searchMatches[current]
-    // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index on an empty/filtered list
-    if (target) {
-      seekRow(target.row.id)
-    }
-  }, [searchQuery, searchActive])
-
-  // n/N navigation: move the current match into view.
-  React.useEffect(() => {
-    if (!searchActive) return
-    const target = searchMatches[searchCurrent]
-    // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index on an empty/filtered list
-    if (target) {
-      seekRow(target.row.id)
-    }
-  }, [searchCurrent])
+  const { searchMatches } = useTranscriptSearch({
+    channel, searchActive, searchQuery, searchCurrent,
+    setSearchCount, setSearchCurrent, setHighlight,
+    seekRow, searchableText,
+  })
 
   /**
    * Leave selection mode and hand the keyboard back to the composer —
@@ -1525,125 +1498,43 @@ ing registered by a DSH
   }
 
   useInput((input, key, event) => {
-    // Prompt-slot panels own the keyboard while visible. Their own useInput
-    // handles the relevant keys; Chat registered first, so yielding here
-    // still lets the panel receive them. PromptInput now stays mounted but
-    // suspended to preserve async command drafts, making this guard also
-    // essential for Ctrl+C: it must never clear the hidden composer.
-    if (
-      btw !== null
-      || overlay.kind === 'tips'
-      || (recap !== null && (!recap.auto || recap.expanded))
-    ) return
-    // The session tree owns the whole terminal while it is up: plain letters
-    // drive its search, clicks and Enter drive its action menu.
-    if (treeOpen) return
-    // The session supervisor owns the whole terminal while it is up: its rail
-    // and session list bind ↑/↓/Enter/Tab/Esc, its filter box takes the plain
-    // letters that would otherwise reach the prompt, and the directory picker
-    // and menus it opens are its own modal layers.
-    if (supervisorOpen) return
-    // Same for the settings screen: plain letters (s save / d discard) and
-    // the field draft editor belong to it alone.
-    if (settingsOpen) return
-    // Subagent dashboard or detail scene: it owns the keyboard while open.
-    if (subagentDashboardOpen || subagentDetailId !== null) return
-    // The `/jobs` panel replaces the conversation too, so it owns Esc (close)
-    // and k (kill) while open. Unguarded, Esc meant to CLOSE the panel also
-    // reached the chat:cancel branch below whenever a turn was in flight —
-    // dismissing the panel and killing the turn with one key.
-    if (jobsPanelOpen) return
-    // A plugin scene (dsh-tui-scenes) or the trajectory scene owns the whole
-    // screen while open: every key belongs to it. Unguarded, an Esc meant to
-    // CLOSE the scene also reached the chat:cancel branch below whenever a
-    // turn was in flight — closing the view and killing the turn in one key.
-    if (sceneOpen || channel.pluginScene !== undefined) return
-    // Mouse wheel scrolls the transcript even while a question/approval/
-    // dialog panel is open — those panels own arrow/Enter/Esc keys, but the
-    // transcript above them should still be scrollable in fullscreen mode.
-    //
-    // Wheel routing is position-first: events landing over a ScrollBox
-    // (transcript, help, subagent panels…) are consumed by that box in
-    // App's input batch (onWheelAt) and never reach this branch. What
-    // arrives here is the fallback: wheel over non-scroll areas (prompt,
-    // status bar) or over floating overlays.
-    //   - Help stays yielded: PromptInput's help ScrollBox handles the
-    //     remaining global wheel while help is open (both covered layers
-    //     must not move).
-    //   - Pickers/dialogs are modal: wheel that fell through over them
-    //     must NOT scroll the transcript behind (the audit's
-    //     pass-through gap), so yield like the keyboard guards above.
-    // Events only arrive with mouse tracking on; inline mode never sees
-    // them, so this is a no-op there.
-    if (key.wheelUp || key.wheelDown) {
-      if (helpOpen) return
-      // Any open transient dialog is modal to the wheel; the one exception
-      // mirrors the render gate — a workspace picker whose target list has
-      // not landed paints nothing, so wheel-through keeps scrolling.
-      const overlayModal =
-        overlay.kind !== 'none' &&
-        (overlay.kind !== 'workspace-picker' || workspaceTargets.length > 0)
-      if (overlayModal) return
-      handle?.scrollBy(key.wheelUp ? -3 : 3)
+    // Pre-overlay routing lives in chat/input-guard.ts (pure); effects —
+    // scroll calls and propagation stops — stay here.
+    const guard = inputGuardAction({
+      btwOpen: btw !== null,
+      tipsOverlay: overlay.kind === 'tips',
+      recapVisible: recap !== null && (recap.auto !== true || recap.expanded === true),
+      treeOpen,
+      supervisorOpen,
+      settingsOpen,
+      subagentSurfaces: subagentDashboardOpen || subagentDetailId !== null,
+      jobsPanelOpen,
+      sceneOpen,
+      pluginScene: channel.pluginScene !== undefined,
+      helpOpen,
+      approvalPending: approvalSnapshot !== null,
+      dialogPending: dialogSnapshot !== null,
+      questionPending: questionSnapshot !== null,
+      questionMinimized,
+      isSticky,
+      fullscreen: fullscreen === true,
+      overlayKind: overlay.kind,
+      workspaceTargetsCount: workspaceTargets.length,
+      pageStep: transcriptPageStep(),
+      isPlainReturn: isPlainReturnInput(input, key),
+      keyEnd: key.end,
+      wheel: key.wheelUp ? 'up' : key.wheelDown ? 'down' : null,
+      page: key.pageUp ? 'up' : key.pageDown ? 'down' : null,
+    })
+    if (guard.type === 'yield') return
+    if (guard.type === 'scroll') {
+      handle?.scrollBy(guard.rows)
       event.stopImmediatePropagation()
       return
     }
-    // PgUp/PgDn page the transcript a full viewport at a time — the keyboard
-    // counterpart of the wheel branch above. Without it, a fullscreen session
-    // has no keyboard route to scrollback at all: the alt screen holds no
-    // native scrollback (see MessageList's historyPaint gate), so a mouse-less
-    // user cannot reach an earlier turn.
-    //
-    // Fullscreen only, on purpose. Inline mode paints committed history onto
-    // the main screen, so the terminal's OWN scrollback owns these keys there;
-    // claiming them would break paging that already works, exactly like the
-    // wheel branch above is a no-op inline.
-    //
-    // Routing mirrors the wheel branch: help stays yielded (PromptInput pages
-    // its help viewport with the same keys) and open pickers/dialogs are modal,
-    // so the transcript behind them must not move. Every guard above (session
-    // tree, settings, scenes, dashboards) already claimed the keyboard — those
-    // surfaces page their own lists with these keys.
-    //
-    // The question/approval/dialog panels deliberately do NOT yield: like the
-    // wheel branch above (whose comment spells this out), those panels mount
-    // BELOW the transcript — replacing the prompt, not covering it — so the
-    // transcript above them stays visible and scrollable while a decision is
-    // pending. The panels bind ↑/↓/Space/Tab/Enter/Esc and never these keys,
-    // so paging cannot steal anything from them.
-    if ((key.pageUp || key.pageDown) && fullscreen) {
-      if (helpOpen) return
-      const overlayModal =
-        overlay.kind !== 'none' &&
-        (overlay.kind !== 'workspace-picker' || workspaceTargets.length > 0)
-      if (overlayModal) return
-      // One less than the viewport keeps a row of context so a page never
-      // reads as a blank jump; a not-yet-measured handle falls back to a
-      // fixed page rather than paging by 0 (a dead key). The final page
-      // overshoots and the renderer clamps it exactly onto maxScroll, whose
-      // positional at-bottom restore re-pins sticky (the #421/#422 wheel
-      // contract) — so paging back home clears the new-messages pill too.
-      handle?.scrollBy((key.pageUp ? -1 : 1) * transcriptPageStep())
+    if (guard.type === 'scroll-bottom') {
+      handle?.scrollToBottom()
       event.stopImmediatePropagation()
-      return
-    }
-    // Help is modal over Chat. Chat's listener registers before PromptInput's,
-    // so yield every remaining key before any global/custom shortcut, search,
-    // selection, or working-turn cancellation branch can mutate hidden state.
-    // PromptInput then owns Esc, navigation, Tab guards, and ordinary typing.
-    if (helpOpen) return
-    // The questionnaire / approval panel / managed plugin dialog owns the
-    // keyboard while one is pending (the panel's own useInput handles
-    // ↑/↓/Space/Tab/Enter/Esc; the prompt input is suspended, so nothing
-    // else should see these keys).
-    if (approvalSnapshot !== null || dialogSnapshot !== null) return
-    if (questionSnapshot !== null) {
-      // Only transcript navigation belongs here. The mounted questionnaire
-      // owns fold/expand keys, including when it interrupts another screen.
-      if (questionMinimized && !isSticky && (isPlainReturnInput(input, key) || key.end)) {
-        handle?.scrollToBottom()
-        event.stopImmediatePropagation()
-      }
       return
     }
     const returnCandidate = isPlainReturnInput(input, key)
@@ -2544,138 +2435,60 @@ ing registered by a DSH
             </Box>
           </PluginStatusViewBoundary>
         ))}
-        {/* 输入簇：可替换输入行链 + 状态行 + 瞬态浮层。浮层锚点收窄到本簇
-            顶边（= 输入行顶边），picker 紧贴输入框向上展开，盖住其上
-            todo/spinner/转录尾部行（用户接受的取舍），自身零布局高度、
-            不推动帧布局。 */}
-        <Box flexDirection="column" flexShrink={0}>
-        {approvalPanelNode !== null ? (
-          approvalPanelNode
-        ) : dialogSnapshot !== null ? (
-          <ExtensionDialog
-            key={dialogSnapshot.key}
-            dialog={dialogSnapshot}
-            onDecide={value => dialogs.decide(dialogSnapshot.key, value)}
-            onCancel={() => dialogs.cancel(dialogSnapshot.key)}
-          />
-        ) : overlay.kind === 'tips' ? (
-          <Box flexDirection="column" marginTop={1}>
-            <TipsPanel onClose={() => dispatchOverlay({ type: 'close-if', kind: 'tips' })} />
-          </Box>
-        ) : recap !== null && (!recap.auto || recap.expanded) ? (
-          <Box flexDirection="column" marginTop={1}>
-            <RecapPanel
-              summary={recap.summary}
-              title={recap.title}
-              error={recap.error}
-              streaming={!recap.done}
-              titleApplied={recap.titleApplied}
-              onClose={() => {
-                // An expanded auto recap collapses back to its dim row;
-                // a manual /recap closes outright.
-                if (recap.auto) {
-                  setRecap(prev => (prev ? { ...prev, expanded: false } : prev))
-                } else {
-                  closeRecap()
-                }
-              }}
-              onCopy={() => {
-                void setClipboard(recap.summary ?? '').then(raw => { if (raw) writeRaw?.(raw) })
-                channel.notify(t('copied-chars', { n: (recap.summary ?? '').length }), { timeoutMs: 1500 })
-              }}
-              onApplyTitle={() => {
-                if (recap.title === undefined || recap.titleApplied) return
-                channel.renameSession(recap.title)
-                setRecap(prev => (prev ? { ...prev, titleApplied: true } : prev))
-                channel.notify(t('recap-title-applied-notify', { title: recap.title }), { color: 'success' })
-              }}
-            />
-          </Box>
-        ) : btw !== null ? (
-          <Box flexDirection="column" marginTop={1}>
-            <BtwPanel
-              question={btw.question}
-              answer={btw.answer}
-              error={btw.error}
-              streaming={!btw.done}
-              onClose={closeBtw}
-              onCopy={() => {
-                void setClipboard(btw.answer ?? '').then(raw => { if (raw) writeRaw?.(raw) })
-                channel.notify(t('copied-chars', { n: (btw.answer ?? '').length }), { timeoutMs: 1500 })
-              }}
-            />
-          </Box>
-        ) : questionPanelNode !== null ? (
-          questionPanelNode
-        ) : null}
-        <PromptInput
-          key="prompt-input"
+        {/* 输入簇：可替换输入行链 + 状态行。Extracted to chat/InputCluster.tsx
+            (the transient overlay layers stay inline below for their wide
+            closure surface). */}
+        <InputCluster
+          agentViewOpenSessionRef={agentViewOpenSessionRef}
+          agentViewRows={agentViewRows}
+          approvalPanelNode={approvalPanelNode}
+          backgroundAgentsNeedingInput={backgroundAgentsNeedingInput}
+          backgroundToAgentView={backgroundToAgentView}
           channel={channel}
-          suspended={promptReplacementOpen}
-          draftCache={promptDraftRef.current}
+          dialogSnapshot={dialogSnapshot}
+          dialogs={dialogs}
+          dispatchOverlay={dispatchOverlay}
+          enterSelection={enterSelection}
+          exitSelection={exitSelection}
+          expanded={expanded}
+          handle={handle}
           helpOpen={helpOpen}
-          onToggleHelp={() =>{  setHelpOpen(previous => !previous) }}
-          onRunCommand={runCommand}
-          selectionActive={promptSelectionActive}
-          onEnterSelection={enterSelection}
-          onExitSelection={exitSelection}
-          fillText={historyFill}
-          onFillConsumed={() => setHistoryFill(null)}
-          onRewindRequest={openRewind}
-          onBackgroundRequest={backgroundToAgentView}
-          // The 🏠 at the head of the input row opens the same session screen
-          // `/resume` and `/agentview` open — one surface, three doors. It is
-          // gated on this prop rather than a setting, so hosts that mount the
-          // prompt without a session screen (and the layout regressions that
-          // pin the row's column budget) keep the row they had.
-          onOpenSessions={() => {
-            agentViewOpenSessionRef.current = channel.agentId
-            setSupervisorOpen(true)
-          }}
-          backgroundAgentsNeedingInput={
-            // Only the real channel supplies the seam; pre-agent-view test
-            // stubs must not grow the footer row (layout-dependent
-            // regressions pin the visible row count). The footer only
-            // renders while some session actually waits (N > 0): a
-            // permanent idle row would steal a transcript row on every
-            // real channel — one row is enough to scroll the startup
-            // header fully off a short terminal, pausing its viewport
-            // clock and shifting every row-count layout invariant.
-            channel.agentViewRows !== undefined && backgroundAgentsNeedingInput > 0
-              ? backgroundAgentsNeedingInput
-              : undefined
-          }
-          controllerRef={promptControllerRef}
-          onCaretImage={handleCaretImage}
-          caretPreviewOpen={peekPreview !== null}
-          onDismissCaretPreview={dismissPeek}
-          onSubmitted={() => handle?.scrollToBottom()}
-        />
-        <AgentStrip
-          jobs={channel.backgroundJobs ?? []}
-          subagents={channel.subagents ?? []}
-          onOpenCenter={openTaskCenter}
-          onOpenSubagent={(id) => {
-            // Strip click: Esc returns to the main session, not the panel.
-            setTaskCenterDetailFromPanel(false)
-            setTaskCenterDetailId(id)
-          }}
-        />
-        <StatusLine
-          channel={channel}
-          activity={workingActivity}
+          historyFill={historyFill}
+          openTaskCenter={openTaskCenter}
+          overlay={overlay}
+          promptControllerRef={promptControllerRef}
+          promptDraftRef={promptDraftRef}
+          promptReplacementOpen={promptReplacementOpen}
+          promptSelectionActive={promptSelectionActive}
+          questionPanelNode={questionPanelNode}
+          runCommand={runCommand}
+          searchActive={searchActive}
+          searchQuery={searchQuery}
+          searchCursor={searchCursor}
+          searchCount={searchCount}
+          searchCurrent={searchCurrent}
           selectionActive={selectionActive}
-          helpOpen={helpOpen}
-          onOpenSubagents={openTaskCenter}
-          wake={
-            wakeBand === undefined
-              ? undefined
-              : {
-                  band: wakeBand,
-                  hint: trajectorySeen ? undefined : `${modLabel}t`,
-                  tick: Math.floor(wakeTime / 120),
-                }
-          }
+          setHelpOpen={setHelpOpen}
+          setHistoryFill={setHistoryFill}
+          setSupervisorOpen={setSupervisorOpen}
+          setTaskCenterDetailFromPanel={setTaskCenterDetailFromPanel}
+          setTaskCenterDetailId={setTaskCenterDetailId}
+          workingActivity={workingActivity}
+          writeRaw={writeRaw}
+          btw={btw}
+          closeBtw={closeBtw}
+          recap={recap === null ? null : { ...recap }}
+          setRecap={setRecap}
+          closeRecap={closeRecap}
+          dismissPeek={dismissPeek}
+          handleCaretImage={handleCaretImage}
+          peekPreview={peekPreview}
+          openRewind={openRewind}
+          historyMatches={historyMatches}
+          wakeBand={wakeBand}
+          wakeTime={wakeTime}
+          trajectorySeen={trajectorySeen}
+          modLabel={modLabel}
         />
         {/* 瞬态面板浮层：absolute + bottom:'100%' 钉在输入簇 Box 顶边（=
             输入行顶边），紧贴输入框向上覆盖其上 todo/spinner/转录尾部行，
@@ -2999,7 +2812,6 @@ ing registered by a DSH
           {overlay.kind === 'search' && <TranscriptSearch query={searchQuery} cursorOffset={searchCursor} count={searchCount} current={searchCurrent} />}
         </OverlayAbove>
         )}
-        </Box>
       </Box>
       {/* Tooltip 悬停浮层：absolute 零布局高度，挂在根 Box 最后确保盖在
           其余内容之上（yoga 的 absolute 相对父级，根 Box 原点即屏原点，

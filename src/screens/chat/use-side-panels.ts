@@ -2,6 +2,19 @@ import React from 'react'
 import type { ChannelUi } from '../../adapter/channel/ui-policy.js'
 import type { BalanceResult } from '../../deepseekBalance.js'
 
+export type BtwState = { question: string; answer: string; error?: string; done: boolean }
+export type RecapState = {
+  raw: string
+  summary: string
+  title?: string
+  error?: string
+  done: boolean
+  titleApplied: boolean
+  auto?: boolean
+  expanded?: boolean
+  rowsAtTrigger?: number
+}
+
 /**
  * /btw side question, /recap (plus the recapOnOpen auto run), and /balance —
  * pure UI state that never enters the transcript or the session log.
