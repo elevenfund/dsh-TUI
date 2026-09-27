@@ -379,6 +379,10 @@ export interface PendingMessage {
  */
 export interface SubagentControl {
   interrupt(agentId: string): boolean
+  /** Deliver a follow-up to a continuable child (`ctx.subagents`
+   * sendMessage): steering a live child, cold-resuming an idle one. Resolves
+   * false when the service is absent or the host rejects delivery. */
+  followUp(agentId: string, text: string): Promise<boolean>
 }
 
 /** One tracked job as the UI renders it. */

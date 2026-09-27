@@ -85,6 +85,30 @@ export function createLocalActions(deps: {
         return [t('subagent-query-failed', { err: error instanceof Error ? error.message : String(error) })]
       }
     },
+    /** Durable child modes for the follow-up affordances: one listChildren
+     * read maps every child id to continuable, so the dashboard and detail
+     * page show the follow-up input only where sendMessage can deliver.
+     * Failures stay silent — an unreadable catalog hides the control, it
+     * does not raise an error surface. */
+    async subagentModes(): Promise<Record<string, boolean>> {
+      const service = ctx.get('subagents') as {
+        listChildren(sessionId: unknown, signal?: AbortSignal): Promise<Array<{ mode: string; id: string | { value?: string } }>>
+      } | undefined
+      if (!service) return {}
+      const capture = binding.capture()
+      try {
+        const children = await service.listChildren((binding.agent.session as { id?: unknown }).id)
+        if (!current(capture)) throw new Error('dsh-tui: Channel lifetime has ended')
+        const modes: Record<string, boolean> = {}
+        for (const child of children) {
+          const id = typeof child.id === 'string' ? child.id : (child.id.value ?? '')
+          if (id !== '') modes[id] = child.mode === 'continuable'
+        }
+        return modes
+      } catch {
+        return {}
+      }
+    },
     async runLocalCommand(command: string, includeInContext: boolean): Promise<void> {
       const capture = binding.capture()
       const cwd = state.cwd

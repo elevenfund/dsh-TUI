@@ -27,7 +27,10 @@ export function createSubagentProjection(
   deps: {
     rowIds: { value: number }
     agent(): Agent
-    subagents(): { interrupt?(target: string, reason: unknown): void } | undefined
+    subagents(): {
+      interrupt?(target: string, reason: unknown): void
+      sendMessage?(sender: unknown, target: unknown, content: Array<{ type: 'text'; text: string }>, options: { signal: AbortSignal }): Promise<unknown>
+    } | undefined
     /** Optional child metadata lookup; failures must not suppress spawning. */
     lookupChild(id: string): { status?: string; session?: unknown; options?: { provider?: string; model?: string } } | undefined
   },
@@ -259,6 +262,19 @@ export function createSubagentProjection(
         store.onCancelled(agentId, 'interrupted')
         syncNow()
         getState().emit()
+        return true
+      } catch { return false }
+    },
+    async followUp(agentId, text) {
+      const child = store.get(agentId)
+      const target = child?.sessionId ?? agentId
+      const message = text.trim()
+      const runtime = deps.subagents()
+      if (!runtime?.sendMessage || !target || message === '') return false
+      try {
+        // The signal owns admission only until inbox acceptance; the TUI is
+        // fire-and-forget, so it never aborts the controller.
+        await runtime.sendMessage(deps.agent(), target, [{ type: 'text', text: message }], { signal: new AbortController().signal })
         return true
       } catch { return false }
     },

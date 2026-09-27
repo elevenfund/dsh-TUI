@@ -1117,6 +1117,13 @@ const dict = {
   'subagent-hint-page': { zh: '切页', en: 'page' },
   'subagent-hint-scroll': { zh: '滚动', en: 'scroll' },
   'subagent-hint-back': { zh: '返回', en: 'back' },
+  'subagent-followup-key-hint': { zh: 'm 追问', en: 'm follow up' },
+  'subagent-followup-prompt': { zh: '输入追问后回车发送…', en: 'type a follow-up, Enter to send…' },
+  'subagent-followup-sending': { zh: '发送中…', en: 'sending…' },
+  'subagent-followup-sent': { zh: '追问已送达', en: 'follow-up delivered' },
+  'subagent-followup-failed': { zh: '追问未送达', en: 'follow-up not delivered' },
+  'subagent-toast-completed': { zh: '子任务完成：{{label}}', en: 'subagent done: {{label}}' },
+  'subagent-toast-failed': { zh: '子任务结束（失败/中断）：{{label}}', en: 'subagent ended (failed/interrupted): {{label}}' },
   'subagent-empty-hint': { zh: '让主代理发起 Task 后，子代理会出现在这里', en: 'Subagents appear here once the main agent starts Task delegations' },
 
   // ── background jobs (ctx.jobs): JobCard / JobsPanel / status chip ─────

@@ -802,8 +802,51 @@ export function Chat({
   // MessageList forwards these open handlers to every memoized row. Their
   // identities must survive token/metrics updates, including for tool rows.
   const openJobsPanel = React.useCallback(() => setJobsPanelOpen(true), [])
+  // Stable identity for the StatusLine subagents chip's click target.
+  const openSubagentDashboard = React.useCallback(() => setSubagentDashboardOpen(true), [])
   /** Detail view for a specific subagent (opened from dashboard). */
   const [subagentDetailId, setSubagentDetailId] = React.useState<string | null>(null)
+  /** Continuable child ids from the host catalog: the follow-up composer is
+   * offered only on these rows (one-shot children dispose at settlement).
+   * Re-read when the child set changes or the channel is replaced. */
+  const [subagentContinuableIds, setSubagentContinuableIds] = React.useState<ReadonlySet<string>>(() => new Set())
+  // Stub channels (verify harnesses) predate these fields — same defensive
+  // optionality as jobControl below.
+  const subagentCount = channel.subagents?.length ?? 0
+  React.useEffect(() => {
+    let alive = true
+    void channel.subagentModes?.().then(modes => {
+      if (!alive) return
+      setSubagentContinuableIds(new Set(Object.entries(modes).filter(([, continuable]) => continuable).map(([id]) => id)))
+    }).catch(() => undefined)
+    return () => { alive = false }
+  }, [channel, subagentCount])
+  /** Follow-up delivery (send_message seam) with a delivery toast. */
+  const followUpSubagent = React.useCallback(async (agentId: string, text: string): Promise<boolean> => {
+    const delivered = await channel.subagentControl?.followUp(agentId, text) === true
+    channel.notify(t(delivered ? 'subagent-followup-sent' : 'subagent-followup-failed'), { color: delivered ? 'success' : 'warning', timeoutMs: 3000 })
+    return delivered
+  }, [channel])
+  // Settlement toast: a tracked running child that settles while BOTH
+  // subagent surfaces are closed lands on the notification line — the
+  // dashboard-open case needs no ping (the card flips in view) and the
+  // first frame (incl. resume bootstrap, where historical rows arrive
+  // already settled) stays silent.
+  const seenSubagentStatusRef = React.useRef<ReadonlyMap<string, string> | null>(null)
+  const subagentsSnapshot = channel.subagents ?? []
+  const subagentSurfacesOpen = subagentDashboardOpen || subagentDetailId !== null
+  React.useEffect(() => {
+    const prev = seenSubagentStatusRef.current
+    const next = new Map(subagentsSnapshot.map(sub => [sub.agentId, sub.status]))
+    seenSubagentStatusRef.current = next
+    if (prev === null || subagentSurfacesOpen) return
+    for (const sub of subagentsSnapshot) {
+      const was = prev.get(sub.agentId)
+      if (was !== 'running' && was !== 'starting') continue
+      if (sub.status === 'completed') channel.notify(t('subagent-toast-completed', { label: sub.description }), { color: 'success', timeoutMs: 4000 })
+      else if (sub.status === 'failed' || sub.status === 'cancelled') channel.notify(t('subagent-toast-failed', { label: sub.description }), { color: 'warning', timeoutMs: 4000 })
+    }
+  }, [subagentsSnapshot, subagentSurfacesOpen, channel])
   /**
    * Hidden `/deepseek` easter egg: each invocation bumps this key so the
    * logo header remounts and replays the whale spout + text shimmer.
@@ -4047,6 +4090,8 @@ export function Chat({
       <SubagentDetailScene
         subagent={subagent}
         onInterrupt={(id) => channel.subagentControl.interrupt(id)}
+        followUpEnabled={subagentContinuableIds.has(subagent.agentId)}
+        onFollowUp={followUpSubagent}
         onBack={() => {
           setSubagentDetailId(null)
           setSubagentDashboardOpen(true)
@@ -4085,6 +4130,8 @@ export function Chat({
           setSubagentDashboardOpen(false)
           setSubagentDetailId(id)
         }}
+        continuableIds={subagentContinuableIds}
+        onFollowUp={followUpSubagent}
         onClose={() => setSubagentDashboardOpen(false)}
       />
     )
@@ -4513,6 +4560,7 @@ export function Chat({
           activity={workingActivity}
           selectionActive={selectionActive}
           helpOpen={helpOpen}
+          onOpenSubagents={openSubagentDashboard}
           wake={
             wakeBand === undefined
               ? undefined

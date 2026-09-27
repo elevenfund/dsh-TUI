@@ -80,7 +80,8 @@ function makeHarness(seedEvents: unknown[] = [], warmRegistry?: (registry: Map<s
   const emit = (name: string, ...args: unknown[]) =>
     (ctx as unknown as { emit(event: string, ...a: unknown[]): void }).emit(name, ...args)
   return {
-    registry, channel, emit,
+    registry, channel, ctx: ctx as unknown as { provide(name: string, value: unknown): () => void },
+    emit,
     parentEvent: (event: unknown) => emit('session/event', parentSession, event),
     childEvent: (child: FakeChild, event: unknown) => emit('session/event', child.session, event),
     row: (agentId: string) => channel.rows.find(r => r.kind === 'subagent' && r.subagent?.agentId === agentId)?.subagent,
@@ -216,6 +217,62 @@ const catalog = (childId: string, label: string, at: number) =>
   h.parentEvent({ type: 'tool-workflow/agent-end', seq: 10, time: Date.now(), data: { runId: 'wr-2', seq: 3, outcome: 'cancelled' } })
   check('E3 agent-end 按成员 seq 落地（cancelled）', h.panel('wf-live')?.status === 'cancelled',
     `status=${String(h.panel('wf-live')?.status)}`)
+}
+
+// ── F: follow-up seam — subagentControl.followUp over ctx.subagents.sendMessage ──
+{
+  const h = makeHarness()
+  const calls: Array<{ sender: unknown; target: unknown; content: unknown }> = []
+  let accept = true
+  h.ctx.provide('subagents', {
+    sendMessage: async (sender: unknown, target: unknown, content: unknown) => {
+      calls.push({ sender, target, content })
+      if (!accept) throw new Error('rejected by host')
+      return 'mid-1'
+    },
+  })
+  // Production contract: a child's agentId IS its durable session id. An
+  // unregistered catalog child stays unlinked (target falls back to the
+  // agentId); a registered one links its session at discovery, and delivery
+  // targets that same session object's id.
+  const childB: FakeChild = { status: 'running', session: { id: 'fu-b', seq: 0, events: [], header: {} } }
+  h.registry.set('fu-b', childB)
+  h.parentEvent(catalog('fu-b', '检索任务', Date.now()))
+
+  check('F1 followUp 送达（text 块投递到子会话 id）',
+    await h.channel.subagentControl.followUp('fu-b', ' 继续深挖 ') === true
+    && calls.length === 1 && calls[0]!.target === 'fu-b'
+    && JSON.stringify(calls[0]!.content) === JSON.stringify([{ type: 'text', text: '继续深挖' }]),
+    JSON.stringify(calls.map(call => [call.target, call.content])))
+  await h.channel.subagentControl.followUp('fu-b', '再来一轮')
+  check('F2 连续投递幂等送达',
+    calls.length === 2 && calls[1]!.target === 'fu-b', `calls=${JSON.stringify(calls.map(c => c.target))}`)
+  check('F3 空白文本不投递', await h.channel.subagentControl.followUp('fu-b', '   ') === false && calls.length === 2)
+  accept = false
+  check('F4 宿主拒绝 → false（不抛出）', await h.channel.subagentControl.followUp('fu-b', '会被拒') === false)
+  const missing = makeHarness()
+  check('F5 服务缺 sendMessage → false', await missing.channel.subagentControl.followUp('nobody', 'x') === false)
+}
+
+// ── G: subagentModes — continuable capability for the follow-up affordance ──
+{
+  const h = makeHarness()
+  h.ctx.provide('subagents', {
+    listChildren: async (sessionId: unknown) => {
+      check('G1 listChildren 收到父会话 id', sessionId === 'parent-session', String(sessionId))
+      return [
+        { mode: 'continuable', id: 'con-child', label: '可续', activity: 'running' },
+        { mode: 'one-shot', id: { value: 'one-child' }, label: '一次性', activity: 'inactive' },
+      ]
+    },
+  })
+  const modes = await h.channel.subagentModes()
+  check('G2 continuable/one-shot 正确映射（含 object 形 id）',
+    modes['con-child'] === true && modes['one-child'] === false && Object.keys(modes).length === 2,
+    JSON.stringify(modes))
+  const bare = makeHarness()
+  check('G3 服务未挂载 → 空 map（静默隐藏追问入口）',
+    Object.keys(await bare.channel.subagentModes()).length === 0)
 }
 
 console.log(failed === 0 ? '\nALL PASS' : `\n${failed} 项失败`)

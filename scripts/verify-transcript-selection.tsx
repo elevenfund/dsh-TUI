@@ -112,6 +112,8 @@ const fgKey = (col: number, row: number): string => JSON.stringify(buf().getLine
 
 const toolResult = Array.from({ length: 60 }, (_, i) => `result-line-${i}`).join('\n')
 const listeners = new Set<() => void>()
+const followUpCalls: Array<[string, string]> = []
+const notifyCalls: string[] = []
 const channel: Record<string, unknown> = {
   version: 0,
   rows: [
@@ -160,7 +162,13 @@ const channel: Record<string, unknown> = {
   submit() {},
   cancel: () => {},
   clear: () => {},
-  notify() {},
+  notify(text: unknown) { notifyCalls.push(String(text)) },
+  subagents: [],
+  subagentModes: () => Promise.resolve({ 'sa-1': true, 'sa-2': false }),
+  subagentControl: {
+    interrupt: () => true,
+    followUp: async (id: string, text: string) => { followUpCalls.push([id, text]); return true },
+  },
   listModels: () => Promise.resolve([]),
   listSessions: () => [],
   setResumeTarget: () => {},
@@ -770,6 +778,48 @@ try {
   stdin.write('mm')
   check('T14d 退出后打字恢复', await settled(() => screenHas('mm')))
   FakeStdout.onWrite = null
+
+  // T31: subagent management surfaces — status chip, settlement toast, and
+  // the Ctrl+A dashboard's follow-up composer (send_message seam). The mock
+  // channel re-assigns channel.subagents (a fresh array reference per bump,
+  // matching the real projection's syncNow snapshot) so Chat's settlement
+  // effect observes the transition.
+  const saRunning = { agentId: 'sa-1', runId: 'sa-1', description: 'research task', provider: 'subagent', model: 'm', status: 'running', startedAt: Date.now() - 5000, output: [], outputEvents: [], toolCalls: [] }
+  channel.subagents = [saRunning, { ...saRunning, agentId: 'sa-2', runId: 'sa-2', description: 'old one-shot', status: 'completed', completedAt: Date.now() - 1000 }]
+  bump()
+  check('T31a running 子代理出现在状态行 chip（⑂ 1）', await settled(() => screenHas('⑂ 1')))
+  channel.subagents = [{ ...saRunning, status: 'completed', completedAt: Date.now() }]
+  bump()
+  await sleep(500) // 固定窗:pacing 等 settle effect 派发 toast
+  check('T31b 面板关闭时 settle 触发 toast',
+    notifyCalls.some(text => text.includes('subagent done: research task')),
+    JSON.stringify(notifyCalls))
+  channel.subagents = [saRunning]
+  bump()
+  await settled(() => screenHas('⑂ 1'))
+  stdin.write('\x01') // Ctrl+A → dashboard
+  await sleep(500) // 固定窗:pacing 等面板挂载帧
+  check('T31c Ctrl+A 打开子代理面板', screenHas('Subagent Dashboard') && screenHas('research task'))
+  check('T31d continuable 焦点行提示追问键', screenHas('m follow up'))
+  stdin.write('m')
+  await sleep(300) // 固定窗:pacing 等输入行挂载
+  check('T31e m 打开追问输入行', screenHas('type a follow-up'))
+  stdin.write('dig deeper')
+  await sleep(300) // 固定窗:pacing 等输入批次
+  stdin.write('\r')
+  await sleep(500) // 固定窗:pacing 等投递与 toast
+  check('T31f 追问经 send_message 投递并回执',
+    followUpCalls.length === 1 && followUpCalls[0]![0] === 'sa-1' && followUpCalls[0]![1] === 'dig deeper'
+    && notifyCalls.some(text => text.includes('follow-up delivered')),
+    `calls=${JSON.stringify(followUpCalls)} notify=${JSON.stringify(notifyCalls)}`)
+  stdin.write('\x1b') // 关闭面板回主界面
+  await sleep(400) // 固定窗:pacing 等卸载帧
+  // The viewport keeps its pre-dashboard scroll position (mid-transcript
+  // filler rows), so assert the dashboard is gone and the transcript is back.
+  check('T31g Esc 关闭面板', !screenHas('Subagent Dashboard') && screenHas('filler line'))
+  channel.subagents = []
+  bump()
+  await sleep(300) // 固定窗:pacing 等重渲染（chip 消失，不影响后续）
 
 } finally {
   app.unmount()

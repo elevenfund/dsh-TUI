@@ -369,6 +369,19 @@ A full-screen scene (no scrollback pollution) over the whole session timeline:
 | `t` (hotspot view) | Cycle sorting (time / count / tokens) |
 | `q` / `Esc` | Exit; Esc is layered: fold details → clear query → close |
 
+### Subagent dashboard (`Ctrl+A`)
+
+`Ctrl+A` opens the subagent dashboard: every child this session dispatched (workflow members and durable history restored after resume included) as cards — status glyph, model, elapsed time, tokens, tool count, plus the newest streamed line while a child runs. While any child runs, the status line carries a `⑂ N` chip (hover lists each task with its elapsed time; clicking the chip opens the dashboard).
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` | Move the focus (scrolling follows) |
+| `Enter` | Open the detail scene |
+| `m` | Open a one-line follow-up composer on the focused **continuable** child: Enter delivers (a running child is steered at its next step boundary, an idle one cold-resumes), Esc cancels; one-shot children dispose at settlement and keep the control hidden |
+| `Esc` | Close the dashboard |
+
+In the detail scene `←/→` page through Summary / Output / Tools (the output page tail-follows while running), `X` interrupts a running child (stops the current turn only; the inbox and descendants stay), `m` follows up, `Esc` returns to the list. A child settling while both surfaces are closed raises a status-line toast.
+
 ### /settings editor
 
 `/settings` opens the plugin settings editor, read/edit by namespace.

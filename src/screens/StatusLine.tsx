@@ -7,10 +7,23 @@ import { estimateSessionCostCny, estimateSessionCostSplitCny, isDeepSeekOfficial
 import { ActivityLine, contextPressurePct, type ActivityLineValue } from '../components/ActivityLine.js'
 import { GoalStatusChip } from '../components/GoalTodoPanel.js'
 import { formatJobDuration, type BackgroundJobState } from '../dsh-adapter/jobs.js'
+import type { SubagentState } from '../dsh-adapter/subagents.js'
 
 /** Stable fallback for stubbed channels: verify/repro harnesses render the
  *  real Chat with partial channel literals that predate the jobs field. */
 const NO_BACKGROUND_JOBS: readonly BackgroundJobState[] = []
+
+/** Same defensive default as NO_BACKGROUND_JOBS: Chat channel literals that
+ *  predate the subagents field must not crash the footer. */
+const NO_SUBAGENTS: readonly SubagentState[] = []
+
+/** Elapsed readout for a subagent row; a settled row freezes at its end
+ *  time instead of ticking. */
+function formatSubagentDuration(sub: SubagentState): string {
+  const ms = (sub.completedAt ?? Date.now()) - sub.startedAt
+  const seconds = Math.floor(ms / 1000)
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`
+}
 import type { ChannelUi as Channel } from '../adapter/channel/ui-policy.js'
 import type { SelectionSnapshot } from '../dsh-adapter/ide-channel.js'
 import { modeDisplayName } from '../sessionModes.js'
@@ -75,6 +88,7 @@ type HoverTarget =
   | 'cost'
   | 'goal'
   | 'jobs'
+  | 'subagents'
   | 'model'
   | 'git'
   | 'sessionId'
@@ -92,6 +106,9 @@ type FieldPart = {
    *  tooltip with the full string (e.g. the session title, cut mid-word
    *  when the right-aligned group runs out of columns). */
   tooltip?: string
+  /** Present when clicking the field opens a surface (subagents chip →
+   *  the Ctrl+A dashboard). */
+  onClick?: () => void
 }
 
 /**
@@ -122,6 +139,7 @@ function FieldLine({
           <Box
             flexShrink={1}
             {...(part.id === undefined ? {} : hoverProps(part.id))}
+            onClick={part.onClick}
           >
             {part.tooltip === undefined || part.tooltip === '' ? (
               <Text wrap="truncate">{part.node}</Text>
@@ -143,6 +161,7 @@ export function StatusLine({
   helpOpen = false,
   wake,
   activity: projectedActivity,
+  onOpenSubagents,
 }: {
   channel: Channel
   selectionActive?: boolean
@@ -160,6 +179,8 @@ export function StatusLine({
    * folds the event log.
    */
   wake?: { band: WaveBand; hint?: string; tick: number }
+  /** Click target for the subagents chip: opens the Ctrl+A dashboard. */
+  onOpenSubagents?: () => void
 }) {
   const { columns } = useTerminalSize()
   const [hover, setHover] = React.useState<HoverTarget | null>(null)
@@ -330,6 +351,24 @@ const selectionBadge = formatSelectionBadge(channel.selection)
           </Text>
         ),
       }
+  // Subagent chip (Ctrl+A dashboard): live count of running children, shown
+  // only while non-zero. Hover lists labels with elapsed times; click opens
+  // the dashboard. Marker ⑂ matches the session browser's subagent glyph.
+  const liveSubagents = (channel.subagents ?? NO_SUBAGENTS).filter(
+    sub => sub.status === 'running' || sub.status === 'starting',
+  )
+  const subagentsPart: FieldPart | undefined = liveSubagents.length === 0
+    ? undefined
+    : {
+        key: 'subagents',
+        id: 'subagents',
+        onClick: onOpenSubagents,
+        node: (
+          <Text color="toolDotTask">
+            {'⑂ '}{liveSubagents.length}
+          </Text>
+        ),
+      }
   const leftFields: FieldPart[] = [
     ...(statusBar.model
       ? [{ key: 'model', id: 'model' as const, node: <Text color="text">{channel.model}</Text> }]
@@ -339,6 +378,7 @@ const selectionBadge = formatSelectionBadge(channel.selection)
     ...(ctxCountsField !== undefined ? [ctxCountsField] : []),
     ...(tpsPart !== undefined ? [tpsPart] : []),
     ...(jobsPart !== undefined ? [jobsPart] : []),
+    ...(subagentsPart !== undefined ? [subagentsPart] : []),
     ...contextParts,
     ...(statusBar.tokens
       ? [{
@@ -655,6 +695,21 @@ function buildHoverDetail(
         <Text wrap="truncate">
           {dim('jobs ')}
           {shown.map(job => `${job.id} ${job.label} (${formatJobDuration(job)})`).join(' · ')}
+          {rest > 0 ? ` · +${rest}` : ''}
+        </Text>
+      )
+    }
+    case 'subagents': {
+      const live = (channel.subagents ?? NO_SUBAGENTS).filter(
+        sub => sub.status === 'running' || sub.status === 'starting',
+      )
+      if (live.length === 0) return null
+      const shown = live.slice(0, 3)
+      const rest = live.length - shown.length
+      return (
+        <Text wrap="truncate">
+          {dim('subagents ')}
+          {shown.map(sub => `${sub.description} (${formatSubagentDuration(sub)})`).join(' · ')}
           {rest > 0 ? ` · +${rest}` : ''}
         </Text>
       )

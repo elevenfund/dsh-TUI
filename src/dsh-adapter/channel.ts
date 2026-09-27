@@ -202,7 +202,10 @@ function createChannelWithOwner(
   const subagentProjection = createSubagentProjection(() => state, {
     rowIds,
     agent: () => binding.agent,
-    subagents: () => (ctx as { get(name: string): unknown }).get('subagents') as { interrupt?(target: string, reason: unknown): void } | undefined,
+    subagents: () => (ctx as { get(name: string): unknown }).get('subagents') as {
+      interrupt?(target: string, reason: unknown): void
+      sendMessage?(sender: unknown, target: unknown, content: Array<{ type: 'text'; text: string }>, options: { signal: AbortSignal }): Promise<unknown>
+    } | undefined,
     lookupChild: id => {
       const agents = ctx.get('agents') as { get(id: string): { status?: string; session?: unknown; options?: { provider?: string; model?: string } } | undefined } | undefined
       return agents?.get(id)
@@ -1002,6 +1005,7 @@ function createChannelWithOwner(
     doctorInfo: reportActions.doctorInfo,
     pluginsInfo: reportActions.pluginsInfo,
     listSubagents: localActions.listSubagents,
+    subagentModes: localActions.subagentModes,
   })
 
   // Subagents inherit provider/model from AgentOptions, but resumed TUI

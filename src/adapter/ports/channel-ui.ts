@@ -501,6 +501,10 @@ export interface ChannelUi {
   /** Subagent rows for `/agents` (DSH subagent service; empty message when
    *  the service is absent). */
   listSubagents(): Promise<string[]>
+  /** Durable child modes for the follow-up affordances: agentId → continuable.
+   * One-shot children dispose at settlement and cannot receive mail, so their
+   * rows keep the follow-up input hidden. */
+  subagentModes(): Promise<Record<string, boolean>>
   /**
    * The agent view row snapshot: every live agent in
    * this process plus every persisted session that no live agent owns,

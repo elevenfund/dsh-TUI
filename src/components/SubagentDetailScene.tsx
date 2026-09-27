@@ -4,6 +4,7 @@ import type { SubagentState } from '../dsh-adapter/subagents.js'
 import { t } from '../i18n.js'
 import { Divider } from './design-system/Divider.js'
 import { ExitButton } from './SubagentDashboard.js'
+import { FollowUpLine, useFollowUpInput } from './SubagentFollowUpInput.js'
 import { isPlainReturnInput } from '../utils/modifiers.js'
 import { toolNameColor } from './messages/AssistantToolUseMessage.js'
 import { getCliHighlightPromise } from '../terminal-utils/cliHighlight.js'
@@ -108,23 +109,30 @@ export interface SubagentDetailSceneProps {
   subagent: SubagentState
   onBack: () => void
   onInterrupt?: (agentId: string) => void
+  /** Deliver a follow-up (send_message seam). Shown only for continuable
+   * children (followUpEnabled); one-shot rows dispose at settlement. */
+  onFollowUp?: (agentId: string, text: string) => Promise<boolean> | boolean
+  followUpEnabled?: boolean
 }
 
 /**
  * SubagentDetailScene — full-screen paged detail view for one subagent.
  * Header block (identity + stats) stays fixed; the body pages through
- * 摘要 / 输出 / 工具 with ←/→. Follow-up delivery was removed: the official
- * seam only accepts continuable children, and one-shot spawn children are
- * disposed at settlement, so the affordance would be a dead control.
+ * 摘要 / 输出 / 工具 with ←/→. The follow-up composer (m) returns for
+ * continuable children: a durable idle child accepts a message that
+ * cold-resumes it, a running one is steered at its nearest step boundary.
  */
 export function SubagentDetailScene({
   subagent,
   onBack,
   onInterrupt,
+  onFollowUp,
+  followUpEnabled,
 }: SubagentDetailSceneProps): React.ReactNode {
   const scrollRef = React.useRef<ScrollBoxHandle | null>(null)
   const { rows, columns } = useTerminalSize()
   const [page, setPage] = React.useState<DetailPage>('summary')
+  const followUp = useFollowUpInput(async text => { await onFollowUp?.(subagent.agentId, text) })
 
   const isRunning = subagent.status === 'running' || subagent.status === 'starting'
   // Only a live run ticks; discovered history (`unknown`) shows no duration.
@@ -151,6 +159,11 @@ export function SubagentDetailScene({
   }, [page, isRunning, outputLength])
 
   useInput((input, key, event) => {
+    if (followUp.composing) {
+      event.stopImmediatePropagation()
+      followUp.handleKey(input, key)
+      return
+    }
     if (key.escape || (key.ctrl && input === 'c')) {
       event.stopImmediatePropagation()
       onBack()
@@ -179,6 +192,13 @@ export function SubagentDetailScene({
     if (input.toLowerCase() === 'x' && isRunning && onInterrupt) {
       event.stopImmediatePropagation()
       onInterrupt(subagent.agentId)
+      return
+    }
+    // m opens the follow-up composer on continuable children (send_message
+    // seam); one-shot rows keep the key inert.
+    if (input.toLowerCase() === 'm' && followUpEnabled && onFollowUp) {
+      event.stopImmediatePropagation()
+      followUp.begin()
       return
     }
     if (isPlainReturnInput(input, key)) {
@@ -318,6 +338,9 @@ export function SubagentDetailScene({
         <Text dimColor>
           {`←/→ ${t('subagent-hint-page')} · ↑/↓ ${t('subagent-hint-scroll')}`}
         </Text>
+        {followUpEnabled && onFollowUp && (
+          <Text dimColor>{` · ${t('subagent-followup-key-hint')}`}</Text>
+        )}
         {isRunning && onInterrupt && (
           <>
             <Text dimColor>{' · '}</Text>
@@ -328,6 +351,9 @@ export function SubagentDetailScene({
         )}
         <Text dimColor>{` · Esc ${t('subagent-hint-back')}`}</Text>
       </Box>
+      {followUp.composing && (
+        <FollowUpLine state={followUp} placeholder={t('subagent-followup-prompt')} />
+      )}
     </Box>
   )
 }

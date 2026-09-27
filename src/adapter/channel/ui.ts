@@ -81,7 +81,7 @@ export function createChannelUi(channel: ChannelUi, mode: AdapterMode, lease: Ch
       enumerable: true,
       get() {
         check('read-only')
-        if (key === 'subagentControl') return methods(channel.subagentControl, { interrupt: 'mutate' })
+        if (key === 'subagentControl') return methods(channel.subagentControl, { interrupt: 'mutate', followUp: 'mutate' })
         if (key === 'jobControl') return channel.jobControl === undefined ? undefined : methods(channel.jobControl, { kill: 'mutate' })
         if (key === 'autoRecapOnOpen' && (mode === 'passive-shadow' || mode === 'replay-shadow')) return false
         if (key === 'pluginScene') {

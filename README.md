@@ -140,6 +140,8 @@ While the model is working: `Enter` steers, `Tab` queues a follow-up, `Ctrl+Ente
 
 Browsing the transcript: `Shift+Up` or idle `Tab` enters selection mode — `k/j` move the cursor, `l/h` expand/collapse, `Enter` opens the detail card, `g/G` jump to either end, `Ctrl+F/B` page, `Ctrl+C` interrupts from anywhere.
 
+Subagents: `Ctrl+A` opens the dashboard (live count rides the status line as `⑂ N`); `m` sends a follow-up to a continuable child — running ones are steered, idle ones cold-resume.
+
 Mouse (fullscreen): drag to select and copy, double/triple click to select a word or line, click tool cards, timeline ticks and `[Image #N]` previews.
 
 Full reference: [Interaction and commands](docs/interaction.en.md).
