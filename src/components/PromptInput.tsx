@@ -471,6 +471,9 @@ export interface PromptInputProps {
   selectionActive: boolean
   /** Idle plain Tab hands the keyboard to the transcript selection mode. */
   onEnterSelection?(): void
+  /** Mouse counterpart of Tab-back: clicking anywhere on the input cluster
+   *  while selection mode holds returns the keyboard to the composer. */
+  onExitSelection?(): void
   /**
    * External fill from the ctrl+r history dialog: when this prop changes to
    * a non-null string, the input replaces its value and moves the caret to
@@ -561,6 +564,7 @@ export function PromptInput({
   onRunCommand,
   selectionActive,
   onEnterSelection,
+  onExitSelection,
   fillText,
   onFillConsumed,
   onRewindRequest,
@@ -3675,7 +3679,18 @@ export function PromptInput({
   if (suspended) return null
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box
+      flexDirection="column"
+      marginTop={1}
+      onClick={() => {
+        // Click-to-refocus — the mouse counterpart of Tab-back: while
+        // selection mode holds the keyboard, a click anywhere on the input
+        // cluster hands it back to the composer. Deeper handlers run first
+        // (bubbling); the ones that acted stop propagation on their own, so
+        // reaching the root means the click landed on plain input chrome.
+        if (selectionActive) onExitSelection?.()
+      }}
+    >
       {/* 瞬态面板浮层（帮助/队列/补全）：零布局高度、向上覆盖转录尾部，
           帧高不随面板开关涨落——否则帧顶行会被滚进 scrollback 并在关闭
           重绘时二次写入（/model 切换多一份启动画的根因，见 OverlayAbove）。 */}

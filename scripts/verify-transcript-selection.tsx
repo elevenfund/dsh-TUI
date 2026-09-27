@@ -58,8 +58,13 @@ class FakeStdout extends Writable {
   columns = COLS
   rows = ROWS
   isTTY = true
+  /** Test hook: sees every write before the terminal parses it (T14 answers
+   *  the alt-screen probe here — a real terminal replies DECRPM itself). */
+  static onWrite: ((chunk: string) => void) | null = null
   override _write(chunk: unknown, _e: BufferEncoding, cb: () => void): void {
-    term.write(String(chunk), cb)
+    const text = String(chunk)
+    FakeStdout.onWrite?.(text)
+    term.write(text, cb)
   }
 }
 class FakeStderr extends Writable {
@@ -423,6 +428,37 @@ try {
   check('T13f Enter 关闭浮窗', !screenHas('j/k scroll') && screenHas('esc to return to input'))
   stdin.write('\x1b')
   await sleep(250)
+
+  // T14: 鼠标点击输入簇退出选择模式（Tab-back 的鼠标等价）。headless 终端
+  // 不应答 alt-screen 探测——onWrite 收到 ?1049$p 时回 DECRPM set，
+  // dispatchClick 的 altScreenActive 守卫随即放行 SGR 点击（真实终端自己
+  // 走完这条握手，链路同 drag-protocol I9b）。
+  FakeStdout.onWrite = chunk => {
+    if (chunk.includes('[?1049$p')) {
+      queueMicrotask(() => stdin.write('\x1b[?1049;2$y'))
+    }
+  }
+  stdin.write('\t')
+  await sleep(400)
+  check('T14a 重进选择模式', screenHas('esc to return to input'))
+  stdin.write('\x1b[I') // FOCUS_IN → 触发 alt-screen 探测
+  await sleep(300) // 固定窗:等探测应答与 altScreenActive 生效，无可观测锚点
+  const inputRow = (() => {
+    const lines = viewportLines()
+    for (let r = lines.length - 1; r >= 0; r--) {
+      if (lines[r]!.includes('❯')) return r
+    }
+    return -1
+  })()
+  check('T14b 定位输入行', inputRow >= 0, `row=${inputRow}`)
+  stdin.write(`\x1b[<0;5;${inputRow + 1}M`) // press（SGR 坐标 1-based）
+  await sleep(120)
+  stdin.write(`\x1b[<0;5;${inputRow + 1}m`) // release → dispatchClick
+  await sleep(400)
+  check('T14c 点击输入行退出选择模式', !screenHas('esc to return to input'))
+  stdin.write('mm')
+  check('T14d 退出后打字恢复', await settled(() => screenHas('mm')))
+  FakeStdout.onWrite = null
 
 } finally {
   app.unmount()

@@ -2822,9 +2822,14 @@ export function Chat({
     }
   }, [searchCurrent])
 
+  /** Leave selection mode and hand the keyboard back to the composer —
+   *  the Tab/Esc key path and the input cluster's click-to-refocus share it. */
+  const exitSelection = () => {
+    setSelectionActive(false)
+    setSelectedId(null)
+  }
   const enterSelection = () => {
-    setSelectionActive(true)
-    // selectableRows is gated on selectionActive and still holds NO_ROWS on
+    setSelectionActive(true)    // selectableRows is gated on selectionActive and still holds NO_ROWS on
     // this turn (setSelectionActive has not committed yet) — seed the cursor
     // from channel.rows directly or every later move no-ops on a null id.
     const last = channel.rows.findLast(row => SELECTABLE_KINDS.has(row.kind))
@@ -3640,8 +3645,7 @@ export function Chat({
         // Tab mirrors grok's focus rotation: the same key that handed the
         // keyboard to the transcript hands it back to the composer. Esc
         // exits the same way.
-        setSelectionActive(false)
-        setSelectedId(null)
+        exitSelection()
       }
     } else if (key.escape && channel.working && !helpOpen && !promptControllerRef.current?.vimActive()) {
       // Esc interrupts a running turn (the prompt input
@@ -4385,6 +4389,7 @@ export function Chat({
           onRunCommand={runCommand}
           selectionActive={promptSelectionActive}
           onEnterSelection={enterSelection}
+          onExitSelection={exitSelection}
           fillText={historyFill}
           onFillConsumed={() => setHistoryFill(null)}
           onRewindRequest={openRewind}
