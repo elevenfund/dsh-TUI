@@ -2825,23 +2825,45 @@ export function Chat({
     }
   }, [searchCurrent])
 
-  /** Leave selection mode and hand the keyboard back to the composer —
-   *  the Tab/Esc key path and the input cluster's click-to-refocus share it. */
+  /**
+   * Leave selection mode and hand the keyboard back to the composer —
+   * the Tab/Esc key path and the input cluster's click-to-refocus share it.
+   * selectedId survives the exit (with a transcript snapshot): a Tab-out /
+   * Tab-back-in with no new rows restores the cursor where it was; only a
+   * submit (rows changed) makes the next entry follow the fresh bottom.
+   */
+  const selectionEpochRef = React.useRef<{ maxId: number; count: number } | null>(null)
   const exitSelection = () => {
+    selectionEpochRef.current = {
+      maxId: channel.rows.reduce((max, row) => Math.max(max, row.id), 0),
+      count: channel.rows.length,
+    }
     setSelectionActive(false)
-    setSelectedId(null)
   }
   const enterSelection = () => {
-    setSelectionActive(true)    // selectableRows is gated on selectionActive and still holds NO_ROWS on
-    // this turn (setSelectionActive has not committed yet) — seed the cursor
-    // from channel.rows directly or every later move no-ops on a null id.
-    const last = channel.rows.findLast(row => SELECTABLE_KINDS.has(row.kind))
-    if (last) {
-      setSelectedId(last.id)
-      // Minimal alignment: entering selection from the (sticky-bottom)
-      // composer leaves the last row exactly where it is — no viewport
-      // jump on mode entry.
-      seekRowIntoView(last.id)
+    // selectableRows is selectionActive-gated and still NO_ROWS on this
+    // turn (setSelectionActive has not committed) — seed or restore the
+    // cursor from channel.rows directly or every later move no-ops on a
+    // null id.
+    setSelectionActive(true)
+    // Restore the pre-exit cursor when the transcript is unchanged; a new
+    // turn (submitted while the keyboard was with the composer) follows the
+    // bottom row instead, matching where sticky streaming left the page.
+    const snap = selectionEpochRef.current
+    const unchanged =
+      snap !== null &&
+      channel.rows.length === snap.count &&
+      channel.rows.reduce((max, row) => Math.max(max, row.id), 0) === snap.maxId
+    const restored =
+      unchanged && selectedId !== null
+        ? channel.rows.find(row => row.id === selectedId && SELECTABLE_KINDS.has(row.kind))
+        : undefined
+    const target = restored ?? channel.rows.findLast(row => SELECTABLE_KINDS.has(row.kind))
+    if (target) {
+      setSelectedId(target.id)
+      // Minimal alignment: a restored on-screen row leaves the viewport
+      // exactly where the user left it (no jump to the bottom).
+      seekRowIntoView(target.id)
     } else {
       setSelectedId(null)
     }

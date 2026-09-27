@@ -408,6 +408,17 @@ try {
     lineHighlighted('user line alpha'),
   )
 
+  // T15: Tab 退出再进入（中间无输入）恢复光标与视口——旧行为重进时
+  // findLast 种末行 + 滚底；只有 rows 变化（提交新消息）才应跟随底部。
+  stdin.write('\t') // 退出（Chat 分支消费）
+  await sleep(300)
+  stdin.write('\t') // 重进（PromptInput 的空闲 Tab）
+  await sleep(350)
+  check(
+    'T15a Tab 往返后光标恢复（仍 user 行、视口未跳底）',
+    screenHas('esc to return to input') && lineHighlighted('user line alpha') && screenHas('user line alpha'),
+  )
+
   // T13: Enter 打开 row-detail 浮窗（grok "Enter details" 语义）——全文在
   // 卡片内滚动阅读；折叠展开归 l/h；Esc/Enter 关闭回选择模式且光标不动。
   stdin.write('j')
