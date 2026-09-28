@@ -13,10 +13,13 @@ import type { ChannelState, ChatRow, SubagentControl, SubagentRow } from './type
  *  1. `subagent/start`/`subagent/end` bus edges — per-run lifecycle of
  *     one-shot runs and continuable epochs, paired by `runId`;
  *  2. parent-session durable events — `subagent/catalog` (child creation
- *     fact, written for every child) and `tool-workflow/agent-start|end`
- *     (workflow/ralph members, which never emit subagent edges) — received
- *     live AND folded from the log at bind/resume so a restart no longer
- *     blanks the panel;
+ *     fact, written for every child), `tool-workflow/agent-start|end`
+ *     (workflow/ralph members, which never emit subagent edges) and
+ *     `agent/inbox/spliced` settlement notices (`source.kind ===
+ *     'subagent-settled'`, the only durable proof of a background child's
+ *     last outcome) — received live AND folded from the log at bind/resume
+ *     so a restart no longer blanks the panel nor flattens outcomes to
+ *     `unknown`;
  *  3. lazy registry back-fill — a child session event or stream frame whose
  *     session link was never established is resolved through the agents
  *     registry on arrival, healing one-shot `lookupChild` misses.
@@ -159,10 +162,27 @@ export function createSubagentProjection(
     const time = (event as { time?: unknown } | null | undefined)?.time
     return typeof time === 'number' ? time : undefined
   }
+  /** Extract the closing text after the `Its closing message:` divider of a
+   * settlement notice (empty when the child left none). */
+  const closingMessageOf = (item: { content?: unknown }): string => {
+    const blocks = Array.isArray(item.content) ? item.content : []
+    const texts: string[] = []
+    let pastDivider = false
+    for (const block of blocks) {
+      if (typeof block !== 'object' || block === null) continue
+      const text = typeof (block as { text?: unknown }).text === 'string' ? (block as { text: string }).text : ''
+      if (!pastDivider) {
+        pastDivider = text === 'Its closing message:'
+        continue
+      }
+      if (text.length > 0) texts.push(text)
+    }
+    return texts.join('\n')
+  }
   /** Parent-session durable discovery events, live or folded from the log. */
   const onParentEvent = (event: unknown, historical = false): void => {
     if (!event || typeof event !== 'object') return
-    const ev = event as { type?: string; data?: { childId?: unknown; childCreatedAt?: unknown; label?: unknown; runId?: unknown; seq?: unknown; outcome?: unknown } }
+    const ev = event as { type?: string; data?: { childId?: unknown; childCreatedAt?: unknown; label?: unknown; runId?: unknown; seq?: unknown; outcome?: unknown; inserted?: unknown } }
     const data = ev.data ?? {}
     const childId = typeof data.childId === 'string' ? data.childId : undefined
     if (ev.type === 'subagent/catalog') {
@@ -171,6 +191,33 @@ export function createSubagentProjection(
         label: typeof data.label === 'string' ? data.label : undefined,
         childCreatedAt: typeof data.childCreatedAt === 'number' ? data.childCreatedAt : eventTime(event),
       })
+    } else if (ev.type === 'agent/inbox/spliced') {
+      // Settlement notices (continuation-messages.ts) reach the parent as
+      // inbox user messages whose structured source names the child: the
+      // ONLY durable proof of how a background child's last epoch ended.
+      // Folding them at resume turns `unknown` rows into their real outcome
+      // instead of the registry-less `unknown` default.
+      for (const item of Array.isArray(data.inserted) ? data.inserted : []) {
+        if (typeof item !== 'object' || item === null) continue
+        const source = (item as { source?: { kind?: unknown; senderSessionId?: unknown; summary?: unknown } | null }).source
+        if (!source || source.kind !== 'subagent-settled') continue
+        const settledChild = typeof source.senderSessionId === 'string' ? source.senderSessionId : undefined
+        if (settledChild === undefined) continue
+        const summary = typeof source.summary === 'string' ? source.summary : ''
+        const endedAt = eventTime(event)
+        // Defensive: a settlement without its catalog row (log damage) still
+        // gets a row so the outcome is visible.
+        if (!store.has(settledChild)) store.onDiscovered(settledChild, { label: undefined, childCreatedAt: eventTime(event) })
+        if (summary.includes('finished and will do no further work')) {
+          store.onCompleted(settledChild, closingMessageOf(item as { content?: unknown }) || undefined, 'completed', endedAt)
+        } else if (summary.includes('was stopped before it finished')) {
+          store.onCancelled(settledChild, 'cancelled', undefined, endedAt)
+        } else {
+          // max-tokens / refusal / error / abnormal — every other settlement
+          // line is a failure flavour.
+          store.onFailed(settledChild, summary || 'failed before it finished', endedAt)
+        }
+      }
     } else if (ev.type === 'tool-workflow/agent-start') {
       if (childId === undefined || typeof data.runId !== 'string' || typeof data.seq !== 'number') return
       const memberKey = `${data.runId}:${data.seq}`

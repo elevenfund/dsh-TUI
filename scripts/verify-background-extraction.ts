@@ -134,6 +134,52 @@ for (const label of ['ctx lookup throws', 'agents.get throws']) {
   owner.dispose()
 }
 
+// Resume fold: settlement notices in the durable parent log are the only
+// proof of a background child's outcome — catalog alone leaves `unknown`.
+// Folded outcomes use the notice's wall time, and the closing message text
+// behind the divider becomes the row summary.
+{
+  const owner = createChannelOwner()
+  const state = { rows: [] as unknown[], subagents: [] as unknown[], emits: 0, emit() { this.emits += 1 }, emitStream() {} }
+  const projection = createSubagentProjection(() => state as never, {
+    rowIds: { value: 0 },
+    agent: () => fakeAgent() as never,
+    subagents: () => undefined,
+    lookupChild: () => undefined,
+  })
+  projection.bootstrapFromLog([
+    { type: 'subagent/catalog', time: 1000, data: { childId: 'child-a', childCreatedAt: 900, mode: 'continuable', label: '审查重构质量' } },
+    { type: 'tool/result', time: 1100, data: { message: { toolCallId: 'call_1', content: [{ type: 'text', text: 'started subagent child-a' }] } } },
+    { type: 'agent/inbox/spliced', time: 9000, data: { target: 'next-step', inserted: [{ content: [
+      { type: 'text', text: 'Background subagent child-a finished and will do no further work unless you send it more.' },
+      { type: 'text', text: 'Its closing message:' },
+      { type: 'text', text: '评估完成：7 / 10。' },
+    ], source: { kind: 'subagent-settled', form: 'notice', summary: 'Background subagent child-a finished and will do no further work unless you send it more.', senderSessionId: 'child-a' } }] } },
+    // A second child settles as stopped; a third fails; a catalog-only child
+    // stays unknown (no proof either way).
+    { type: 'subagent/catalog', time: 1200, data: { childId: 'child-b', childCreatedAt: 1150, label: '另一任务' } },
+    { type: 'agent/inbox/spliced', time: 9500, data: { inserted: [{ content: [
+      { type: 'text', text: 'Background subagent child-b was stopped before it finished.' },
+    ], source: { kind: 'subagent-settled', senderSessionId: 'child-b', summary: 'Background subagent child-b was stopped before it finished.' } }] } },
+    { type: 'subagent/catalog', time: 1300, data: { childId: 'child-c', childCreatedAt: 1250, label: '失败任务' } },
+    { type: 'agent/inbox/spliced', time: 9800, data: { inserted: [{ content: [
+      { type: 'text', text: 'Background subagent child-c failed before it finished.' },
+    ], source: { kind: 'subagent-settled', senderSessionId: 'child-c', summary: 'Background subagent child-c failed before it finished.' } }] } },
+    { type: 'subagent/catalog', time: 1400, data: { childId: 'child-d', childCreatedAt: 1350, label: '无终态任务' } },
+    { type: 'agent/inbox/spliced', time: 9900, data: { inserted: [{ content: [
+      { type: 'text', text: 'unrelated user message' },
+    ], source: { kind: 'user' } }] } },
+  ])
+  const byId = new Map(projection.store.snapshot().map(s => [s.agentId, s]))
+  assert.equal(byId.get('child-a')?.status, 'completed', 'settled fold: completed outcome replaces unknown')
+  assert.equal(byId.get('child-a')?.completedAt, 9000, 'settled fold closes at the notice wall time')
+  assert.equal(byId.get('child-a')?.summary, '评估完成：7 / 10。', 'closing message behind the divider becomes the summary')
+  assert.equal(byId.get('child-b')?.status, 'cancelled', 'stopped settlement folds to cancelled')
+  assert.equal(byId.get('child-c')?.status, 'failed', 'failed settlement folds to failed')
+  assert.equal(byId.get('child-d')?.status, 'unknown', 'catalog-only child without a settlement stays unknown')
+  owner.dispose()
+}
+
 // A target chosen before the async attach decision must remain that exact
 // object. A registry replacement during the decision is cancelled rather
 // than adopted as an arbitrary newer target.
