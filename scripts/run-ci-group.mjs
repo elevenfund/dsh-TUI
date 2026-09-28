@@ -270,6 +270,10 @@ const GROUPS = {
 // 不提前）、无兴趣矩形快路径跳过全树 hit-test，且渲染提交/帧边界/
 // 多 root 失效；拖拽 motion 逐事件到达。
     ["verify-hover-coalesce", ['node', '--import', 'tsx/esm', 'scripts/verify-hover-coalesce.tsx']],
+// hover 合并单元层（T0 同步断言）：无兴趣 rect 快路径、容器子树/重叠
+// sibling/多 root 缓存安全、帧边界失效、兴趣 probe 不缓存——合成 DOM 树
+// 直调 dispatchHover，无渲染。SGR 集成场景留在原 .tsx。
+    ["verify-hover-coalesce-units", ['node', '--import', 'tsx/esm', 'scripts/verify-hover-coalesce-units.ts']],
 // /update 纯函数回归：版本探测（双布局+外来 manifest 拒绝）、
 // registry 解析（env/npmrc/默认）、semver 比较、pnpm --latest。
     ["verify-update", ['node', 'scripts/verify-update.mjs']],
@@ -348,6 +352,11 @@ const GROUPS = {
 //    与粘性报错、真 Chat 驱动的对话框/状态行/快捷键端到端。
     ["verify-extension-events", ['node', '--import', 'tsx/esm', 'scripts/verify-extension-events.tsx']],
     ["verify-extension-ui", ['node', '--import', 'tsx/esm', 'scripts/verify-extension-ui.tsx']],
+// 插件 UI 接缝纯逻辑单元（T0 无挂载）：store units（FIFO/AbortSignal/超时/
+// settleAll/状态键语义）+ 真实 cordis runtime units（校验告警不抛、快捷键
+// 解析/匹配/保留位/派发、渲染器注册拒绝与粘性报错）+ decision-guard 授权
+// 电池。从 verify-extension-ui.tsx 拆出——真 Chat 挂载驱动的端到端留在原脚本。
+    ["verify-extension-units", ['node', '--import', 'tsx/esm', 'scripts/verify-extension-units.ts']],
 // 非 TTY 宿主门禁回归（Web/Tauri 共存）：profile 装有 dsh-tui 的非终端
 // 宿主（stdout 为 pipe/null）必须静默跳过插件、不 throw、不影响宿主启动；
 // 显式 dsh-tui launcher/standalone 启动无 TTY 仍保留原报错。
@@ -551,6 +560,11 @@ const GROUPS = {
 // classic 仍捆绑眨眼+喷水+摆尾）、随机选取 API 覆盖/钳制/每次挂载
 // 独立重掷、LogoV2 渲染冒烟（粉爱心/灰 Z 上屏后落定消失）。
     ["verify-whale-intro", ['node', '--import', 'tsx/esm', 'scripts/verify-whale-intro.mjs']],
+// 开屏鲸鱼帧表纯逻辑单元（T0 同步断言）：22 帧完整性与网格/调色合法性、
+// heart/sleep 像素互斥、序列起止与家族约束、classic 三行为捆绑、随机选取
+// 覆盖/钳制/每次独立。从 verify-whale-intro.mjs 拆出——LogoV2 渲染冒烟
+// （粉爱心/灰 Z 上屏后落定消失）留在原脚本。
+    ["verify-whale-frames", ['node', '--import', 'tsx/esm', 'scripts/verify-whale-frames.mjs']],
 // 开屏定格后的鲸鱼闲置行为（whaleIdle 设置，默认开）：纯规划器帧选
 // 择与节拍（闲置偶动/入睡/工作唤醒/点击爱心单向播完）、频道接线。
     ["verify-whale-idle", ['node', '--import', 'tsx/esm', 'scripts/verify-whale-idle.mjs']],
@@ -586,6 +600,10 @@ const GROUPS = {
     ["verify-live-session", ['node', '--import', 'tsx/esm', 'scripts/verify-live-session.ts']],
     ["verify-session-v3", ['node', '--import', 'tsx/esm', 'scripts/verify-session-v3.ts']],
     ["verify-session-tree-generations", ['node', '--import', 'tsx/esm', 'scripts/verify-session-tree-generations.ts']],
+// session-tree 纯模型/读取层（T0）：条目提取、回退/分叉边界、家族拼接、
+// 扁平化/过滤、compat 预算读取器 round-trip。从 verify-session-tree.tsx
+// 拆出——SessionTree 屏幕无头组装留在原脚本。
+    ["verify-session-tree-units", ['node', '--import', 'tsx/esm', 'scripts/verify-session-tree-units.ts']],
 // 裸 ● 空行回归：纯思考/纯工具步骤（无文本块）的 assistant/message
 // 不得创建空 assistant 行，否则思考块折叠后转录里多出一个只有
 // ● 前缀、内容为空的行。
@@ -632,6 +650,10 @@ const GROUPS = {
 // 匹配、北京时间高峰/空闲时段边界、缓存命中计价、未知模型与零 token
 // 不估算、官方 provider 判定。注入 fake fetch，不发真实请求。
     ["verify-balance", ['node', '--import', 'tsx/esm', 'scripts/verify-balance.tsx']],
+// /balance 纯函数层（T0）：fetchBalance 响应解析与失败分类（注入 fake
+// fetch，无挂载）、单价表最长前缀匹配、北京时段边界、缓存命中计价。
+// Chat 里的 /balance 交互留在原脚本。
+    ["verify-balance-units", ['node', '--import', 'tsx/esm', 'scripts/verify-balance-units.ts']],
 // /model 二级选择器派生回归：provider 分组（首现排序、显示名回退、
 // 计数）与落焦规则（多 provider 聚焦当前组、单 provider 直达模型层、
 // 缺席当前 provider 落首行）。键盘与 overlay 归约由 verify-chat-overlay
