@@ -626,6 +626,14 @@ export function Chat({
    *  returns there on Esc; a transcript card returns to the transcript
    *  (Esc must not summon a dashboard the user never opened). */
   const [subagentDetailFromDashboard, setSubagentDetailFromDashboard] = React.useState(true)
+  // Stable identity: MessageList forwards this into every memoized row —
+  // an inline closure here re-renders ALL settled tool cards on each
+  // channel version (verify-tool-history-window).
+  const openSubagentDetailFromTranscript = React.useCallback((id: string) => {
+    // From a transcript card: Esc closes back into the transcript.
+    setSubagentDetailFromDashboard(false)
+    setSubagentDetailId(id)
+  }, [])
   /** Task center (Ctrl+G): the unified classified panel over jobs +
    * subagents. Legacy Ctrl+A dashboard and /jobs panel stay untouched. */
   const [taskCenterOpen, setTaskCenterOpen] = React.useState(false)
@@ -2063,11 +2071,7 @@ ing registered by a DSH
           newSinceRowId={isSticky ? null : lastSeenRowIdRef.current}
           onUnseenCount={setUnseenCount}
           onTimeline={setTimeline}
-          onOpenSubagent={(id: string) => {
-            // From a transcript card: Esc closes back into the transcript.
-            setSubagentDetailFromDashboard(false)
-            setSubagentDetailId(id)
-          }}
+          onOpenSubagent={openSubagentDetailFromTranscript}
           onOpenJobs={openJobsPanel}
           onOpenFile={openFileActions}
           sessionCwd={channel.cwd}

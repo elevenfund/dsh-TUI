@@ -14,7 +14,9 @@
  */
 process.env.FORCE_COLOR = '3'
 process.env.DSH_TUI_THEME = 'dark'
-process.env.DSH_TUI_LANG = 'zh'
+// The bucket labels under test are localized now (toolgroup-* keys); the
+// assertions pin the English spelling.
+process.env.DSH_TUI_LANG = 'en'
 
 const [{ PassThrough, Writable }, React, { Terminal: XTerm }, { render, useInput, AlternateScreen }, { MessageList }, { settled, sleep }] = await Promise.all([
   import('node:stream'),

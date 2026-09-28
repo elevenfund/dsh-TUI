@@ -518,7 +518,7 @@ await withTerminal(
     })
     const text = screen()
     check('C3 面板标题与两行任务', text.includes('Background Jobs') && text.includes('pwsh-1') && text.includes('bash-2'))
-    check('C3 面板含操作提示', text.includes('kill focused job'), text.split('\n').at(-3) ?? '')
+    check('C3 面板含操作提示', text.includes('x stop focused job'), text.split('\n').at(-3) ?? '')
     // 聚焦第一行（默认）→ 详情块展开：完整任务名 + 开始时间 + 输出尾巴。
     check('C3 聚焦行详情含完整任务名与开始时间', text.includes('gh run watch 42') && text.includes('started'), text.split('\n').slice(0, 8).join('|'))
     check('C3 聚焦行详情含完整命令', text.includes('command') && text.includes('gh pr checks --watch 42'), text.split('\n').slice(0, 8).join('|'))
