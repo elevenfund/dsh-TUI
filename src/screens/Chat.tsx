@@ -1257,6 +1257,7 @@ ing registered by a DSH
       supervisorOpen,
       settingsOpen,
       subagentSurfaces: subagentDashboardOpen || subagentDetailId !== null,
+      taskCenterSurfaces: taskCenterOpen || taskCenterDetailId !== null,
       jobsPanelOpen,
       sceneOpen,
       pluginScene: channel.pluginScene !== undefined,

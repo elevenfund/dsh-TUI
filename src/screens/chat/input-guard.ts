@@ -31,6 +31,8 @@ export interface InputGuardContext {
   settingsOpen: boolean
   /** Subagent dashboard or detail scene open. */
   subagentSurfaces: boolean
+  /** Task center panel (Ctrl+G) or its detail scene open. */
+  taskCenterSurfaces: boolean
   /** /jobs panel open. */
   jobsPanelOpen: boolean
   /** Trajectory/plugin scene open. */
@@ -76,6 +78,7 @@ export function inputGuardAction(ctx: InputGuardContext): InputGuardAction {
   if (ctx.supervisorOpen) return { type: 'yield' }
   if (ctx.settingsOpen) return { type: 'yield' }
   if (ctx.subagentSurfaces) return { type: 'yield' }
+  if (ctx.taskCenterSurfaces) return { type: 'yield' }
   if (ctx.jobsPanelOpen) return { type: 'yield' }
   if (ctx.sceneOpen || ctx.pluginScene) return { type: 'yield' }
   // Wheel fallback (over non-scroll areas): help stays yielded, an open

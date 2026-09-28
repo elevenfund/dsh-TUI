@@ -323,6 +323,11 @@ const GROUPS = {
 // verify-composer-draft-handoff；在途 staging 围栏在 verify:build 链的
 // verify-image-preview。完整 8 场景矩阵见 PR #942 历史。
     ["verify-composer-draft-screen-switch", ['node', '--import', 'tsx/esm', 'scripts/verify-composer-draft-screen-switch.tsx']],
+// 任务中心 Esc 回归（2026-09-29）：working 中 Ctrl+G 面板按 Esc/Ctrl+C 必须
+// 关面板而非打断——面板是提前 return 的独立树，自己的 useInput 注册在 Chat
+// 之后，靠 inputGuardAction 的 taskCenterSurfaces yield 让键穿透。同时钉住
+// 反向：面板关闭后裸 Esc 仍走打断语义。
+    ["verify-taskcenter-escape", ['node', '--import', 'tsx/esm', 'scripts/verify-taskcenter-escape.tsx']],
 // 队列召回撤回回归（issue #986 后半）：↑ 走位召回的文本若仍挂在 pending 里，
 // 必须把那条排队副本撤下来（否则改完重发等于同一句发两遍）——可撤时队列少一条
 // 且有提示、已被本轮取走时如实报「撤不回来」且副本留在队列、文本不匹配的排队

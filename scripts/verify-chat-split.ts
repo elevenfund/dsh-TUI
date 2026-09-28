@@ -81,7 +81,7 @@ check('选中项不在列表 → null', selectionStepId(rows as never, 99, 1) ==
 const guardCtx = (over: Partial<Parameters<typeof inputGuardAction>[0]> = {}) => ({
   btwOpen: false, tipsOverlay: false, recapVisible: false,
   treeOpen: false, supervisorOpen: false, settingsOpen: false,
-  subagentSurfaces: false, jobsPanelOpen: false, sceneOpen: false, pluginScene: false,
+  subagentSurfaces: false, taskCenterSurfaces: false, jobsPanelOpen: false, sceneOpen: false, pluginScene: false,
   helpOpen: false, approvalPending: false, dialogPending: false, questionPending: false,
   questionMinimized: false, isSticky: true, fullscreen: true,
   overlayKind: 'none', workspaceTargetsCount: 0, pageStep: 20,
@@ -91,6 +91,7 @@ const guardCtx = (over: Partial<Parameters<typeof inputGuardAction>[0]> = {}) =>
 check('空闲无面板 → continue', inputGuardAction(guardCtx()).type === 'continue')
 check('btw 打开 → yield', inputGuardAction(guardCtx({ btwOpen: true })).type === 'yield')
 check('场景打开 → yield', inputGuardAction(guardCtx({ sceneOpen: true })).type === 'yield')
+check('任务中心面板打开 → yield（Esc 留给面板，不打断）', inputGuardAction(guardCtx({ taskCenterSurfaces: true })).type === 'yield')
 check('wheel 回落 → scroll -3', inputGuardAction(guardCtx({ wheel: 'up' })).type === 'scroll' && (inputGuardAction(guardCtx({ wheel: 'up' })) as { rows: number }).rows === -3)
 check('wheel + 打开的浮窗 → yield', inputGuardAction(guardCtx({ wheel: 'down', overlayKind: 'model' })).type === 'yield')
 check('wheel + 目标未落的 picker → 照常滚动', inputGuardAction(guardCtx({ wheel: 'down', overlayKind: 'workspace-picker', workspaceTargetsCount: 0 })).type === 'scroll')
