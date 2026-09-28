@@ -74,6 +74,15 @@ type Props = {
    * prose), and so do replayed cards.
    */
   smoothReveal?: boolean
+  /** Tool-block intent title (grok-style): the bound `⏵` narration or the
+   *  presenter description replaces the Name(args) header shape while the
+   *  card stays folded. Input-synthesized titles keep the existing header —
+   *  it already shows path/command. */
+  blockTitle?: string
+  /** Tool-block single-line default (grok-style one-line step): the card
+   *  keeps its header row only until expanded; an explicit
+   *  `dsh-tui.toolBodyLines` setting still wins. */
+  blockFolded?: boolean
   /** Live-arrived row (channel `fresh`): gates reveal participation —
    *  replayed cards must paint complete. */
   fresh?: boolean
@@ -550,6 +559,8 @@ export function AssistantToolUseMessage({
   onOpenFile,
   foldTerminalCommand = false,
   smoothReveal = false,
+  blockTitle,
+  blockFolded = false,
   fresh = false,
   revealVersion,
 }: Props): React.ReactNode {
@@ -639,7 +650,7 @@ export function AssistantToolUseMessage({
       body = [dim(t('tool-running-elapsed', { duration: formatDuration(Math.max(0, Date.now() - (tool.startedAt ?? Date.now()))) }))]
     }
   }
-  const cap = toolBodyLines ?? (view?.card === 'diff' ? DIFF_BODY_MAX_LINES : TEXT_BODY_MAX_LINES)
+  const cap = blockFolded && toolBodyLines === undefined ? 0 : toolBodyLines ?? (view?.card === 'diff' ? DIFF_BODY_MAX_LINES : TEXT_BODY_MAX_LINES)
   // Long-line clip before anything downstream reads the body: the syntax
   // highlighter walks `bodySource` by line index, so the folded text must be
   // the single source of truth for both.
@@ -710,7 +721,22 @@ export function AssistantToolUseMessage({
             isError={isError}
             toolName={tool.name}
           />
-          <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} lit={headerLit} />
+          {blockTitle !== undefined && !verbose && !isExpanded ? (
+            // Grok-style intent header: bold tool name + dim one-line intent
+            // (the bound `⏵` narration or presenter description). Expanding
+            // (verbose/click) falls back to the full Name(args) header shape.
+            <Text>
+              <Text bold color={headerLit ? toolNameColor(tool.name) : undefined}>{name}</Text>
+              <Text dimColor={!headerLit}>{clipToWidth(blockTitle, headerTextBudget - stringWidth(name) - 1)}</Text>
+            </Text>
+          ) : (
+            <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} lit={headerLit} />
+          )}
+          {blockFolded && isRunning && tool.startedAt !== undefined && (
+            <Box flexWrap="nowrap">
+              <Text dimColor>{` · ${formatDuration(Math.max(0, Date.now() - tool.startedAt))}`}</Text>
+            </Box>
+          )}
           {!isRunning && (
             <Box flexWrap="nowrap">
               <Text dimColor={!headerLit}>{elapsedText}</Text>

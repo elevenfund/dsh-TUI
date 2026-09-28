@@ -116,12 +116,13 @@ const inst = await render(
   const dotAboveTool = toolRow >= 0 && lines.slice(0, toolRow).some(l => /^●\s*$/.test(l))
   check('空 settled assistant 行被过滤（工具卡上方无孤立 ●）', !dotAboveTool,
     `toolRow=${toolRow}`)
-  // ⏵ 叙述行现为 turn 的 step title（assistantDisplayText 有意渲染，
-  // MessageList "a narration-only step shows real content"）——断言语义
-  // 更新为「渲染为步骤行且上方无孤立 ●」。
-  const stepTitleVisible = screen.includes('⏵ 正在跑测试')
-  check('叙述-only settled 行渲染为步骤行（上方无孤立 ●）', stepTitleVisible && !dotAboveTool,
-    `stepTitle=${stepTitleVisible}`)
+  // ⏵ 叙述行的归宿（tool-blocks 落地后）：绑定进其后第一个工具块的
+  // 标题行渲染（Bash 卡 header 的 dim 意图句），assistant 行本身渲染空、
+  // 被空行过滤收走——断言语义为「⏵ 文字出现在工具块行且上方无孤立 ●」。
+  const toolBlockLine = lines.find(l => l.includes('⏵ 正在跑测试'))
+  const narrationInBlockTitle = toolBlockLine !== undefined && toolBlockLine.includes('Bash')
+  check('叙述-only 行并入工具块标题（⏵ 与 Bash 同行，上方无孤立 ●）', narrationInBlockTitle && !dotAboveTool,
+    `blockLine=${toolBlockLine ?? 'none'}`)
 }
 
 // 落定翻转：streaming true → false 原地写（rows 身份/长度不变）。

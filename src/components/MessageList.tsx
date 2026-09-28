@@ -20,6 +20,8 @@ import { TurnInterruptedRow } from './TurnInterruptedRow.js'
 import { LogoV2 } from './LogoV2.js'
 import { StreamingMarkdown } from './StreamingMarkdown.js'
 import { MessageMetadata } from './messages/MessageMetadata.js'
+import { reduceToolBlocks, SINGLE_LINE_VERBS } from './messages/tool-blocks.js'
+import { ToolGroupRow } from './messages/ToolGroupRow.js'
 import { extractNarration, stripNarration } from '../utils/narration.js'
 import { foldLongLines } from '../utils/fold-long-lines.js'
 import { stringWidth } from '../ink/stringWidth.js'
@@ -198,6 +200,8 @@ function signatureParts(
   failureHint: string | undefined,
   displayTextLen: number,
   sessionCwd: string | undefined,
+  blockTitle: string | undefined,
+  blockFolded: boolean,
 ): Array<string | number | boolean> {
   signatureScratch.length = 0
   // Universal height inputs: width reflows every row; kind switches height
@@ -238,6 +242,10 @@ function signatureParts(
         tool?.resultFull?.length ?? 0,
         tool?.errorText?.length ?? 0,
         row.id === failureHintRowId ? failureHint ?? '' : '',
+        // Tool-block state: blockFolded caps the body to the header row;
+        // blockTitle swaps the header text (wrap-affecting length input).
+        blockFolded,
+        blockTitle?.length ?? 0,
       )
       break
     }
@@ -454,6 +462,20 @@ export function MessageList({
   } | null>(null)
   /** Generation counter for the visibleRows cache (timeline memo key). */
   const visGenRef = React.useRef(0)
+  // Tool-block reduction (grok-style): narration binding + verb-group folds
+  // + intent titles. Rows are mutated in place by the channel, so identity
+  // memoization is useless here — recompute per render; the scan is a shallow
+  // O(rows) pass, far cheaper than the markdown pipelines it feeds. A second
+  // pass honors unfolds: an expanded first member (row click) or the global
+  // transcript expansion renders member rows instead of the fold. Computed
+  // BEFORE visibleRows: the empty-assistant filter below must know which
+  // narration lines were consumed into block titles (they render empty).
+  const blockStateBase = reduceToolBlocks(rows)
+  const blockExpandedKeys = new Set<string>()
+  for (const [rowId, group] of blockStateBase.groupAt) {
+    if (expandedRows.has(rowId) || expanded) blockExpandedKeys.add(group.firstKey)
+  }
+  const blockState = blockExpandedKeys.size > 0 ? reduceToolBlocks(rows, { expandedGroups: blockExpandedKeys }) : blockStateBase
   const visibleCache = visibleRowsCacheRef.current
   // Streaming-bit fingerprint: in-place `streaming = false` writes (turn
   // settle) are invisible to the rows-identity/length key above, but an
@@ -488,13 +510,15 @@ export function MessageList({
     // live dot is the "model is answering" affordance and content may yet
     // arrive.
     // The emptiness test must match what RENDERING shows. The `⏵`
-    // narration line (dsh-working-activity narrate contract) now RENDERS as
-    // the turn's step title, so a narration-only step shows real content —
-    // only a reply with no text AND no narration renders empty.
+    // narration line (dsh-working-activity narrate contract) renders as
+    // either the turn's step title (unbound: a narration-only step shows
+    // real content) or a consumed block-title line (bound: the assistant
+    // row itself renders EMPTY — strip the consumed narration before the
+    // test, or a lone `●` dangles above the block row again).
     const rendersEmptyAssistant = (row: ChatRow): boolean =>
       row.kind === 'assistant' &&
       row.streaming !== true &&
-      (row.text ?? '').trim() === '' &&
+      (blockState.narrationConsumed.has(row.id) ? stripNarration(row.text ?? '') : (row.text ?? '')).trim() === '' &&
       (row.images?.length ?? 0) === 0
     let hasEmptyAssistant = false
     for (const row of sliced) {
@@ -685,6 +709,15 @@ export function MessageList({
         failureHint,
         revealDisplayLen(row, smoothStreaming),
         sessionCwd,
+        blockState.blocks.get(row.id)?.titleSource === 'narration'
+          ? `⏵ ${blockState.blocks.get(row.id)?.title}`
+          : blockState.blocks.get(row.id)?.titleSource === 'description'
+            ? blockState.blocks.get(row.id)?.title
+            : undefined,
+        (() => {
+          const block = blockState.blocks.get(row.id)
+          return block !== undefined && SINGLE_LINE_VERBS.has(block.verb)
+        })(),
       )
       const cachedParts = sigs.get(row.id)
       let same = false
@@ -1218,6 +1251,23 @@ export function MessageList({
         // The pre-pass result keeps windowed rows at full-mount
         // spacing; only the very first row of the whole list has none.
           const marginTopOnTurn = margins.get(row.id) === true
+          // Verb-group fold: the group row replaces its first member; the
+          // other members (and thinking rows the fold absorbed) render
+          // nothing until the group is unfolded.
+          const group = blockState.groupAt.get(row.id)
+          if (group !== undefined) {
+            return (
+              <ToolGroupRow
+                key={row.id}
+                group={group}
+                marginTopOnTurn={marginTopOnTurn}
+                isSelected={selectedId === row.id}
+                onClick={() => onToggleRow(row.id)}
+                ref={(el: DOMElement | null) => { setRowRef(row.id, el) }}
+              />
+            )
+          }
+          if (blockState.groupedRows.has(row.id) || blockState.absorbedReasoning.has(row.id)) return null
           const tool = row.tool
           const subagent = row.kind === 'subagent' ? row.subagent : undefined
           const job = row.kind === 'job' ? row.job : undefined
@@ -1233,9 +1283,11 @@ export function MessageList({
           let displayStreaming = row.streaming === true
           if (row.kind === 'assistant' && smoothStreaming) {
             displayText = assistantDisplayText(row, true)
+            // A narration line bound into a tool-block title stops floating.
+            if (blockState.narrationConsumed.has(row.id)) displayText = stripNarration(displayText)
             displayStreaming = assistantRevealActive(row, true)
           } else if (row.kind === 'assistant') {
-            displayText = row.text
+            displayText = blockState.narrationConsumed.has(row.id) ? stripNarration(row.text) : row.text
           } else if (row.kind === 'reasoning' && smoothStreaming) {
             displayText = revealTextOf(`r${row.id}`, row.text, { enabled: true, active: displayStreaming })
           }
@@ -1280,6 +1332,15 @@ export function MessageList({
               toolResultView={tool?.resultView}
               toolStartedAt={tool?.startedAt}
               toolDurationMs={tool?.durationMs}
+              blockTitle={blockState.blocks.get(row.id)?.titleSource === 'narration'
+                ? `⏵ ${blockState.blocks.get(row.id)?.title}`
+                : blockState.blocks.get(row.id)?.titleSource === 'description'
+                  ? blockState.blocks.get(row.id)?.title
+                  : undefined}
+              blockFolded={(() => {
+                const block = blockState.blocks.get(row.id)
+                return block !== undefined && SINGLE_LINE_VERBS.has(block.verb)
+              })()}
               subagent={subagent}
               job={job}
               onToggleRow={onToggleRow}
@@ -1365,6 +1426,10 @@ type MemoRowProps = {
   toolResultView: ToolResultView | undefined
   toolStartedAt: number | undefined
   toolDurationMs: number | undefined
+  /** Tool-block intent title (narration/presenter description header). */
+  blockTitle: string | undefined
+  /** Tool-block single-line default (grok-style one-line step). */
+  blockFolded: boolean
   // SubagentRow, stable ref (subagent lifecycle events update the store, not
   // the row ref itself, so a plain ref compare stays correct).
   subagent: SubagentRow | undefined
@@ -1440,6 +1505,8 @@ function TranscriptRow({
   toolResultView,
   toolStartedAt,
   toolDurationMs,
+  blockTitle,
+  blockFolded,
   subagent,
   job,
   onToggleRow,
@@ -1647,6 +1714,8 @@ function TranscriptRow({
         <Box flexDirection="column" ref={ref}>
           <AssistantToolUseMessage
             tool={tool}
+            blockTitle={blockTitle}
+            blockFolded={blockFolded}
             marginTopOnTurn={marginTopOnTurn}
             verbose={isExpanded || expanded}
             isSelected={isSelected}

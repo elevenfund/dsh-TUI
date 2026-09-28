@@ -69,14 +69,16 @@ check('T38a 多段 ⏵ 步骤行全部渲染', await settled(() =>
   screenHas('⏵ count the log files') && screenHas('⏵ inspect the largest one') && screenHas('⏵ summarize the findings')))
 {
   const step1 = findText('⏵ count the log files')
-  const card1 = findText('Bash(ls /tmp')
+  const bash1 = findText('Bash')
+  const body = findText('Second body note.')
   const step2 = findText('⏵ inspect the largest one')
-  const card2 = findText('Bash(wc -l')
   const step3 = findText('⏵ summarize the findings')
-  check('T38b 步骤行与工具卡交错（步骤→卡→步骤→卡→步骤）',
-    step1 !== null && card1 !== null && step2 !== null && card2 !== null && step3 !== null
-    && step1.row < card1.row && card1.row < step2.row && step2.row < card2.row && card2.row < step3.row,
-    `rows: s1=${step1?.row} c1=${card1?.row} s2=${step2?.row} c2=${card2?.row} s3=${step3?.row}`)
+  // 工具块化后（tool-blocks）：⏵ 意图并入其后工具块的标题行（Bash ⏵ …），
+  // 不再是独立步骤行+Name(args) 卡交错；未绑定的尾段 ⏵ 仍漂浮渲染。
+  check('T38b 意图并入块标题且顺序保持（块1→正文→块2→尾步）',
+    step1 !== null && bash1 !== null && body !== null && step2 !== null && step3 !== null
+    && step1.row === bash1.row && bash1.row < body.row && body.row < step2.row && step2.row < step3.row,
+    `rows: s1=${step1?.row} bash=${bash1?.row} body=${body?.row} s2=${step2?.row} s3=${step3?.row}`)
 }
 stdin.write('\x1b') // Esc 退出选择模式
 await sleep(300) // 固定窗:pacing 等退出

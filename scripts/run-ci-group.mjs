@@ -612,6 +612,11 @@ const GROUPS = {
 // （历史日志回放、空白文本）在 visibleRows 管线过滤，工具卡上方不得
 // 出现孤立 ●；streaming 空行保留 live dot；落定后过滤即时生效。
     ["verify-empty-assistant", ['node', '--import', 'tsx/esm', 'scripts/verify-empty-assistant.tsx']],
+// 工具调用块渲染回归（挂载级）：verb-group 折叠行（⏵ 并入组标题）、
+// narration 并入单块标题、块化单行折叠、错误兜底标题、完成耗时、
+// 点击展开组、running 进行时 label + live 计时。纯逻辑在
+// verify-tool-blocks（t0）。
+    ["verify-tool-block-render", ['node', '--import', 'tsx/esm', 'scripts/verify-tool-block-render.tsx']],
 // 技能斜杠命令补全回归（issue #86）：user-invocable 技能合并进 /
 // 菜单与 Tab 补全（skill 标记、与 locals/注册表撞名让位），
 // skills/change 实时增删，读取失败保留 last-good。
@@ -705,6 +710,11 @@ const GROUPS = {
 // 契约（rgb 串/空窗/边界守卫）。从 verify-effort-ignition.tsx 的 Part A
 // 拆出——挂载驱动的三幕视觉契约留在原脚本。
     ["verify-effort-ignition-math", ['node', '--import', 'tsx/esm', 'scripts/verify-effort-ignition-math.ts']],
+// 工具调用块归约纯逻辑（T0 同步断言）：narration 绑定（⏵ 行并入块
+// 标题/未绑定保留漂浮行）、标题合成四级兜底链、生命周期透传、
+// verb-group 聚类（连续 read/search 折叠、bash/edit 断开、思考吸收、
+// 运行时态、展开记忆）。挂载渲染在 verify-tool-block-render.tsx。
+    ["verify-tool-blocks", ['node', '--import', 'tsx/esm', 'scripts/verify-tool-blocks.ts']],
 // smooth-reveal 游标数学（T0 同步断言）：revealStep 步进、首读/单调追加/
 // 非前缀替换/inactive/disabled 语义、行游标四态。时间轴行为（mid-flight
 // 采样、catch-up 衰减、共享 timer 生命周期）与挂载渲染留在原 .tsx。
