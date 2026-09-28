@@ -480,3 +480,9 @@
       config:
         publish: false
         publishIntervalMs: 500
+        # grok-style working line: no rotating copy pool. `phrases: false`
+        # keeps the `⏵` narration and the neutral Thinking/Waiting · elapsed
+        # lines and drops the playful pool (including interrupt/model/compact
+        # quips); the explicit false is the one spelling that also wins over
+        # the user preferences file (mergeActivityPreferences).
+        phrases: false
