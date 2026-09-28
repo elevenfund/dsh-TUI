@@ -25,6 +25,12 @@ export function createJobProjection(
   let detachActive: (() => void) | undefined
   let attachmentToken: symbol | undefined
   let attachmentCurrent = (): boolean => false
+  // Identity of the registry the store was last fed by. A jobs-service
+  // reload restarts its id counter from `<kind>-1`; without a generation
+  // cut the old cycle's acked ids would instantly promote the new cycle's
+  // foreground waits into visible job cards (and kill()/output would hit
+  // the wrong, reused ids).
+  let attachedRegistry: unknown
 
   const syncRows = (): void => {
     if (!attachmentCurrent()) return
@@ -152,6 +158,29 @@ export function createJobProjection(
   const attach = (jobs: JobsRuntime | undefined, ownService?: (dispose: () => void) => void): void => {
     if (jobs === undefined) return
     detachActive?.()
+    // Reattaching the SAME registry (service-context remount) keeps the
+    // tracked history; a different registry instance is a new generation —
+    // drop the old cycle entirely so reused ids cannot alias old state.
+    // reset() itself stays delivery-silent here (the attachment token is
+    // still unpublished), so the ghost rows are dropped by hand.
+    // Reattaching the SAME registry (service-context remount) keeps the
+    // tracked history. A different registry instance is a new generation —
+    // drop the old cycle entirely so reused ids cannot alias old state.
+    // The genesis attach (undefined -> registry) is NOT a generation cut:
+    // the service injection can resolve after the first tool-result acks
+    // already parked in the store, and those must survive.
+    // reset() itself stays delivery-silent here (the attachment token is
+    // still unpublished), so the ghost rows are dropped by hand.
+    if (attachedRegistry !== undefined && attachedRegistry !== jobs) {
+      store.reset()
+      jobRowsByJobId.clear()
+      const state = getState()
+      for (let index = state.rows.length - 1; index >= 0; index -= 1) {
+        if (state.rows[index]?.kind === 'job') state.rows.splice(index, 1)
+      }
+      state.backgroundJobs = []
+    }
+    attachedRegistry = jobs
     jobsRuntime = jobs
     const token = Symbol('jobs-attachment')
     let detached = false

@@ -7,7 +7,7 @@ import { replaySelectionAttachment } from './ide-selection.js'
 import type { InputConvergence } from './input-actions.js'
 import type { BackgroundJobStore } from '../jobs.js'
 import type { TuiRendererHost } from '../renderers.js'
-import { isSubagentToolName, parseJobOutputId, toolCommandOf, BACKGROUND_START_ACK, todoPanelItems } from './projection-helpers.js'
+import { isSubagentToolName, parseJobOutputId, toolCommandOf, BACKGROUND_START_ACK, WORKFLOW_START_ACK, PROMOTED_JOB_ACK, todoPanelItems } from './projection-helpers.js'
 import { ARGS_PREVIEW_LIMIT, harnessToolResultView, LOCAL_OUTPUT_LIMIT, prepareReplayEvents, preview, RESULT_PREVIEW_LIMIT, toolErrorText } from './transcript.js'
 import { estimateTokens, isTokenDelta, tokenDeltaChars, usageOutputTokens } from './usage.js'
 import { transcriptImagesOf, type TranscriptImage } from '../transcript-images.js'
@@ -835,13 +835,16 @@ export function createChannelProjection(state: ProjectionState, deps: Projection
             // tool call: capture the FULL command from the args (the
             // registry label is the friendly description) for the panel.
             const startAck = BACKGROUND_START_ACK.exec(result)
+            const workflowAck = WORKFLOW_START_ACK.exec(result)
             if (startAck !== null) {
               const command = toolCommandOf(card.tool.argsFull)
               if (command !== undefined) deps.jobs.onStarted(startAck[1], command)
+            } else if (workflowAck !== null) {
+              deps.jobs.onStarted(workflowAck[2], `workflow ${workflowAck[1]}`)
             } else {
-              // A promoted call (`[... moved to background job <id>]`) is
+              // A promoted call (`[...; moved to background job <id>]`) is
               // the other ack shape that makes a job model-visible.
-              const promoted = /moved to background job (\S+)/.exec(result)
+              const promoted = PROMOTED_JOB_ACK.exec(result)
               if (promoted !== null) {
                 const command = toolCommandOf(card.tool.argsFull)
                 if (command !== undefined) deps.jobs.onStarted(promoted[1], command)

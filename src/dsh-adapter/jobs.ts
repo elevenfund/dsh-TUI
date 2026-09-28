@@ -157,10 +157,15 @@ export class BackgroundJobStore {
     }
     if (this.jobs.size > JOBS_MAX_TRACKED) {
       // Drop the oldest terminal jobs first; live jobs always survive.
+      // The ack gate must go with the row: jobs-local never removes settled
+      // jobs, so a retained ack would re-register the evicted id from the
+      // next `list()` snapshot (at the Map tail — the newest-last order
+      // invariant breaks and the revived row lost its outputLines).
       for (const [id, job] of this.jobs) {
         if (this.jobs.size <= JOBS_MAX_TRACKED) break
         if (isTerminal(job.status)) {
           this.jobs.delete(id)
+          this.acked.delete(id)
           changed = true
         }
       }
@@ -201,11 +206,16 @@ export class BackgroundJobStore {
         outputLines: [],
       })
       // A late-ack batch can promote past the tracked bound; apply the same
-      // oldest-terminal-first trim replace() uses (live jobs always survive).
+      // oldest-terminal-first trim replace() uses (live jobs always
+      // survive). The ack gate goes with the row or the evicted id would
+      // re-register from the next `list()` snapshot (revival loop).
       if (this.jobs.size > JOBS_MAX_TRACKED) {
         for (const [trimId, trimJob] of this.jobs) {
           if (this.jobs.size <= JOBS_MAX_TRACKED) break
-          if (isTerminal(trimJob.status)) this.jobs.delete(trimId)
+          if (isTerminal(trimJob.status)) {
+            this.jobs.delete(trimId)
+            this.acked.delete(trimId)
+          }
         }
       }
       this.events.onChanged?.()
@@ -252,12 +262,13 @@ export class BackgroundJobStore {
     return count
   }
 
-  /** Drop everything (session swap / transcript wipe). */
+  /** Drop everything (session swap / transcript wipe / registry reload). */
   reset(): void {
-    if (this.jobs.size === 0 && this.shadow.size === 0 && this.acked.size === 0) return
+    if (this.jobs.size === 0 && this.shadow.size === 0 && this.acked.size === 0 && this.pendingCommands.size === 0) return
     this.jobs.clear()
     this.shadow.clear()
     this.acked.clear()
+    this.pendingCommands.clear()
     this.events.onChanged?.()
   }
 }

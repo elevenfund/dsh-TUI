@@ -46,6 +46,16 @@ export function toolCommandOf(argsFull: string | undefined): string | undefined 
 /** The ack a shell tool returns for `run_in_background: true`. */
 export const BACKGROUND_START_ACK = /^started background job (\S+)/
 
+/** The ack tool-workflow returns when its run goes to the background: the
+ *  workflow's meta name stands in for a "command" (workflows have none). */
+export const WORKFLOW_START_ACK = /^workflow "([^"]*)" started in the background as job ([^\s.]+)/
+
+/** The trailing note a shell tool appends when a foreground wait is
+ *  promoted (`[still running after Xms; moved to background job <id>]`).
+ *  The `]` anchor and no-`]` capture keep prose quoting this literal from
+ *  minting phantom ids — the old `(\S+)` swallowed the bracket. */
+export const PROMOTED_JOB_ACK = /; moved to background job ([^\]\s]+)\]/
+
 /** Narrow an optional plugin event without importing its module augmentation. */
 export function todoPanelItems(data: unknown): TodoPanelItem[] | undefined {
   if (typeof data !== 'object' || data === null) return undefined

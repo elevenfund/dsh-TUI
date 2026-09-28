@@ -29,6 +29,7 @@ const [
   { Context },
   { createChannel },
   { BackgroundJobStore, formatJobDuration, JOBS_MAX_TRACKED, JOBS_MAX_OUTPUT_LINES },
+  { PROMOTED_JOB_ACK, WORKFLOW_START_ACK },
   { settled, settle, sleep },
   React,
   { render },
@@ -40,6 +41,7 @@ const [
   import('@deepseek-ai/cordis'),
   import('../src/dsh-adapter/channel.js'),
   import('../src/dsh-adapter/jobs.js'),
+  import('../src/dsh-adapter/channel/projection-helpers.js'),
   import('./lib/term-test.mjs'),
   import('react'),
   import('../src/ui.js'),
@@ -138,6 +140,49 @@ console.log('--- A: BackgroundJobStore units ---')
       && formatJobDuration({ startedAt: 0, finishedAt: 3_720_000 }) === '1h02m',
     `${formatJobDuration({ startedAt: 0, finishedAt: 192_000 })}`,
   )
+
+  // A7 — the three ack regexes against the exact engine copy (P0-2: the
+  // promoted capture used to swallow the closing bracket).
+  const promoted = PROMOTED_JOB_ACK.exec('[still running after 20000ms; moved to background job bash-7]\n')
+  check('A7 promoted 捕获不带 "]"', promoted?.[1] === 'bash-7', `${promoted?.[1]}`)
+  check(
+    'A7 叙述文本不 mint 幽灵 id',
+    PROMOTED_JOB_ACK.exec('the log says it moved to background job bash-1 somewhere') === null,
+  )
+  const workflow = WORKFLOW_START_ACK.exec('workflow "icon-check" started in the background as job workflow-1. Its return value arrives with the completion notice; check on it with job_output, stop it with job_kill.')
+  check('A7 workflow ack 提名 + id', workflow?.[1] === 'icon-check' && workflow?.[2] === 'workflow-1', `${workflow?.[1]}|${workflow?.[2]}`)
+
+  // A8 — eviction must drop the ack gate with the row: jobs-local keeps
+  // settled rows in `list()` forever, so a retained ack would re-register
+  // the evicted id from the next snapshot (revival loop, newest-last break).
+  const survivors = new Set(remaining.map(job => job.id))
+  const evicted = Array.from({ length: JOBS_MAX_TRACKED + 10 }, (_, i) => `bash-${i}`).filter(id => !survivors.has(id))
+  check('A8 有被淘汰样本', evicted.length > 0, `evicted=${evicted.length}`)
+  big.replace(
+    Array.from({ length: JOBS_MAX_TRACKED + 10 }, (_, i) => ({
+      id: `bash-${i}`, kind: 'bash', label: 'x', status: 'completed' as const, startedAt: i, finishedAt: i + 1,
+    })),
+  )
+  check(
+    'A8 淘汰 id 不复活',
+    big.snapshot().every(job => survivors.has(job.id)) && big.snapshot().length <= JOBS_MAX_TRACKED,
+    `len=${big.snapshot().length}`,
+  )
+
+  // A9 — reset() is documented as "drop everything". The pendingCommands
+  // clear itself is defensive (a reused id re-parks over the stale entry),
+  // but the generation isolation it participates in is behavior: after a
+  // reset the same id must shadow again until re-acked.
+  const racer = new BackgroundJobStore()
+  racer.onStarted('bash-9', 'sleep 9')
+  racer.replace([snap('bash-9', 'running')])
+  check('A9 ack + 注册建卡', racer.snapshot().length === 1)
+  racer.reset()
+  check('A9 reset 清空任务卡', racer.snapshot().length === 0)
+  racer.replace([snap('bash-9', 'running')])
+  check('A9 reset 后同 id 注册回到 shadow', racer.snapshot().length === 0)
+  racer.onStarted('bash-9', 'sleep 9')
+  check('A9 重 ack 晋升且 command 正确', racer.get('bash-9')?.command === 'sleep 9')
 }
 
 // ---------------------------------------------------------------------------
