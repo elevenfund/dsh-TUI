@@ -8,6 +8,7 @@ import { ExitButton } from './SubagentDashboard.js'
 import { isPlainReturnInput } from '../utils/modifiers.js'
 import { isMinimalMode } from '../minimalMode.js'
 import { stringWidth } from '../ink/stringWidth.js'
+import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
 
 export interface JobsPanelProps {
   jobs: readonly BackgroundJobState[]
@@ -22,9 +23,9 @@ function statusInfo(status: BackgroundJobStatus): { glyph: string; label: string
     case 'completed':
       return { glyph: minimal ? '✓' : '●', label: t('jobs-status-completed'), color: minimal ? undefined : 'success' }
     case 'failed':
-      return { glyph: minimal ? '×' : '●', label: t('jobs-status-failed'), color: minimal ? undefined : 'error' }
+      return { glyph: minimal ? MULTIPLICATION_X : '●', label: t('jobs-status-failed'), color: minimal ? undefined : 'error' }
     case 'killed':
-      return { glyph: minimal ? '×' : '●', label: t('jobs-status-killed'), color: minimal ? undefined : 'error' }
+      return { glyph: minimal ? MULTIPLICATION_X : '●', label: t('jobs-status-killed'), color: minimal ? undefined : 'error' }
     case 'stopping':
       return { glyph: minimal ? '·' : '●', label: t('jobs-status-stopping'), color: minimal ? undefined : 'warning' }
     default:
@@ -115,9 +116,11 @@ function timeOf(ms: number): string {
 /**
  * `/jobs` overlay panel — every background job of the current session with
  * live status, elapsed/total duration and terminal detail (exit code).
- * Keyboard: ↑/↓ move, k kills the focused live job, Esc closes; the focused
- * row expands a detail block (full label, start/finish times, mirrored
- * output tail). The panel is the deep view behind the transcript job cards.
+ * Keyboard matches the Task Center: ↑/k move up, ↓/j move down, x stops
+ * the focused live job (`k`-kills was a same-key-opposite-meaning trap
+ * against the Task Center's k=move), Esc closes; the focused row expands
+ * a detail block (full label, start/finish times, mirrored output tail).
+ * The panel is the deep view behind the transcript job cards.
  */
 export function JobsPanel({ jobs, onClose, onKill }: JobsPanelProps): React.ReactNode {
   const [focusIndex, setFocusIndex] = React.useState(0)
@@ -134,19 +137,20 @@ export function JobsPanel({ jobs, onClose, onKill }: JobsPanelProps): React.Reac
       onClose()
       return
     }
-    if (key.upArrow) {
+    if (key.upArrow || (!key.ctrl && !key.meta && input === 'k')) {
       event.stopImmediatePropagation()
       setFocusIndex(i => Math.max(0, i - 1))
       scrollRef.current?.scrollBy(-1)
       return
     }
-    if (key.downArrow) {
+    if (key.downArrow || (!key.ctrl && !key.meta && input === 'j')) {
       event.stopImmediatePropagation()
       setFocusIndex(i => Math.min(jobs.length - 1, i + 1))
       scrollRef.current?.scrollBy(1)
       return
     }
-    if (input === 'k') {
+    // x stops the focused live job — same verb as the Task Center row.
+    if (input.toLowerCase() === 'x') {
       const selected = jobs[focus]
       if (selected !== undefined && (selected.status === 'running' || selected.status === 'stopping')) {
         event.stopImmediatePropagation()

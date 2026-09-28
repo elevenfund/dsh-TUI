@@ -1,6 +1,7 @@
 import type { Key } from '../../ink/events/input-event.js'
 import type { ChatRow } from '../../dsh-adapter/channel.js'
 import { actionMatches } from '../../utils/keymap.js'
+import { isMod } from '../../utils/modifiers.js'
 
 /**
  * Selection-mode state machine, pure: given the key and a small snapshot of
@@ -47,7 +48,10 @@ export function selectionKeyIntent(
   key: Key,
   ctx: SelectionKeyContext,
 ): SelectionIntent {
-  const plain = !key.meta && !key.ctrl && !key.super
+  // `isMod` (ctrl, or super on the mac) keeps the extraction faithful to
+  // the original Chat guard: on Linux/Windows a super-modified j/k stayed
+  // a plain navigation key, and only macOS treats Cmd+<key> as modified.
+  const plain = !key.meta && !isMod(key)
   if (key.ctrl && !key.meta && input === 'c') {
     // Ctrl+C keeps its global interrupt meaning inside selection mode
     // (grok's "Cancel turn" works from the transcript too); idle, the
@@ -89,7 +93,7 @@ export function selectionKeyIntent(
 /**
  * Cursor target when (re)entering selection mode: restore the pre-exit
  * cursor when the transcript is unchanged since the exit; a new turn
- // follows the bottom row instead, matching where sticky streaming left
+ * follows the bottom row instead, matching where sticky streaming left
  * the page. Pure — rows are read, the seek is the caller's effect.
  */
 export function selectionRestoreTarget(

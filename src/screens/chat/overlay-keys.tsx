@@ -28,6 +28,34 @@ import type { ScrollBoxHandle } from '../../ui.js'
 export type OverlayKeyEvent = { stopImmediatePropagation(): void }
 export type OverlayKeyHandler = (input: string, key: Key, plainReturn: boolean, event: OverlayKeyEvent) => void
 
+/** Shared vertical navigation for the list overlays: arrows plus vim j/k,
+ *  g/G (with Home/End) jumping to the list ends. Character keys stop here —
+ *  arrows are harmless downstream, letters would reach the composer. One
+ *  spelling for every picker so the vim set cannot drift between surfaces.
+ *  Returns true when the key was consumed. */
+function pickerNav(
+  dispatchOverlay: (action: ChatOverlayAction) => void,
+  event: OverlayKeyEvent | undefined,
+  input: string,
+  key: Key,
+  count: number,
+): boolean {
+  const plain = !isMod(key) && !key.meta
+  if (key.upArrow || (plain && input === 'k')) {
+    dispatchOverlay({ type: 'move', delta: -1, count })
+  } else if (key.downArrow || (plain && input === 'j')) {
+    dispatchOverlay({ type: 'move', delta: 1, count })
+  } else if (key.home || (plain && input === 'g')) {
+    dispatchOverlay({ type: 'jump', to: 'top', count })
+  } else if (key.end || (plain && input === 'G')) {
+    dispatchOverlay({ type: 'jump', to: 'bottom', count })
+  } else {
+    return false
+  }
+  event?.stopImmediatePropagation()
+  return true
+}
+
 /** Everything the per-kind handlers close over, passed fresh each render. */
 export interface OverlayKeyDeps {
   overlay: ChatOverlay
@@ -44,7 +72,6 @@ export interface OverlayKeyDeps {
   setThinkingVisible: (visible: boolean) => void
   interruptRunningTurn: () => void
   rowDetailScrollRef: React.RefObject<ScrollBoxHandle | null>
-  searchCountRef?: unknown
   workspaceFlowAbortRef: React.RefObject<AbortController | null>
   workspaceFlowRequestRef: React.RefObject<number>
   runWorkspaceFlowAction: (run: (signal: AbortSignal) => TuiWorkspaceCommandResult | Promise<TuiWorkspaceCommandResult>) => void
@@ -74,6 +101,7 @@ export interface OverlayKeyDeps {
   rewindRows: readonly ChatRow[]
   requestRewindConfirm: (row: ChatRow) => Promise<void>
   runFileAction: (index: number, path: string) => void
+  imagePreviewZoomRef: React.RefObject<{ zoomIn(): void; zoomOut(): void } | null>
 }
 
 export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<ChatOverlay['kind'], OverlayKeyHandler>> {
@@ -89,7 +117,7 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
     permissionOverlayFocusRef, runPermissionCommand,
     runExternalCommand, applyLang, themeHost, setTheme,
     historyMatches, rewindRequestRef, performRewind, rewindRows,
-    requestRewindConfirm, runFileAction,
+    requestRewindConfirm, runFileAction, imagePreviewZoomRef,
   } = deps
   const onImagePreviewKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
     // Modal gallery owns plain left/right. Caret peeks below still leave
@@ -102,6 +130,11 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     } else if (!key.ctrl && !key.meta && !key.shift && (key.leftArrow || key.rightArrow)) {
       dispatchOverlay({ type: 'image-step', delta: key.leftArrow ? -1 : 1 })
+    } else if (!key.ctrl && !key.meta && (input === '+' || input === '=' || input === '-')) {
+      // The documented +/− zoom finally has keys (the buttons were
+      // mouse-only); `=` rides along for the shifted-+ layout.
+      if (input === '-') imagePreviewZoomRef.current?.zoomOut()
+      else imagePreviewZoomRef.current?.zoomIn()
     }
     event.stopImmediatePropagation()
   }
@@ -180,7 +213,7 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onWorkspaceFlowKeys: OverlayKeyHandler = (input, key, plainReturn, _event) => {
+  const onWorkspaceFlowKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
     const { flow, busy, input: flowInput } = overlay as Extract<ChatOverlay, { kind: 'workspace-flow' }>
     if (key.escape) {
       if (flowInput !== null && !busy) {
@@ -237,8 +270,8 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       }
       return
     }
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: flow.choices.length })
+    if (pickerNav(dispatchOverlay, event, input, key, flow.choices.length)) {
+      // arrows / vim j/k / g-G jumps
     } else if (key.tab && !key.shift) {
       const choice = flow.choices[(overlay as Extract<ChatOverlay, { kind: 'workspace-flow' }>).index]
       if (choice?.input !== undefined) {
@@ -258,9 +291,9 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       }
     }
   }
-  const onWorkspacePickerKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: workspaceTargets.length })
+  const onWorkspacePickerKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
+    if (pickerNav(dispatchOverlay, event, input, key, workspaceTargets.length)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const target = workspaceTargets[(overlay as Extract<ChatOverlay, { kind: 'workspace-picker' }>).index]
       dispatchOverlay({ type: 'close' })
@@ -269,10 +302,10 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onWorkspaceMenuKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
+  const onWorkspaceMenuKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
     const menu = workspaceMenuOptions
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: menu.length })
+    if (pickerNav(dispatchOverlay, event, input, key, menu.length)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const option = menu[(overlay as Extract<ChatOverlay, { kind: 'workspace-menu' }>).index]
       runWorkspaceMenuOption(option)
@@ -280,15 +313,15 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onModelKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
+  const onModelKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
     // Two-level picker: group rows at the top (Enter drills in), one
     // provider's models below (Enter switches, the same live-fork path as
     // the flat picker always had). Esc/⌫ climbs one level and only closes
     // at the top; a single-group catalog never shows the group level, so
     // Esc there closes directly.
     const rowCount = activeModelGroup === undefined ? modelGroups.length : groupModels.length
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: rowCount })
+    if (pickerNav(dispatchOverlay, event, input, key, rowCount)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       if (activeModelGroup === undefined) {
         const group = modelGroups[(overlay as Extract<ChatOverlay, { kind: 'model' }>).index]
@@ -332,11 +365,10 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       }
     }
   }
-  const onSkillsKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
+  const onSkillsKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
     const list = skillsList ?? []
-    if (key.upArrow || key.downArrow) {
+    if (pickerNav(dispatchOverlay, event, input, key, list.length)) {
       // count 0 (snapshot still loading) is a no-op inside the reducer.
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: list.length })
     } else if (plainReturn) {
       const skill = list[(overlay as Extract<ChatOverlay, { kind: 'skills' }>).index]
       dispatchOverlay({ type: 'close' })
@@ -348,9 +380,9 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onActivityKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: PRESET_NAMES.length })
+  const onActivityKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
+    if (pickerNav(dispatchOverlay, event, input, key, PRESET_NAMES.length)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const name = PRESET_NAMES[(overlay as Extract<ChatOverlay, { kind: 'activity' }>).index]
       dispatchOverlay({ type: 'close' })
@@ -359,9 +391,9 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onColorKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: SESSION_COLOR_NAMES.length })
+  const onColorKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
+    if (pickerNav(dispatchOverlay, event, input, key, SESSION_COLOR_NAMES.length)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const name = SESSION_COLOR_NAMES[(overlay as Extract<ChatOverlay, { kind: 'color' }>).index]
       dispatchOverlay({ type: 'close' })
@@ -387,9 +419,9 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onPresetKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: presetOptions.length })
+  const onPresetKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
+    if (pickerNav(dispatchOverlay, event, input, key, presetOptions.length)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const option = presetOptions[(overlay as Extract<ChatOverlay, { kind: 'preset' }>).index]
       dispatchOverlay({ type: 'close' })
@@ -419,9 +451,9 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onPlanKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: 2 })
+  const onPlanKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
+    if (pickerNav(dispatchOverlay, event, input, key, 2)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const on = (overlay as Extract<ChatOverlay, { kind: 'plan' }>).index === 0
       dispatchOverlay({ type: 'close' })
@@ -430,9 +462,9 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onLangKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: 2 })
+  const onLangKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
+    if (pickerNav(dispatchOverlay, event, input, key, 2)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const lang = LANGS[(overlay as Extract<ChatOverlay, { kind: 'lang' }>).index]
       dispatchOverlay({ type: 'close' })
@@ -441,10 +473,10 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onThemeKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
+  const onThemeKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
     const options = getThemeOptions(themeHost)
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: options.length })
+    if (pickerNav(dispatchOverlay, event, input, key, options.length)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       dispatchOverlay({ type: 'close' })
       const name = options[(overlay as Extract<ChatOverlay, { kind: 'theme' }>).index]?.value
@@ -525,7 +557,7 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       })
     }
   }
-  const onRewindKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
+  const onRewindKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
     // While the plugin decision is in flight the picker is read-only;
     // Esc abandons the wait (the stale answer is dropped by the token).
     const rewindOverlay = overlay as Extract<ChatOverlay, { kind: 'rewind' }>
@@ -542,8 +574,8 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
         // Plugin offered modes: the confirm pane is a choice list —
         // option 0 is always the built-in conversation-only rewind.
         const optionCount = rewindOverlay.modes.length + 1
-        if (key.upArrow || key.downArrow) {
-          dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: optionCount })
+        if (pickerNav(dispatchOverlay, event, input, key, optionCount)) {
+          // arrows / vim j/k / g-G jumps
         } else if (plainReturn) {
           const mode = rewindOverlay.modeIndex === 0 ? null : (rewindOverlay.modes[rewindOverlay.modeIndex - 1]?.id ?? null)
           dispatchOverlay({ type: 'close' })
@@ -560,8 +592,8 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       } else if (key.escape) {
         dispatchOverlay({ type: 'rewind-back' })
       }
-    } else if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: rewindRows.length })
+    } else if (pickerNav(dispatchOverlay, event, input, key, rewindRows.length)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const row = rewindRows[rewindOverlay.index]
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- runtime guard: out-of-range index on an empty list
@@ -570,11 +602,11 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
       dispatchOverlay({ type: 'close' })
     }
   }
-  const onFileActionsKeys: OverlayKeyHandler = (_input, key, plainReturn, _event) => {
-    // Click-to-act file menu: ↑/↓ move, Enter runs the focused action,
-    // Esc closes.
-    if (key.upArrow || key.downArrow) {
-      dispatchOverlay({ type: 'move', delta: key.upArrow ? -1 : 1, count: FILE_ACTION_COUNT })
+  const onFileActionsKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
+    // Click-to-act file menu: ↑/↓/j/k move, g/G jump, Enter runs the
+    // focused action, Esc closes.
+    if (pickerNav(dispatchOverlay, event, input, key, FILE_ACTION_COUNT)) {
+      // arrows / vim j/k / g-G jumps
     } else if (plainReturn) {
       const path = (overlay as Extract<ChatOverlay, { kind: 'file-actions' }>).path
       dispatchOverlay({ type: 'close' })

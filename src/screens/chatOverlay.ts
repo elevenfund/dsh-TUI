@@ -134,6 +134,10 @@ export type ChatOverlayAction =
    * `count <= 0` move is a no-op (an empty list has no focus to move).
    */
   | { type: 'move'; delta: 1 | -1; count: number }
+  /** Jump the focused row to the first/last entry of a `count`-long list
+   *  (vim g/G, Home/End) — the same cursor `move` targets per overlay
+   *  kind, clamped instead of wrapped. */
+  | { type: 'jump'; to: 'top' | 'bottom'; count: number }
   /** Set the focused row to an absolute index — an async loader landing
    *  with the authoritative focus (model list / preset roster), or a mouse
    *  click on a row of a panel that stays open (effort slider, workspace
@@ -184,21 +188,26 @@ export function chatOverlayReducer(state: ChatOverlay, action: ChatOverlayAction
       return state.kind === action.kind ? NO_OVERLAY : state
     case 'open-if':
       return action.when.includes(state.kind) ? action.overlay : state
-    case 'move': {
+    case 'move':
+    case 'jump': {
       if (action.count <= 0) return state
+      // `move` wraps one step; `jump` clamps straight to the target end.
+      const wrap = (index: number): number =>
+        action.type === 'move' ? wrapIndex(index, action.delta, action.count)
+          : action.to === 'top' ? 0 : Math.max(0, action.count - 1)
       if (state.kind === 'rewind') {
         // The confirm pane with plugin modes has its own cursor; the plain
         // confirm pane has none (Enter/Esc only — a move must not disturb
         // the list index behind it).
         if (state.confirm !== null) {
           return state.modes !== null
-            ? { ...state, modeIndex: wrapIndex(state.modeIndex, action.delta, action.count) }
+            ? { ...state, modeIndex: wrap(state.modeIndex) }
             : state
         }
-        return { ...state, index: wrapIndex(state.index, action.delta, action.count) }
+        return { ...state, index: wrap(state.index) }
       }
       if (state.kind === 'thinking') {
-        return { ...state, focus: wrapIndex(state.focus, action.delta, action.count) }
+        return { ...state, focus: wrap(state.focus) }
       }
       if (
         state.kind === 'workspace-picker'
@@ -216,10 +225,10 @@ export function chatOverlayReducer(state: ChatOverlay, action: ChatOverlayAction
         || state.kind === 'lang'
         || state.kind === 'file-actions'
       ) {
-        return { ...state, index: wrapIndex(state.index, action.delta, action.count) }
+        return { ...state, index: wrap(state.index) }
       }
       if (state.kind === 'history') {
-        return { ...state, focus: wrapIndex(state.focus, action.delta, action.count) }
+        return { ...state, focus: wrap(state.focus) }
       }
       return state
     }

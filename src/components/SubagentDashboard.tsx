@@ -67,14 +67,14 @@ export function SubagentDashboard({
       return
     }
     
-    if (key.upArrow) {
+    if (key.upArrow || (!key.ctrl && !key.meta && input === 'k')) {
       event.stopImmediatePropagation()
       setFocusIndex(i => Math.max(0, i - 1))
       scrollRef.current?.scrollBy(-3)
       return
     }
-    
-    if (key.downArrow) {
+
+    if (key.downArrow || (!key.ctrl && !key.meta && input === 'j')) {
       event.stopImmediatePropagation()
       setFocusIndex(i => Math.min(subagents.length - 1, i + 1))
       scrollRef.current?.scrollBy(3)

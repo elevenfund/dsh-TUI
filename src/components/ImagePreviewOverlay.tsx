@@ -69,6 +69,7 @@ export function ImagePreviewOverlay({
   region,
   title,
   navigation,
+  zoomCommandsRef,
 }: {
   readonly image: TranscriptImage
   readonly onClose: () => void
@@ -89,6 +90,10 @@ export function ImagePreviewOverlay({
     readonly onPrevious: () => void
     readonly onNext: () => void
   }
+  /** Receives the keyboard-zoom commands (bound to `+`/`-` by Chat's
+   *  overlay handler — this component's own useInput registers too late
+   *  in the FIFO to ever see a key). Cleared on unmount. */
+  readonly zoomCommandsRef?: { current: { zoomIn(): void; zoomOut(): void } | null }
 }): React.ReactNode {
   // The card must exist on the layer's FIRST frame. A frame with an empty
   // catcher followed by a frame with the card marks the catcher dirty, and
@@ -146,6 +151,26 @@ export function ImagePreviewOverlay({
   }, [imageId])
   const zoom = view.imageId === imageId && cell && graphicsAvailable ? view.zoom : 0
   const setZoom = (value: number): void => setView({ imageId, zoom: value })
+  // Keyboard zoom shares the button logic through a ref the Chat-level
+  // overlay handler can call: this component's useInput would register
+  // after the composer's and never see the keys.
+  React.useEffect(() => {
+    const commands = zoomCommandsRef
+    if (commands === undefined) return
+    const maxZoom = IMAGE_ZOOM_LEVELS.at(-1) ?? 1
+    commands.current = {
+      zoomIn: () => setView(previous => {
+        const current = previous.imageId === imageId ? previous.zoom : 0
+        return { imageId, zoom: current === 0 ? 1 : Math.min(maxZoom, current * 2) }
+      }),
+      zoomOut: () => setView(previous => {
+        const current = previous.imageId === imageId ? previous.zoom : 0
+        return { imageId, zoom: Math.max(1, current / 2) }
+      }),
+    }
+    return () => { commands.current = null }
+    // setView is stable; imageId changes must rebind the closures.
+  }, [imageId, zoomCommandsRef])
   const maxImageColumns = Math.max(1, Math.min(columns - 2, Math.floor(columns * PREVIEW_MAX_WIDTH_RATIO)) - CARD_CHROME_COLS)
   const navigationRows = navigation && navigation.total > 1 && rows >= 6 ? 1 : 0
   const maxImageRows = Math.max(1, Math.min(rows - 2, Math.floor(rows * PREVIEW_MAX_HEIGHT_RATIO)) - CARD_CHROME_ROWS - 1 - navigationRows)

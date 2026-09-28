@@ -34,8 +34,9 @@
 | `Shift+Up` | Enter message selection (idle `Tab` works too; `Tab`/`Esc` or clicking the input cluster returns to the composer, draft preserved). Inside: `↑/↓`/`k/j` move the cursor (the page stays put while the cursor is on screen, grok-style), `l`/`h` expand/collapse the row (only thinking and tool cards have a fold; `l` is a no-op on replies and user messages), `Enter` opens the full-content detail card (reply and thinking bodies render as markdown, same as the transcript), `g`/`G` jump to the first/last selectable row (`G` also re-pins auto-follow at the tail — "jump to the end" means "follow the tail again", grok-style), `Ctrl+F`/`Ctrl+B` page down/up (same page size as `PgUp/PgDn`, cursor stays), `Ctrl+O` toggles global expand, `Ctrl+C` interrupts while working (staying in the mode) and leaves the mode when idle |
 | While the detail card is open | `j/k`/`↑/↓` scroll by line, `u/d`/`PgUp/PgDn`/`Ctrl+B/F` half a page, `g`/`G`/`Home`/`End` jump to either end, `Esc`/`Enter`/`q` close back into selection mode (cursor stays on the row); `Ctrl+C` interrupts a running turn and the card stays open |
 
-**Remapping shortcuts**: paste, history search, external editor, `Ctrl+O/T/P/R/L`,
-subagent dashboard, show-all, and todo fold are remappable in `/settings` → `dsh-tui` →
+**Remapping shortcuts**: paste, history search, external editor (`Ctrl+Shift+E`),
+`Ctrl+O/T/P/R/L`, task center (`Ctrl+G`), subagent dashboard, show-all, and todo
+fold are remappable in `/settings` → `dsh-tui` →
 `Shortcuts`.
 
 - Enter combos like `alt+v`; comma-separate several; leave blank to restore defaults. Saves apply live.
@@ -77,7 +78,7 @@ subagent dashboard, show-all, and todo fold are remappable in `/settings` → `d
 | `Left/Right` | Move by character; **with a selection, collapse to the corresponding edge** |
 | `Ctrl+Left/Right` | Move by word |
 | `Home/End` | Move to the start/end of the current logical line |
-| `Ctrl+A` / `Ctrl+E` | `Ctrl+A` opens the subagent dashboard (`Mod+A` in the editor still moves to line start); `Ctrl+E` moves to line end and also expands or folds hidden older rows in long transcripts |
+| `Ctrl+A` / `Ctrl+E` | `Ctrl+A` opens the subagent dashboard (also inside the editor — panel state decides); `Ctrl+E` moves to line end and also expands or folds hidden older rows in long transcripts |
 | `Ctrl+U` | Delete before the caret |
 | `Ctrl+K` | Delete after the caret |
 | `Ctrl+W` | Delete the preceding word |

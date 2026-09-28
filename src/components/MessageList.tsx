@@ -471,9 +471,11 @@ export function MessageList({
   // BEFORE visibleRows: the empty-assistant filter below must know which
   // narration lines were consumed into block titles (they render empty).
   const blockStateBase = reduceToolBlocks(rows)
+  // Unfold honors ANY member's id, not just the first: selection-mode l on
+  // a folded (hidden) member row must open the group the cursor sits in.
   const blockExpandedKeys = new Set<string>()
   for (const [rowId, group] of blockStateBase.groupAt) {
-    if (expandedRows.has(rowId) || expanded) blockExpandedKeys.add(group.firstKey)
+    if (expanded || group.members.some(member => expandedRows.has(member.row.id))) blockExpandedKeys.add(group.firstKey)
   }
   const blockState = blockExpandedKeys.size > 0 ? reduceToolBlocks(rows, { expandedGroups: blockExpandedKeys }) : blockStateBase
   const visibleCache = visibleRowsCacheRef.current
@@ -1261,7 +1263,10 @@ export function MessageList({
                 key={row.id}
                 group={group}
                 marginTopOnTurn={marginTopOnTurn}
-                isSelected={selectedId === row.id}
+                // The group row highlights for a cursor on ANY member —
+                // folded members render nothing of their own, so this is
+                // the only visible cursor feedback inside a fold.
+                isSelected={selectedId !== null && group.members.some(member => member.row.id === selectedId)}
                 onClick={() => onToggleRow(row.id)}
                 ref={(el: DOMElement | null) => { setRowRef(row.id, el) }}
               />

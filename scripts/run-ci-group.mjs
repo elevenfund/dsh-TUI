@@ -1049,7 +1049,7 @@ async function runBatch(batch, batchLabel) {
   const knownFailed = results.filter(r => r.failed && KNOWN_FAIL.has(r.name))
   for (const r of results) {
     if (KNOWN_FAIL.has(r.name)) {
-      console.log('  ' + (r.failed ? '◍' : '⚠✓') + ' ' + r.name + '  ' + fmt(r.seconds) + (r.failed ? '（known-fail）' : '（known-fail 已通过，请移出名单）'))
+      console.log('  ' + (r.failed ? '×' : '⚠✓') + ' ' + r.name + '  ' + fmt(r.seconds) + (r.failed ? '（known-fail）' : '（known-fail 已通过，请移出名单）'))
     }
   }
   if (knownFailed.length > 0) console.log('[run-ci-group] known-fail 未通过 ' + knownFailed.length + ' 项（见名单注释），不计入失败')

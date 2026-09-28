@@ -23,8 +23,13 @@ export function createRewindCommands(args: {
   rewindRequestRef: { current: number }
   pendingFillRef: { current: string | null }
   setHistoryFill: (text: string) => void
+  /** Called after a rewind actually forked the session — the transcript
+   *  rows are replaced, so view-local selection state must drop (same as
+   *  /clear and /new) or the cursor would "restore" onto a same-numbered
+   *  row with different content. */
+  onRewound?: () => void
 }): RewindCommands {
-  const { channel, dispatchOverlay, rewindRequestRef, pendingFillRef, setHistoryFill } = args
+  const { channel, dispatchOverlay, rewindRequestRef, pendingFillRef, setHistoryFill, onRewound } = args
   const openRewind = () => {
     // The overlay is not 'rewind' yet this render, so rewindRows is empty —
     // scan directly instead of reading the gated list.
@@ -62,6 +67,7 @@ export function createRewindCommands(args: {
       // Put the restored message back in the prompt for re-editing.
       setHistoryFill(text)
       channel.notify(t('rewind-done'))
+      onRewound?.()
     }
   }
   return { openRewind, requestRewindConfirm, performRewind }

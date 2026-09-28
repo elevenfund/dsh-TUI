@@ -16,6 +16,7 @@
 
 import type { ChatRow, ToolRow } from '../../adapter/ports/channel-view.js'
 import { extractNarration } from '../../utils/narration.js'
+import { t, tOr } from '../../i18n.js'
 
 /** Verb buckets for tool rows (grok VerbGroupKind, collapsed to dsh's set). */
 export type ToolVerbKind = 'file' | 'search' | 'bash' | 'edit' | 'other'
@@ -123,7 +124,7 @@ export function synthesizeTitle(tool: ToolRow): { title: string; source: Exclude
     return { title: result.path, source: 'input' }
   }
   if (result?.card === 'search') {
-    const firstFile = result.card === 'search' && result.shape === 'matches' ? result.files[0]?.path : undefined
+    const firstFile = result.shape === 'matches' ? result.files[0]?.path : undefined
     const title = firstFile ?? (result.shape === 'paths' ? result.paths[0] : undefined)
     if (title !== undefined) return { title, source: 'input' }
   }
@@ -140,13 +141,18 @@ export function synthesizeTitle(tool: ToolRow): { title: string; source: Exclude
 }
 
 function bucketLabel(verb: ToolVerbKind, count: number, running: boolean): string {
-  const noun = (one: string, many: string) => (count === 1 ? one : many)
+  // Localized like the member card headers (toolNames): the group row sits
+  // in the same Chinese transcript, an English bucket label there reads as
+  // a leak from another surface.
+  // tOr with the English noun as fallback keeps a missing key visible as
+  // English instead of a raw key string in the transcript.
+  const noun = (one: string, many: string) => tOr(`toolgroup-noun-${count === 1 ? one : many}`, count === 1 ? one : many)
   switch (verb) {
-    case 'file': return `${running ? 'Reading' : 'Read'} ${count} ${noun('file', 'files')}`
-    case 'search': return `${running ? 'Searching' : 'Searched'} ${count} ${noun('pattern', 'patterns')}`
-    case 'bash': return `${running ? 'Running' : 'Ran'} ${count} ${noun('command', 'commands')}`
-    case 'edit': return `${running ? 'Editing' : 'Edited'} ${count} ${noun('file', 'files')}`
-    case 'other': return `${running ? 'Calling' : 'Called'} ${count} ${noun('tool', 'tools')}`
+    case 'file': return t(running ? 'toolgroup-reading' : 'toolgroup-read', { n: count, noun: noun('file', 'files') })
+    case 'search': return t(running ? 'toolgroup-searching' : 'toolgroup-searched', { n: count, noun: noun('pattern', 'patterns') })
+    case 'bash': return t(running ? 'toolgroup-running' : 'toolgroup-ran', { n: count, noun: noun('command', 'commands') })
+    case 'edit': return t(running ? 'toolgroup-editing' : 'toolgroup-edited', { n: count, noun: noun('file', 'files') })
+    case 'other': return t(running ? 'toolgroup-calling' : 'toolgroup-called', { n: count, noun: noun('tool', 'tools') })
   }
 }
 

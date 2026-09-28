@@ -2,6 +2,7 @@ import React from 'react'
 import { Box, Text } from '../../ui.js'
 import { t } from '../../i18n.js'
 import { effectiveComboDisplay } from '../../utils/keymap.js'
+import { useBlink } from '../../hooks/useBlink.js'
 
 /**
  * 提问面板挂起条 — the two-line stand-in for a folded questionnaire
@@ -22,6 +23,7 @@ import { effectiveComboDisplay } from '../../utils/keymap.js'
  * The component is deliberately dumb: the parent formats the strings, so
  * the bar owns only its local hover/blink state.
  */
+/** Blink cycle for the pause glyph (uses the global synchronized clock). */
 const BLINK_MS = 500
 
 export type QuestionMinimizedBarProps = {
@@ -39,18 +41,14 @@ export function QuestionMinimizedBar({
   questionText,
   onExpand,
 }: QuestionMinimizedBarProps): React.ReactNode {
-  const [blinkOn, setBlinkOn] = React.useState(true)
   const [hovered, setHovered] = React.useState(false)
   // The pause glyph blinks by APPEARING and DISAPPEARING (a visible→gone
   // beat reads as a true blink; dim↔normal is too subtle). The off phase
   // must occupy exactly the glyph's width or the waiting text shifts left
   // and right every beat: '⏸ ' measures 2 columns (⏸ is a narrow 1-col
-  // glyph here), so it is replaced by two spaces. Blink only while the
-  // bar exists; unmounting clears the interval.
-  React.useEffect(() => {
-    const id = setInterval(() => setBlinkOn(previous => !previous), BLINK_MS)
-    return () => clearInterval(id)
-  }, [])
+  // glyph here), so it is replaced by two spaces. The global synchronized
+  // blink clock (pauses offscreen/unfocused, like every other blinker).
+  const [blinkRef, blinkOn] = useBlink(true, BLINK_MS)
   const waiting = `${t('question-fold-waiting')} — ${t('question-fold-expand', {
     combo: effectiveComboDisplay('questionFold'),
   })}`
@@ -70,7 +68,7 @@ export function QuestionMinimizedBar({
           <Text wrap="truncate">{questionText}</Text>
         </Box>
       </Box>
-      <Box flexDirection="row" height={1}>
+      <Box flexDirection="row" height={1} ref={blinkRef}>
         <Text>{blinkOn ? '⏸ ' : '  '}</Text>
         <Text dimColor wrap="truncate">
           {waiting}

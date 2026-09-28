@@ -61,10 +61,6 @@ export type Theme = {
   toolCardBackground: string
   toolCardBackgroundDim: string
   // Tool status dots, by tool category (error always wins with a red ✗)
-  toolDotExec: string
-  toolDotRead: string
-  toolDotWrite: string
-  toolDotWeb: string
   toolDotTask: string
   // Diff syntax highlighting (user themes may override any of these)
   syntaxKeyword: string
@@ -99,12 +95,10 @@ export type Theme = {
   fastModeShimmer: string
   userPromptLabel: string
   // Subagent message colors
-  subagentBullet: string
   subagentDescription: string
   subagentModel: string
   subagentElapsed: string
   subagentToolName: string
-  subagentStatusRunning: string
   subagentStatusCompleted: string
   subagentStatusFailed: string
 }
@@ -272,10 +266,6 @@ const darkTheme: Theme = {
   diffRemovedWord: rgb('#B26671'),
   toolCardBackground: rgb('#242B3A'), // lighter blue-grey card surface
   toolCardBackgroundDim: rgb('#1C2330'), // deeper blue substrate
-  toolDotExec: rgb('#7FAE99'), // sage green — bash/pwsh
-  toolDotRead: rgb('#82B8C7'), // cyan blue — read/grep/glob
-  toolDotWrite: rgb('#B3A0D4'), // soft violet — edit/write
-  toolDotWeb: rgb('#7DA1DE'), // mist blue — web search/fetch
   toolDotTask: rgb('#D194AE'), // mist rose — subagent/jobs
   syntaxKeyword: rgb('#78A0D6'), // muted anchor blue
   syntaxString: rgb('#79AD91'), // mist green, distinct without neon saturation
@@ -302,12 +292,10 @@ const darkTheme: Theme = {
   fastMode: rgb('#E09A58'),
   fastModeShimmer: rgb('#EAB478'),
   userPromptLabel: rgb('#FFDF80'),
-  subagentBullet: rgb('#D194AE'),
   subagentDescription: rgb('#E8E6E0'),
   subagentModel: rgb('#8D95A6'),
   subagentElapsed: rgb('#8D95A6'),
   subagentToolName: rgb('#7DA1DE'),
-  subagentStatusRunning: rgb('#7DA1DE'),
   subagentStatusCompleted: rgb('#82B89D'),
   subagentStatusFailed: rgb('#DA8A93'),
 }
@@ -354,10 +342,6 @@ const lightTheme: Theme = {
   diffRemovedWord: rgb('#E5B3AE'),
   toolCardBackground: rgb('#FFFFFF'), // neutral white panel surface
   toolCardBackgroundDim: rgb('#FFFFFF'), // white tool-card substrate
-  toolDotExec: rgb('#4E7A4E'),
-  toolDotRead: rgb('#3F7E8F'),
-  toolDotWrite: rgb('#7A5CA8'),
-  toolDotWeb: rgb('#4A63A8'),
   toolDotTask: rgb('#B04A5A'),
   syntaxKeyword: rgb('#3F68B5'), // clear primary blue without neon saturation
   syntaxString: rgb('#3F805F'), // readable muted green
@@ -384,12 +368,10 @@ const lightTheme: Theme = {
   fastMode: rgb('#D98E4A'),
   fastModeShimmer: rgb('#E2A465'),
   userPromptLabel: rgb('#A67600'),
-  subagentBullet: rgb('#C07A93'),
   subagentDescription: rgb('#343945'),
   subagentModel: rgb('#8991A0'),
   subagentElapsed: rgb('#8991A0'),
   subagentToolName: rgb('#3F6CC4'),
-  subagentStatusRunning: rgb('#3F6CC4'),
   subagentStatusCompleted: rgb('#4E9675'),
   subagentStatusFailed: rgb('#C65D6B'),
 }
@@ -439,10 +421,6 @@ const darkAnsiTheme: Theme = {
   diffRemovedWord: 'ansi:redBright',
   toolCardBackground: 'ansi:blackBright',
   toolCardBackgroundDim: 'ansi:black',
-  toolDotExec: 'ansi:greenBright',
-  toolDotRead: 'ansi:cyanBright',
-  toolDotWrite: 'ansi:magentaBright',
-  toolDotWeb: 'ansi:blueBright',
   toolDotTask: 'ansi:redBright',
   syntaxKeyword: 'ansi:blueBright',
   syntaxString: 'ansi:greenBright',
@@ -469,12 +447,10 @@ const darkAnsiTheme: Theme = {
   fastMode: 'ansi:redBright',
   fastModeShimmer: 'ansi:redBright',
   userPromptLabel: 'ansi:yellowBright',
-  subagentBullet: 'ansi:magentaBright',
   subagentDescription: 'ansi:whiteBright',
   subagentModel: 'ansi:white',
   subagentElapsed: 'ansi:white',
   subagentToolName: 'ansi:cyanBright',
-  subagentStatusRunning: 'ansi:blueBright',
   subagentStatusCompleted: 'ansi:greenBright',
   subagentStatusFailed: 'ansi:redBright',
 }

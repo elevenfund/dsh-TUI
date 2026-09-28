@@ -13,6 +13,8 @@ import type { DOMElement } from '../../ink/dom.js'
 export function useSeek(handle: ScrollBoxHandle | null, rowRefsRef: React.RefObject<Map<number, DOMElement>>, showAllMessages: boolean, setShowAllMessages: (value: boolean) => void) {
   const [forceMountRowId, setForceMountRowId] = React.useState<number | null>(null)
   const forceMountSeekModeRef = React.useRef<'top' | 'nearest'>('top')
+  const forceMountTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  React.useEffect(() => () => { if (forceMountTimerRef.current !== null) clearTimeout(forceMountTimerRef.current) }, [])
   const seekRowAligned = (rowId: number, mode: 'top' | 'nearest'): void => {
     const el = rowRefsRef.current.get(rowId)
     if (el) {
@@ -21,6 +23,11 @@ export function useSeek(handle: ScrollBoxHandle | null, rowRefsRef: React.RefObj
     }
     forceMountSeekModeRef.current = mode
     setForceMountRowId(rowId)
+    // A folded group member renders null, so its ref never lands and the
+    // completion effect below never fires — without this fallback the id
+    // would stick forever (a permanent no-op force-mount).
+    if (forceMountTimerRef.current !== null) clearTimeout(forceMountTimerRef.current)
+    forceMountTimerRef.current = setTimeout(() => { setForceMountRowId(current => current === rowId ? null : current) }, 1500)
   }
   /** Top-align seek: the row's head becomes the viewport's top line. */
   const seekRow = (rowId: number): void => seekRowAligned(rowId, 'top')

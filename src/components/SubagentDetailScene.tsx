@@ -10,6 +10,7 @@ import { toolNameColor } from './messages/AssistantToolUseMessage.js'
 import { getCliHighlightPromise } from '../terminal-utils/cliHighlight.js'
 import { isMinimalMode } from '../minimalMode.js'
 import type { Theme } from '../theme.js'
+import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
@@ -26,8 +27,8 @@ function formatTimestamp(ts: number): string {
 function statusGlyph(status: SubagentState['status']): { glyph: string; color: keyof Theme | undefined; label: string } {
   const minimal = isMinimalMode()
   if (status === 'completed') return { glyph: minimal ? '✓' : '🟢', color: minimal ? undefined : 'success', label: 'done' }
-  if (status === 'failed') return { glyph: minimal ? '×' : '🔴', color: minimal ? undefined : 'error', label: 'failed' }
-  if (status === 'cancelled') return { glyph: minimal ? '×' : '🔴', color: minimal ? undefined : 'error', label: 'cancelled' }
+  if (status === 'failed') return { glyph: minimal ? MULTIPLICATION_X : '🔴', color: minimal ? undefined : 'error', label: 'failed' }
+  if (status === 'cancelled') return { glyph: minimal ? MULTIPLICATION_X : '🔴', color: minimal ? undefined : 'error', label: 'cancelled' }
   if (status === 'unknown') return { glyph: minimal ? '·' : '⚪', color: minimal ? undefined : 'subtle', label: 'history' }
   return { glyph: minimal ? '·' : '🟡', color: minimal ? undefined : 'warning', label: 'running' }
 }
@@ -305,7 +306,7 @@ export function SubagentDetailScene({
                 <Box key={tool.id ?? index} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
                   <Box flexDirection="row" gap={1}>
                     <Text color={tool.status === 'failed' ? 'error' : tool.status === 'running' ? 'warning' : 'success'}>
-                      {tool.status === 'running' ? '·' : tool.status === 'failed' ? '×' : '✓'}
+                      {tool.status === 'running' ? '·' : tool.status === 'failed' ? MULTIPLICATION_X : '✓'}
                     </Text>
                     <Text color={toolNameColor(tool.name)}>{tool.name}</Text>
                     {tool.endedAt && <Text dimColor>{formatDuration(tool.endedAt - tool.startedAt)}</Text>}

@@ -17,6 +17,7 @@ import { arrive, mix } from '../../trajectory/motion.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { getTheme } from '../../theme.js'
 import type { TrajNode } from '../../dsh-adapter/types.js'
+import { MULTIPLICATION_X } from '../../terminal-utils/figures.js'
 
 /**
  * The ledger — one line per event, columns aligned across every row.
@@ -151,7 +152,7 @@ export function Ledger({
         // thing twice.
         if (node.kind === 'turn' || node.kind === 'step') {
           const isTurn = node.kind === 'turn'
-          const right = `${duration === undefined ? '' : formatDuration(duration)}${failed ? ' ✗' : ''}`
+          const right = `${duration === undefined ? '' : formatDuration(duration)}${failed ? ` ${MULTIPLICATION_X}` : ''}`
 
           // A step is a quiet row, not a rule. Steps are frequent — three or
           // four per screen — and a full-width dashed line each drew more

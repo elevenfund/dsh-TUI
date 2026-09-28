@@ -454,6 +454,11 @@ export function Chat({
   // permission focus synchronous so arrow+Enter in the same batch uses the
   // post-arrow row rather than the previous render's index.
   const permissionOverlayFocusRef = React.useRef<{ overlay: unknown; index: number } | null>(null)
+  // Keyboard zoom for the image preview: the overlay handler (Chat-level
+  // useInput) routes +/- to the component through this ref — the preview's
+  // own useInput registers after the composer's in the FIFO and never sees
+  // a key.
+  const imagePreviewZoomRef = React.useRef<{ zoomIn(): void; zoomOut(): void } | null>(null)
   React.useEffect(() => {
     if (overlay.kind === 'permission') {
       // Seed each concrete picker instance after commit. Keyboard handlers
@@ -617,6 +622,10 @@ export function Chat({
   const openTaskCenter = React.useCallback(() => setTaskCenterOpen(true), [])
   /** Detail view for a specific subagent (opened from dashboard). */
   const [subagentDetailId, setSubagentDetailId] = React.useState<string | null>(null)
+  /** Where the open subagent detail was entered from: the Ctrl+A dashboard
+   *  returns there on Esc; a transcript card returns to the transcript
+   *  (Esc must not summon a dashboard the user never opened). */
+  const [subagentDetailFromDashboard, setSubagentDetailFromDashboard] = React.useState(true)
   /** Task center (Ctrl+G): the unified classified panel over jobs +
    * subagents. Legacy Ctrl+A dashboard and /jobs panel stay untouched. */
   const [taskCenterOpen, setTaskCenterOpen] = React.useState(false)
@@ -1101,6 +1110,9 @@ ing registered by a DSH
   const pendingFillRef = React.useRef<string | null>(null)
   const { openRewind, requestRewindConfirm, performRewind } = createRewindCommands({
     channel, dispatchOverlay, rewindRequestRef, pendingFillRef, setHistoryFill,
+    // The forked transcript replaces every row: drop the selection cursor
+    // or it would sit on a same-numbered, different-content row.
+    onRewound: () => { setSelectedId(null); setSelectionActive(false) },
   })
   const { forceMountRowId, seekRow, seekRowIntoView, revealAndSeekRow } = useSeek(handle, rowRefsRef, showAllMessages, setShowAllMessages)
   const runCommand = createRunCommand({
@@ -1183,7 +1195,14 @@ ing registered by a DSH
   const toggleTranscriptMode = () => {
     const next = !expanded
     setExpanded(next)
-    if (!next) setExpandedRows(new Set())
+    // Leaving transcript mode resets the view-local toggles — BOTH row
+    // sets. The per-row stream-view toggle is part of the same
+    // "transcript-only" state family; leaving it behind kept a folded
+    // reasoning row expanded after collapsing back to prompt mode.
+    if (!next) {
+      setExpandedRows(new Set())
+      setStreamViewToggledRows(new Set())
+    }
     // The toggle rewrites every thinking row's layout at once. The
     // ordinary scroll-based diff pushes rows into terminal scrollback on
     // each expand and nothing removes them on collapse — rapid toggling
@@ -1236,7 +1255,7 @@ ing registered by a DSH
     permissionOverlayFocusRef, runPermissionCommand,
     runExternalCommand, applyLang, themeHost, setTheme,
     historyMatches, rewindRequestRef, performRewind, rewindRows,
-    requestRewindConfirm, runFileAction,
+    requestRewindConfirm, runFileAction, imagePreviewZoomRef,
   })
   const runOverlayKeys = (kind: ChatOverlay['kind'], input: string, key: Key, plainReturn: boolean, event: { stopImmediatePropagation(): void }): boolean => {
     if (overlay.kind !== kind) return false
@@ -1274,7 +1293,10 @@ ing registered by a DSH
       isPlainReturn: isPlainReturnInput(input, key),
       keyEnd: key.end,
       wheel: key.wheelUp ? 'up' : key.wheelDown ? 'down' : null,
-      page: key.pageUp ? 'up' : key.pageDown ? 'down' : null,
+      // Ctrl+F/B ride along with PgUp/PgDn in browse mode (the same
+      // dual-track tolerance the row-detail card has): the pager keys are
+      // terminal-level and muscle memory from less/readers.
+      page: key.pageUp || (key.ctrl && input === 'b') ? 'up' : key.pageDown || (key.ctrl && input === 'f') ? 'down' : null,
     })
     if (guard.type === 'yield') return
     if (guard.type === 'scroll') {
@@ -1751,9 +1773,9 @@ ing registered by a DSH
   if (subagentDetailId !== null) {
     const subagent = (channel.subagents ?? []).find(s => s.agentId === subagentDetailId)
     if (!subagent) {
-      // Agent not found, go back to dashboard
+      // Agent not found, go back to where the detail was entered from.
       setSubagentDetailId(null)
-      setSubagentDashboardOpen(true)
+      if (subagentDetailFromDashboard) setSubagentDashboardOpen(true)
       return null
     }
     const scene = (
@@ -1764,7 +1786,7 @@ ing registered by a DSH
         onFollowUp={followUpSubagent}
         onBack={() => {
           setSubagentDetailId(null)
-          setSubagentDashboardOpen(true)
+          if (subagentDetailFromDashboard) setSubagentDashboardOpen(true)
         }}
       />
     )
@@ -1798,6 +1820,7 @@ ing registered by a DSH
         subagents={[...(channel.subagents ?? [])]}
         onSelect={(id) => {
           setSubagentDashboardOpen(false)
+          setSubagentDetailFromDashboard(true)
           setSubagentDetailId(id)
         }}
         continuableIds={subagentContinuableIds}
@@ -1948,6 +1971,7 @@ ing registered by a DSH
           ? () => setPeekSuppressed(peekKey(activePreview.image, activePreview.title))
           : () => dispatchOverlay({ type: 'close-if', kind: 'image-preview' })}
         region={imagePreviewRegion}
+        zoomCommandsRef={imagePreviewZoomRef}
       />
     )
     : null
@@ -2039,7 +2063,11 @@ ing registered by a DSH
           newSinceRowId={isSticky ? null : lastSeenRowIdRef.current}
           onUnseenCount={setUnseenCount}
           onTimeline={setTimeline}
-          onOpenSubagent={setSubagentDetailId}
+          onOpenSubagent={(id: string) => {
+            // From a transcript card: Esc closes back into the transcript.
+            setSubagentDetailFromDashboard(false)
+            setSubagentDetailId(id)
+          }}
           onOpenJobs={openJobsPanel}
           onOpenFile={openFileActions}
           sessionCwd={channel.cwd}

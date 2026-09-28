@@ -1,10 +1,11 @@
 /**
  * The `⏵` self-narration line of an assistant reply (the dsh-working-activity
- * narrate contract puts exactly one `⏵` line at the very top). The line
- * renders as the turn's leading step title (grok-style turn headline), dim
- * and set apart from the body; the live working line ALSO surfaces it while
- * the turn streams. Only the FIRST line is checked — the contract allows one
- * `⏵` line per reply.
+ * narrate contract emits one `⏵` line before each tool call in the reply).
+ * The line renders as the step's title (grok-style fold-row headline), dim
+ * and set apart from the body; the live working line ALSO surfaces the
+ * first one while the turn streams. Extraction is per TEXT SEGMENT — a
+ * multi-step reply carries several `⏵` lines and each binds to the tool
+ * block that follows it (T38).
  */
 
 export interface NarrationParts {

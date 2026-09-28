@@ -294,8 +294,22 @@ function foldBodyLines(lines: BodyLine[]): BodyLine[] {
 const HEADER_ARGS_BUDGET = 480
 
 function clipHeaderArgs(args: string): string {
-  if (args.length <= HEADER_ARGS_BUDGET) return args
-  return `${args.slice(0, HEADER_ARGS_BUDGET)}…`
+  // Fast path: a char is at most 2 display cells, so a string this short
+  // can never reach the budget — keeps the streaming-args check O(1) like
+  // the old length one (headers can be hundreds of KB mid-call). The
+  // budget itself is DISPLAY width, not JS chars: a CJK-heavy 480-char
+  // prefix paints ~960 cells and used to blow the header wrap.
+  if (args.length * 2 <= HEADER_ARGS_BUDGET) return args
+  if (stringWidth(args) <= HEADER_ARGS_BUDGET) return args
+  let used = 0
+  let out = ''
+  for (const ch of args) {
+    const w = stringWidth(ch)
+    if (used + w > HEADER_ARGS_BUDGET - 1) break
+    out += ch
+    used += w
+  }
+  return `${out}…`
 }
 
 /** Clip a single-line header string to a DISPLAY-width budget (cells, not
