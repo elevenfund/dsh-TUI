@@ -203,6 +203,10 @@ const GROUPS = {
 // 与分层派生规则的单测（scripts/lib/tier.mjs，--tier/--cascade 的依据）。
     ['verify-chat-split', ['node', '--import', 'tsx/esm', 'scripts/verify-chat-split.ts']],
     ['verify-tier', ['node', 'scripts/verify-tier.mjs']],
+// L4 后台抽取的结构+行为守卫（曾漏注册，d0cf1af 桥接回归因此漏网）：
+// job-projection attach 的事务回滚、bridgeOf legacy 双口（onJobsChanged +
+// onJobDone）注册、subagent settled 折叠（resume 终态替代 unknown）。
+    ['verify-background-extraction', ['node', '--import', 'tsx/esm', 'scripts/verify-background-extraction.ts']],
 // 选择模式全景回归（原 verify-transcript-selection 1109 行/38 case 按
 // feature 拆 7 份，共享 harness 在 scripts/lib/transcript-scene.mjs；
 // 断言与原 case 一一对应零遗漏，S0 冒烟每份 3 条）：

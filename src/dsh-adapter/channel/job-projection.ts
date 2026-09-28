@@ -124,8 +124,22 @@ export function createJobProjection(
       subscribe(onChange) {
         const subscribe = registry.events?.subscribe
         if (typeof subscribe === 'function') return subscribe.call(registry.events, { owners: 'all' }, onChange)
-        if (typeof jobs.onJobsChanged === 'function') return jobs.onJobsChanged(onChange)
-        return typeof jobs.onJobDone === 'function' ? jobs.onJobDone(onChange) : undefined
+        // Legacy duck-type serves two mouths — onJobsChanged for mutations,
+        // onJobDone for settlements — and embedders may provide either or
+        // both, so register each optional mouth and combine their disposers.
+        // A single exclusive branch here would silently drop the other
+        // mouth's deliveries (and the settlement toast with it). The pair is
+        // transactional: a throwing second registration unwinds the first.
+        const disposers: Array<(() => void) | undefined> = []
+        try {
+          if (typeof jobs.onJobsChanged === 'function') disposers.push(jobs.onJobsChanged(onChange))
+          if (typeof jobs.onJobDone === 'function') disposers.push(jobs.onJobDone(onChange))
+        } catch (error) {
+          for (const dispose of disposers.splice(0)) dispose?.()
+          throw error
+        }
+        if (disposers.length === 0) return undefined
+        return () => { for (const dispose of disposers.splice(0)) dispose?.() }
       },
     }
   }
