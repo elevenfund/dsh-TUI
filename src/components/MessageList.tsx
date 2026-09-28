@@ -1792,7 +1792,6 @@ function TranscriptRow({
           <SubagentMessage
             subagent={subagent}
             marginTopOnTurn={marginTopOnTurn}
-            activityFrames={activityFrames}
             isExpanded={isExpanded}
             onClick={openSubagent}
           />

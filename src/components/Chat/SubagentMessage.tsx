@@ -3,7 +3,6 @@ import { Box, Text, useAnimationFrame, useTerminalSize } from '../../ui.js'
 import type { SubagentRow } from '../../dsh-adapter/channel.js'
 import type { Theme } from '../../theme.js'
 import { t } from '../../i18n.js'
-import { resolvePreset } from '../activityFrames.js'
 import { toolNameColor } from '../messages/AssistantToolUseMessage.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { isMinimalMode } from '../../minimalMode.js'
@@ -53,11 +52,10 @@ function clipLine(text: string, maxWidth: number): string {
  * (Kimi Code visual language). Running: header + one-line current tool + a
  * constant 3-row waterfall (each row hard-clipped to one terminal line so
  * the card height never changes). Settled: folds to the header line alone
- * (failure keeps one error line). The running glyph reuses the user's
- * working-activity preset (`/activity`), so the indicator follows the same
- * setting as the main spinner.
+ * (failure keeps one error line). The running glyph is the static bright
+ * `◐` (ansi:yellowBright), unified with AgentStrip's task-center rows.
  */
-export function SubagentMessage({ subagent, marginTopOnTurn, activityFrames, onClick }: {
+export function SubagentMessage({ subagent, marginTopOnTurn, onClick }: {
   subagent: SubagentRow
   marginTopOnTurn: boolean
   activityFrames?: string
@@ -65,11 +63,13 @@ export function SubagentMessage({ subagent, marginTopOnTurn, activityFrames, onC
   onClick?(event: ClickEvent): void
 }): React.ReactNode {
   const settled = subagent.status === 'completed' || subagent.status === 'failed' || subagent.status === 'cancelled'
-  // 动画订阅仅限运行中的卡片：settled 后传 null 退出共享 clock（keepAlive
-  // 归零 → interval 清除），否则历史里的每张完成卡片都以 120ms 永久驱动
-  // React commit。viewportRef 必须挂到根节点——useTerminalViewport 初始
-  // isVisible:true，ref 不挂就永远不修正（虚拟化滚出视口的卡片继续动画）。
-  const [viewportRef, time] = useAnimationFrame(settled ? null : 120)
+  // 动画时钟降为 1s 计时刷新：running 图标是静态 ◐（与 AgentStrip 统一），
+  // 无帧动画需求；settled 后传 null 退出共享 clock（keepAlive 归零 →
+  // interval 清除），否则历史里的每张完成卡片都以 1s 永久驱动 React
+  // commit。viewportRef 必须挂到根节点——useTerminalViewport 初始
+  // isVisible:true，ref 不挂就永远不修正（虚拟化滚出视口的卡片继续计
+  // 时重渲染）。
+  const [viewportRef] = useAnimationFrame(settled ? null : 1000)
   const { columns } = useTerminalSize()
   const info = status(subagent)
   const [hovered, setHovered] = React.useState(false)
@@ -79,9 +79,7 @@ export function SubagentMessage({ subagent, marginTopOnTurn, activityFrames, onC
   const previousDone = lastRunning
     ? subagent.toolCalls[subagent.toolCalls.indexOf(lastRunning) - 1]
     : subagent.toolCalls[subagent.toolCalls.length - 1]
-  const preset = React.useMemo(() => resolvePreset(activityFrames), [activityFrames])
   const activity = settled ? [] : subagent.outputLines.slice(-WATERFALL_ROWS)
-  const runningGlyph = preset.frames[Math.floor(time / preset.intervalMs) % preset.frames.length] ?? '·'
   const rowWidth = Math.max(20, (columns ?? 80) - WATERFALL_GUTTER)
 
   // 点击打开详情场景；hover 不刷整行背景（转录视觉保持安静），只把状态
@@ -96,7 +94,7 @@ export function SubagentMessage({ subagent, marginTopOnTurn, activityFrames, onC
     onMouseLeave={clickable ? () => setHovered(false) : undefined}
   >
     <Box flexDirection="row" gap={1}>
-      <Text color={hovered && clickable ? 'accent' : info.color}>{settled ? info.glyph : ` ${runningGlyph}`}</Text>
+      <Text color={hovered && clickable ? 'accent' : settled ? info.color : 'ansi:yellowBright'}>{settled ? info.glyph : '◐'}</Text>
       <Text bold color={hovered && clickable ? 'accent' : undefined}>{`${t('subagent-card-prefix')}${subagent.description}`}</Text>
       <Text dimColor>·</Text><Text>{subagent.model ?? subagent.provider ?? 'default'}</Text>
       {subagent.effort && <><Text dimColor>·</Text><Text dimColor>{subagent.effort}</Text></>}
