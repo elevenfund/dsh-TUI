@@ -390,6 +390,10 @@ const GROUPS = {
 // （Alt+V 粘贴别名、覆盖热更新、保留位集合、草稿冲突校验），以及
 // 真 Chat 里 Alt+V / 改键后的外部编辑器路径。
     ["verify-keymap", ['node', 'scripts/verify-keymap.mjs']],
+// keymap 纯解析层（T0 同步断言）：组合语法、默认匹配、用户覆盖、
+// 保留位集合、设置草稿与冲突校验。从 verify-keymap.mjs 拆出——挂载的
+// Alt+V 粘贴/改键路径留在原脚本。
+    ["verify-keymap-units", ['node', 'scripts/verify-keymap-units.mjs']],
 // vim 编辑模式回归（/vim 命令 + normal/insert 键位 + 徽标 + 撤销栈 +
 // insert Esc 让位回合打断）。
     ["verify-vim-mode", ['node', 'scripts/verify-vim-mode.mjs']],
@@ -675,6 +679,14 @@ const GROUPS = {
 // ←/→ 实时生效/Esc 关闭、状态栏 effort 段与模式段、三次 backtab
 // 完整循环。
     ["verify-effort-slider-ui", ['node', 'scripts/verify-effort-slider-ui.mjs']],
+// effort 点火数学层（T0 同步断言）：波峰采样、缓动端点与钳制、逐列颜色
+// 契约（rgb 串/空窗/边界守卫）。从 verify-effort-ignition.tsx 的 Part A
+// 拆出——挂载驱动的三幕视觉契约留在原脚本。
+    ["verify-effort-ignition-math", ['node', '--import', 'tsx/esm', 'scripts/verify-effort-ignition-math.ts']],
+// smooth-reveal 游标数学（T0 同步断言）：revealStep 步进、首读/单调追加/
+// 非前缀替换/inactive/disabled 语义、行游标四态。时间轴行为（mid-flight
+// 采样、catch-up 衰减、共享 timer 生命周期）与挂载渲染留在原 .tsx。
+    ["verify-smooth-reveal-units", ['node', '--import', 'tsx/esm', 'scripts/verify-smooth-reveal-units.ts']],
 // /thinking 显示语义回归（issue #317）：中英文文案必须明确只影响
 // 思考过程显示，切换立即生效且不得改变模型 reasoning effort。
     ["verify-thinking-display", ['node', '--import', 'tsx/esm', 'scripts/verify-thinking-display.tsx']],

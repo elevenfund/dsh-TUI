@@ -11,7 +11,7 @@ import { Session, SessionId, SessionLogOffset, type SessionEvent } from '@deepse
 import { createAssistantMessage, createSystemMessage, createUserMessage, type Message } from '@deepseek-ai/dsh-llm'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
-import { settled } from './lib/term-test.mjs'
+import { settled } from './lib/unit-helpers.mjs'
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-tui-v3-'))
 process.env.HOME = root

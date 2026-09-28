@@ -8,7 +8,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentPresetRegistry from '@deepseek-ai/dsh-agent-preset-registry'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { parse } from 'yaml'
-import { settled } from './lib/term-test.mjs'
+import { settled } from './lib/unit-helpers.mjs'
 import { registerBundledPresets } from '../lib/types/dsh-adapter/bundled-presets.js'
 
 function harness(declared = []) {

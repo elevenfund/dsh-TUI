@@ -13,7 +13,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { settled } from './lib/term-test.mjs'
+import { settled } from './lib/unit-helpers.mjs'
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-tui-empty-'))
 process.env.HOME = root

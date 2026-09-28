@@ -32,12 +32,9 @@ import { AssistantToolUseMessage } from '../src/components/messages/AssistantToo
 import type { ChatRow, ToolRow } from '../src/dsh-adapter/channel.js'
 import { settled } from './lib/term-test.mjs'
 import {
-  REVEAL_MIN_STEP,
   getRevealVersion,
   isRevealTimerRunning,
   revealLengthOf,
-  revealLinesOf,
-  revealStep,
   resetRevealForTest,
 } from '../src/components/smoothReveal.js'
 
@@ -61,23 +58,16 @@ function check(ok: boolean, label: string, detail = ''): void {
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 // ---------------------------------------------------------------------------
-// Group A — scheduler/cursor units
+// Group A — time-axis cursor behaviors (the synchronous cursor math lives in
+// verify-smooth-reveal-units.ts, T0)
 // ---------------------------------------------------------------------------
-console.log('--- A: scheduler/cursor units ---')
+console.log('--- A: time-axis cursor behaviors ---')
 resetRevealForTest()
-check(revealStep(0) === REVEAL_MIN_STEP, 'A1 revealStep floors at MIN_STEP')
-check(revealStep(100) === 13, 'A1 revealStep(100) = ceil(100/8) = 13', `got ${revealStep(100)}`)
-check(revealStep(24) === 3, 'A1 revealStep(24) = 3')
-check(revealStep(25) === 4, 'A1 revealStep(25) = 4')
-
 {
   const text = 'a'.repeat(1000)
-  check(revealLengthOf('a1', text, { enabled: true, active: true }) === 0, 'A2 active first read starts at zero')
+  revealLengthOf('a1', text, { enabled: true, active: true })
   const grown = text + 'b'.repeat(200)
-  check(
-    revealLengthOf('a1', grown, { enabled: true, active: true }) === 0,
-    'A2 monotonic append keeps the cursor',
-  )
+  revealLengthOf('a1', grown, { enabled: true, active: true })
   // 固定窗:墙钟 采样 reveal 动画中途（每帧消化 ~1/8 backlog）：轮询会一路
   // 推进游标直到揭完，测不到 mid-flight
   await sleep(120)
@@ -90,18 +80,6 @@ check(revealStep(25) === 4, 'A1 revealStep(25) = 4')
     revealLengthOf('a1', grown, { enabled: true, active: true }) === grown.length,
     'A2 catch-up completes (exponential decay + MIN_STEP tail)',
   )
-  check(
-    revealLengthOf('a1', 'completely different', { enabled: true, active: true }) === 'completely different'.length,
-    'A2 non-prefix replacement snaps',
-  )
-  check(
-    revealLengthOf('a2', text, { enabled: true, active: false }) === text.length,
-    'A2 inactive first read never creates a cursor',
-  )
-  check(
-    revealLengthOf('a3', text, { enabled: false, active: true }) === text.length,
-    'A2 disabled switch returns full text',
-  )
 }
 
 {
@@ -113,14 +91,6 @@ check(revealStep(25) === 4, 'A1 revealStep(25) = 4')
   check(await settled(() => getRevealVersion() > before), 'A3 ticks bump the version store')
   check(await settled(() => !isRevealTimerRunning(), { timeoutMs: 6000 }),
     'A3 timer retires once every cursor caught up')
-}
-
-{
-  resetRevealForTest()
-  check(revealLinesOf('c1', 2, { enabled: true, active: true }) === 2, 'A4 tiny totals skip animation')
-  check(revealLinesOf('c2', 30, { enabled: true, active: true }) === 0, 'A4 line cursor starts at zero')
-  check(revealLinesOf('c2', 42, { enabled: true, active: true }) === 0, 'A4 growing totals keep the cursor')
-  check(revealLinesOf('c2', 10, { enabled: true, active: true }) === 10, 'A4 shrinking totals snap')
 }
 
 // ---------------------------------------------------------------------------

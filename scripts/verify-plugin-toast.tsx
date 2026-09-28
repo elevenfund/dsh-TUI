@@ -30,7 +30,7 @@ const [
   import('@deepseek-ai/cordis'),
   import('../src/dsh-adapter/toast.js'),
   import('../src/ink/stringWidth.js'),
-  import('./lib/term-test.mjs'),
+  import('./lib/unit-helpers.mjs'),
 ])
 
 let failures = 0
