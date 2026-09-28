@@ -78,7 +78,7 @@ export function createJobProjection(
       if (!jobs?.kill) return false
       const job = store.get(id)
       try {
-        jobs.kill(id, deps.agent(), 'dsh-tui /jobs panel')
+        bridgeOf(jobs).kill(id, 'dsh-tui /jobs panel')
       } catch {
         return false
       }
@@ -87,6 +87,47 @@ export function createJobProjection(
       }
       return true
     },
+  }
+
+  /**
+   * The host exposes the registry service shape (@deepseek-ai/dsh-jobs):
+   * `list/kill(caller?: SessionId)` keyed by session id, plus
+   * `events.subscribe(filter, listener)` for change delivery. The legacy
+   * duck-typed shape (Agent-instance caller + onJobsChanged/onJobDone) is
+   * still served — the bridge picks per call so a mixed embedder works.
+   * Passing the Agent instance where the registry expects a SessionId
+   * filtered every owned job out of `list()` (empty Task Center panel).
+   */
+  function bridgeOf(jobs: JobsRuntime): {
+    list(): unknown[]
+    kill(id: string, reason?: string): unknown
+    subscribe(onChange: () => void): (() => void) | undefined
+  } {
+    const registry = jobs as unknown as {
+      list?(caller?: string): unknown[]
+      kill?(id: string, caller?: string, reason?: string): unknown
+      events?: { subscribe?(filter: { owners: 'all' }, listener: () => void): () => void }
+    }
+    const sessionId = (): string | undefined => {
+      const id = (deps.agent() as { id?: unknown } | undefined)?.id
+      return typeof id === 'string' ? id : undefined
+    }
+    return {
+      list() {
+        if (typeof registry.list === 'function') return registry.list(sessionId()) ?? []
+        return (jobs.list(deps.agent()) ?? []) as unknown[]
+      },
+      kill(id, reason) {
+        if (typeof registry.kill === 'function') return registry.kill(id, sessionId(), reason)
+        return jobs.kill?.(id, deps.agent(), reason)
+      },
+      subscribe(onChange) {
+        const subscribe = registry.events?.subscribe
+        if (typeof subscribe === 'function') return subscribe.call(registry.events, { owners: 'all' }, onChange)
+        if (typeof jobs.onJobsChanged === 'function') return jobs.onJobsChanged(onChange)
+        return typeof jobs.onJobDone === 'function' ? jobs.onJobDone(onChange) : undefined
+      },
+    }
   }
 
   /**
@@ -107,7 +148,7 @@ export function createJobProjection(
       // replaced service, nor invoke any store/row work after owner disposal.
       if (!current()) return
       try {
-        const snapshot = jobs.list(deps.agent())
+        const snapshot = bridgeOf(jobs).list() as ReturnType<BackgroundJobStore['snapshot']>
         if (!current()) return
         store.replace(snapshot)
       } catch { /* optional service is disposing */ }
@@ -139,8 +180,8 @@ export function createJobProjection(
     attachmentToken = token
     attachmentCurrent = current
     try {
-      if (typeof jobs.onJobsChanged === 'function') disposers.push(jobs.onJobsChanged(refresh))
-      if (typeof jobs.onJobDone === 'function') disposers.push(jobs.onJobDone(refresh))
+      const subscription = bridgeOf(jobs).subscribe(refresh)
+      if (subscription !== undefined) disposers.push(subscription)
       releaseOwner = deps.owner.own(detach)
       ownService?.(detach)
       refresh()

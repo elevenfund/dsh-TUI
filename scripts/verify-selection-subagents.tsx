@@ -65,8 +65,8 @@ await drained() // 等重渲染（chip 消失，不影响后续）
 const saT32 = { agentId: 'sa-1', runId: 'sa-1', description: 'research task', provider: 'subagent', model: 'glm', status: 'running', startedAt: Date.now() - 3000, output: ['scanning docs'], outputEvents: [], toolCalls: [{ name: 'Grep' }] }
 channel.subagents = [saT32]
 bump()
-check('T32a 常驻浮层出现（◍ 描述 + 实时尾行 + ⌃G 提示）',
-  await settled(() => screenHas('◍') && screenHas('research task') && screenHas('⌃G')))
+check('T32a 常驻浮层出现（◐ 描述 + 实时尾行 + ⌃G 提示）',
+  await settled(() => screenHas('◐') && screenHas('research task') && screenHas('⌃G')))
 stdin.write('\x07') // Ctrl+G → task center
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T32b Ctrl+G 打开任务中心（两区分区标题）',  await settled(() => screenHas('Task Center') && screenHas('Tasks (0)') && screenHas('Subagents (1)')) )
@@ -99,7 +99,7 @@ await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T32g x 终止焦点后台任务',  await settled(() => killCalls.length === 1 && killCalls[0] === 'j-9') ,  JSON.stringify(killCalls))
 stdin.write('\x1b') // 关闭面板
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T32h Esc 关闭任务中心回主界面',  await settled(() => !screenHas('Task Center') && screenHas('◍')) )
+check('T32h Esc 关闭任务中心回主界面',  await settled(() => !screenHas('Task Center') && screenHas('◐')) )
 channel.subagents = []
 channel.backgroundJobs = []
 bump()
@@ -112,7 +112,7 @@ const saRun33 = { agentId: 'sa-7', runId: 'sa-7', description: 'live worker', pr
 const saDone33 = { agentId: 'sa-9', runId: 'sa-9', description: 'settled worker', provider: 'subagent', model: 'glm', status: 'completed', startedAt: Date.now() - 9000, completedAt: Date.now() - 1000, output: [], outputEvents: [], toolCalls: [] }
 channel.subagents = [saRun33, saDone33]
 bump()
-await settled(() => screenHas('◍') && screenHas('live worker'))
+await settled(() => screenHas('◐') && screenHas('live worker'))
 // Strip click opens the live child's detail (SGR mouse: press+release).
 const stripPos = findText('live worker')
 if (stripPos !== null) {
@@ -149,7 +149,7 @@ await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T33g 面板进入的详情 Esc 回面板',  await settled(() => screenHas('Task Center') && screenHas('Subagents')) )
 stdin.write('\x1b') // 关闭面板
 await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
-check('T33h Esc 关闭任务中心回主界面',  await settled(() => !screenHas('Task Center') && screenHas('◍')) )
+check('T33h Esc 关闭任务中心回主界面',  await settled(() => !screenHas('Task Center') && screenHas('◐')) )
 channel.subagents = []
 bump()
 await drained() // 等清理重渲染

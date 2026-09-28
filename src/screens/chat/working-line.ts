@@ -10,6 +10,10 @@ export function grokWorkingLine(
   activity: { phase: ActivityPhase; line: string; phrase?: string },
 ): string {
   if (activity.phase === 'tool' || activity.phase === 'done') return activity.line
-  if (activity.phrase !== undefined && activity.phrase !== '') return activity.phrase
+  // Only the model's own `⏵` narration leads the wait line. The plugin's
+  // rotating playful phrases ("Hmm, still waiting") share this field; they
+  // churn without information, so non-narration phrases fall back to the
+  // steady phase line instead.
+  if (activity.phrase !== undefined && activity.phrase.startsWith('⏵')) return activity.phrase
   return activity.line.replace(/ · (?:total \S+|总\S+)$/u, '')
 }

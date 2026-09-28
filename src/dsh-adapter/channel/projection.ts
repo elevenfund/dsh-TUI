@@ -838,6 +838,14 @@ export function createChannelProjection(state: ProjectionState, deps: Projection
             if (startAck !== null) {
               const command = toolCommandOf(card.tool.argsFull)
               if (command !== undefined) deps.jobs.onStarted(startAck[1], command)
+            } else {
+              // A promoted call (`[... moved to background job <id>]`) is
+              // the other ack shape that makes a job model-visible.
+              const promoted = /moved to background job (\S+)/.exec(result)
+              if (promoted !== null) {
+                const command = toolCommandOf(card.tool.argsFull)
+                if (command !== undefined) deps.jobs.onStarted(promoted[1], command)
+              }
             }
           }
           state.activeToolCount = Math.max(0, state.activeToolCount - 1)

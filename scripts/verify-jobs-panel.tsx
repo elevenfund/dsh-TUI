@@ -73,8 +73,18 @@ console.log('--- A: BackgroundJobStore units ---')
   const snap = (id: string, status: 'running' | 'completed', extra: Record<string, unknown> = {}) =>
     ({ id, kind: 'pwsh', label: `cmd ${id}`, status, startedAt: 1000, ...extra })
 
+  // Acked-gate contract (grok semantics): only jobs the MODEL saw — a
+  // `started background job <id>` ack or a promoted result — become rows.
+  // The registry registers foreground waits too; un-acked snapshots shadow.
+  store.replace([snap('pwsh-1', 'running')])
+  check('A0 未 ack 的前台等待不建卡', store.snapshot().length === 0)
+  store.onStarted('pwsh-1', `command ${1}`)
+  check('A0 迟到 ack 把 shadow 转正', store.snapshot().length === 1)
   store.replace([snap('pwsh-1', 'running'), snap('pwsh-2', 'running')])
-  check('A1 注册两个任务', store.snapshot().length === 2 && changes === 1)
+  check('A0 未 ack 新成员仍隐藏', store.snapshot().length === 1)
+  store.onStarted('pwsh-2', 'command 2')
+  store.replace([snap('pwsh-1', 'running'), snap('pwsh-2', 'running')])
+  check('A1 注册两个任务', store.snapshot().length === 2)
   const changesAfterNoop = changes
   store.replace([snap('pwsh-1', 'running'), snap('pwsh-2', 'running')])
   check('A1 无变化 replace 不触发事件', changes === changesAfterNoop)
@@ -111,6 +121,9 @@ console.log('--- A: BackgroundJobStore units ---')
       id: `bash-${i}`, kind: 'bash', label: 'x', status: i < 5 ? 'running' as const : 'completed' as const, startedAt: i, finishedAt: i + 1,
     })),
   )
+  // The bound applies to acked rows; ack the whole batch first (a promoted
+  // batch acks as one result per id in real flow).
+  for (let i = 0; i < JOBS_MAX_TRACKED + 10; i += 1) big.onStarted(`bash-${i}`, 'x')
   const remaining = big.snapshot()
   check(
     'A5 终态有界且存活全保留',
@@ -206,7 +219,26 @@ const NOW = Date.now()
   const channel = createChannel(ctx as never, initial as never, {
     model: 'm0', cwd: '/tmp/demo', provider: 'p0', activity: false,
   })
+  const ackStart = (callId: string, jobId: string): void => {
+    emit('session/event', initial.session, {
+      type: 'tool/call',
+      data: { callId, name: 'bash', arguments: JSON.stringify({ command: 'x', run_in_background: true }) },
+    })
+    emit('session/event', initial.session, {
+      type: 'tool/result',
+      data: {
+        message: {
+          source: { callId },
+          content: [{ type: 'tool-result', content: [{ type: 'text', text: `started background job ${jobId}` }] }],
+        },
+      },
+    })
+  }
 
+
+  // Acked-gate contract: a registry row becomes visible only after the model
+  // saw it — ack `started background job pwsh-1` through a tool result.
+  ackStart('cj0', 'pwsh-1')
   fake.register({ id: 'pwsh-1', kind: 'pwsh', label: 'gh run watch 42', status: 'running', startedAt: NOW - 3000 })
   check('B1 任务注册进快照', await settled(() => channel.backgroundJobs.length === 1))
   check('B1 转录出现任务卡行', await settled(() => jobRows(channel).length === 1))
@@ -250,6 +282,7 @@ const NOW = Date.now()
   )
 
   // 第二个任务：存活中消失（owner 处置）→ 卡行冻结为 killed，随后移出面板。
+  ackStart('cj-b2', 'bash-2')
   fake.register({ id: 'bash-2', kind: 'bash', label: 'sleep 99', status: 'running', startedAt: NOW })
   check('B4 第二个任务注册', await settled(() => channel.backgroundJobs.length === 2))
   fake.remove('bash-2')
@@ -266,6 +299,7 @@ const NOW = Date.now()
   check('B5 终态任务 kill 不触发 steer', initial.steered.length === 0, initial.steered.join('|'))
 
   // 存活任务被用户 kill → steer 通知模型（kill 会抑制 harness 完成通知）。
+  ackStart('cj-b3', 'bash-3')
   fake.register({ id: 'bash-3', kind: 'bash', label: 'sleep 100', status: 'running', startedAt: NOW })
   check('B8 存活任务注册', await settled(() => channel.backgroundJobs.some(job => job.id === 'bash-3')))
   check('B8 存活 kill 返回 true', channel.jobControl.kill('bash-3') === true)

@@ -69,6 +69,17 @@ function isTerminal(status: BackgroundJobStatus): boolean {
  */
 export class BackgroundJobStore {
   private readonly jobs = new Map<string, BackgroundJobState>()
+  /**
+   * Job ids the MODEL has seen: a `started background job <id>` ack or a
+   * promoted `[... moved to background job <id>]` result. The registry
+   * registers EVERY foreground wait too, so without this gate each quick
+   * foreground command (git status, ls) would grow a job card — grok
+   * semantics show background-task UI only once the call actually moved
+   * to the background.
+   */
+  private readonly acked = new Set<string>()
+  /** Un-acked registry rows, kept so a late ack can still promote them. */
+  private readonly shadow = new Map<string, BackgroundJobSnapshot>()
   /** Commands captured from start acks that arrived before the registry
    *  registered the job (the tool/result stream and the registry commit can
    *  race); consumed on registration. */
@@ -92,6 +103,12 @@ export class BackgroundJobStore {
       seen.add(snap.id)
       const prev = this.jobs.get(snap.id)
       if (prev === undefined) {
+        // Un-acked rows stay shadowed (no ChatRow, no panel entry, no
+        // history): a foreground wait the model never saw as a job.
+        if (!this.acked.has(snap.id)) {
+          this.shadow.set(snap.id, snap)
+          continue
+        }
         const command = this.pendingCommands.get(snap.id)
         if (command !== undefined) this.pendingCommands.delete(snap.id)
         this.jobs.set(snap.id, {
@@ -131,6 +148,13 @@ export class BackgroundJobStore {
       this.events.onSettled?.(job)
       changed = true
     }
+    // Shadowed foreground waits that vanished were settled-and-removed by
+    // the tool layer before any ack: leave without a trace.
+    if (this.shadow.size > 0) {
+      for (const id of this.shadow.keys()) {
+        if (!seen.has(id)) this.shadow.delete(id)
+      }
+    }
     if (this.jobs.size > JOBS_MAX_TRACKED) {
       // Drop the oldest terminal jobs first; live jobs always survive.
       for (const [id, job] of this.jobs) {
@@ -151,15 +175,43 @@ export class BackgroundJobStore {
    * consumed by the next replace().
    */
   onStarted(id: string, command: string): void {
+    this.acked.add(id)
     const job = this.jobs.get(id)
-    if (job === undefined) {
-      this.pendingCommands.set(id, command)
+    if (job !== undefined) {
+      if (job.command !== command) {
+        job.command = command
+        this.events.onChanged?.()
+      }
       return
     }
-    if (job.command !== command) {
-      job.command = command
+    // The ack promotes a shadowed foreground wait into a visible job
+    // (promoted-to-background or explicit run_in_background).
+    const shadowed = this.shadow.get(id)
+    if (shadowed !== undefined) {
+      this.shadow.delete(id)
+      this.jobs.set(id, {
+        id: shadowed.id,
+        kind: shadowed.kind,
+        label: shadowed.label,
+        command,
+        status: shadowed.status,
+        ...(shadowed.detail === undefined ? {} : { detail: shadowed.detail }),
+        startedAt: shadowed.startedAt,
+        ...(shadowed.finishedAt === undefined ? {} : { finishedAt: shadowed.finishedAt }),
+        outputLines: [],
+      })
+      // A late-ack batch can promote past the tracked bound; apply the same
+      // oldest-terminal-first trim replace() uses (live jobs always survive).
+      if (this.jobs.size > JOBS_MAX_TRACKED) {
+        for (const [trimId, trimJob] of this.jobs) {
+          if (this.jobs.size <= JOBS_MAX_TRACKED) break
+          if (isTerminal(trimJob.status)) this.jobs.delete(trimId)
+        }
+      }
       this.events.onChanged?.()
+      return
     }
+    this.pendingCommands.set(id, command)
   }
 
   /**
@@ -202,8 +254,10 @@ export class BackgroundJobStore {
 
   /** Drop everything (session swap / transcript wipe). */
   reset(): void {
-    if (this.jobs.size === 0) return
+    if (this.jobs.size === 0 && this.shadow.size === 0 && this.acked.size === 0) return
     this.jobs.clear()
+    this.shadow.clear()
+    this.acked.clear()
     this.events.onChanged?.()
   }
 }

@@ -62,7 +62,7 @@ export function AgentStrip({ jobs, subagents, onOpenCenter, onOpenSubagent }: Ag
       key: `job-${job.id}`,
       node: (
         <>
-          <Text color="warning">●</Text>
+          <Text color="ansi:yellowBright">●</Text>
           <Text bold dimColor>{job.id}</Text>
           <Text dimColor>{clipLine(job.label, 60)}</Text>
           <Box flexGrow={1} />
@@ -80,7 +80,7 @@ export function AgentStrip({ jobs, subagents, onOpenCenter, onOpenSubagent }: Ag
       onClick: onOpenSubagent !== undefined ? () => onOpenSubagent(sub.agentId) : undefined,
       node: (
         <>
-          <Text color="warning">◍</Text>
+          <Text color="ansi:yellowBright">◐</Text>
           <Text bold>{clipLine(sub.description, 28)}</Text>
           {live !== undefined && <Text dimColor>{clipLine(live, 48)}</Text>}
           <Box flexGrow={1} />
