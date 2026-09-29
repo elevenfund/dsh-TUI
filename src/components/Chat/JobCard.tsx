@@ -6,7 +6,7 @@ import type { Theme } from '../../theme.js'
 import { t } from '../../i18n.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { isMinimalMode } from '../../minimalMode.js'
-import { MULTIPLICATION_X } from '../../terminal-utils/figures.js'
+import { MULTIPLICATION_X, BLACK_CIRCLE } from '../../terminal-utils/figures.js'
 
 /** The waterfall window mirrors the subagent card: a constant-height region. */
 const WATERFALL_ROWS = 3
@@ -29,9 +29,9 @@ function statusInfo(status: BackgroundJobStatus): { glyph: string; label: string
     case 'killed':
       return { glyph: MULTIPLICATION_X, label: t('jobs-status-killed'), color: minimal ? undefined : 'error' }
     case 'stopping':
-      return { glyph: '●', label: t('jobs-status-stopping'), color: minimal ? undefined : 'warning' }
+      return { glyph: BLACK_CIRCLE, label: t('jobs-status-stopping'), color: minimal ? undefined : 'warning' }
     default:
-      return { glyph: '●', label: t('jobs-status-running'), color: minimal ? undefined : 'warning' }
+      return { glyph: BLACK_CIRCLE, label: t('jobs-status-running'), color: minimal ? undefined : 'warning' }
   }
 }
 

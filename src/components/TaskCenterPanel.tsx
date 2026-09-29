@@ -9,7 +9,7 @@ import { isPlainReturnInput } from '../utils/modifiers.js'
 import { FollowUpLine, useFollowUpInput } from './SubagentFollowUpInput.js'
 import { isMinimalMode } from '../minimalMode.js'
 import { stringWidth } from '../ink/stringWidth.js'
-import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
+import { MULTIPLICATION_X, BLACK_CIRCLE } from '../terminal-utils/figures.js'
 
 export interface TaskCenterPanelProps {
   jobs: readonly BackgroundJobState[]
@@ -39,12 +39,12 @@ function jobStatusInfo(status: BackgroundJobState['status']): { glyph: string; c
   if (status === 'failed') return { glyph: MULTIPLICATION_X, color: 'error', label: t('jobs-status-failed') }
   if (status === 'killed') return { glyph: MULTIPLICATION_X, color: 'error', label: t('jobs-status-killed') }
   if (status === 'stopping') return { glyph: '·', color: 'warning', label: t('jobs-status-stopping') }
-  return { glyph: '●', color: 'warning', label: t('jobs-status-running') }
+  return { glyph: BLACK_CIRCLE, color: 'warning', label: t('jobs-status-running') }
 }
 
 function subagentStatusInfo(sub: SubagentState): { glyph: string; color: 'warning' | 'success' | 'error' | undefined; label: string } {
   const running = sub.status === 'running' || sub.status === 'starting'
-  if (running) return { glyph: '●', color: 'warning', label: t('subagent-status-running') }
+  if (running) return { glyph: BLACK_CIRCLE, color: 'warning', label: t('subagent-status-running') }
   if (sub.status === 'unknown') return { glyph: '○', color: undefined, label: t('subagent-status-unknown') }
   if (sub.status === 'failed' || sub.status === 'cancelled') return { glyph: MULTIPLICATION_X, color: 'error', label: t('subagent-status-failed') }
   return { glyph: '✓', color: 'success', label: t('subagent-status-completed') }

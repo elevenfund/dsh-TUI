@@ -758,7 +758,7 @@ export function AssistantToolUseMessage({
           )}
           {hovered && (
             <Box flexShrink={0}>
-              <Text dimColor>{isExpanded ? '▴' : '▾'}</Text>
+              <Text dimColor>{isExpanded ? '▾' : '▸'}</Text>
             </Box>
           )}
         </Box>

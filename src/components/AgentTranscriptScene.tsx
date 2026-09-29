@@ -9,7 +9,7 @@ import { FollowUpLine, useFollowUpInput } from './SubagentFollowUpInput.js'
 import { UserPromptMessage } from './messages/UserPromptMessage.js'
 import { toolDisplayName } from './messages/toolNames.js'
 import { t } from '../i18n.js'
-import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
+import { MULTIPLICATION_X, BLACK_CIRCLE } from '../terminal-utils/figures.js'
 
 export interface AgentTranscriptSceneProps {
   subagent: SubagentState
@@ -47,7 +47,7 @@ function ReasoningLine({ row, expanded, width }: { row: AgentTranscriptRow; expa
 function ToolLine({ row }: { row: AgentTranscriptRow }): React.ReactNode {
   const tool = row.tool
   if (tool === undefined) return null
-  const glyph = tool.status === 'running' ? '●' : tool.status === 'error' ? MULTIPLICATION_X : '✓'
+  const glyph = tool.status === 'running' ? BLACK_CIRCLE : tool.status === 'error' ? MULTIPLICATION_X : '✓'
   const color = tool.status === 'running' ? 'warning' : tool.status === 'error' ? 'error' : 'success'
   return (
     <Box flexDirection="column" paddingLeft={1}>

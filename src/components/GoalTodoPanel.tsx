@@ -4,12 +4,13 @@ import type { ChannelUi as Channel } from '../adapter/channel/ui-policy.js'
 import type { ChannelGoal, TodoPanelItem } from '../dsh-adapter/channel.js'
 import { t } from '../i18n.js'
 import { modLabel } from '../utils/modifiers.js'
+import { BLACK_CIRCLE } from '../terminal-utils/figures.js'
 
 /** Maximum todo rows shown before the overflow line. */
 const MAX_TODOS = 8
 
 const PHASE_LABEL: Record<ChannelGoal['phase'], string> = {
-  active: '● active',
+  active: `${BLACK_CIRCLE} active`,
   paused: '⏸ paused',
   blocked: '⛔ blocked',
   complete: '✓ complete',
@@ -17,7 +18,7 @@ const PHASE_LABEL: Record<ChannelGoal['phase'], string> = {
 
 /** Compact phase marker for the status-footer chip. */
 const PHASE_GLYPH: Record<ChannelGoal['phase'], string> = {
-  active: '●',
+  active: BLACK_CIRCLE,
   paused: '⏸',
   blocked: '⛔',
   complete: '✓',

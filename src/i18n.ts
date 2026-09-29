@@ -1125,7 +1125,7 @@ const dict = {
   'subagent-delete-running': { zh: '运行中的子代理需先停止再移除', en: 'stop the subagent before removing it' },
   'task-center-title': { zh: '任务中心', en: 'Task Center' },
   'task-center-running': { zh: '运行中', en: 'running' },
-  'task-center-done': { zh: '已结束', en: 'done' },
+  'task-center-done': { zh: '已完成', en: 'completed' },
   'task-center-section-tasks': { zh: '后台任务', en: 'Tasks' },
   'task-center-section-subagents': { zh: '子代理', en: 'Subagents' },
   'task-center-empty-tasks': { zh: '暂无后台任务', en: 'no background tasks' },

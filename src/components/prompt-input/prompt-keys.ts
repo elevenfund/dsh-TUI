@@ -1476,12 +1476,15 @@ export function createPromptKeyHandler(deps: PromptKeyDeps): (input: string, key
       }
       // A single Esc closes the open command menu first;
       // the double-tap-clear semantics only apply to ordinary input.
+      // Stopped here: without the stop the same Esc reached Chat's ladder
+      // too (a mouse text selection got cleared alongside the draft).
       if (overlayOpen) {
         syncImageGeneration()
         discardDraftImages()
         setInput('', 0)
         setSelectedCommand(0)
         setFileSelected(0)
+        event?.stopImmediatePropagation()
         return
       }
       // File overlay: Esc dismisses the menu for THIS token only — clearing
