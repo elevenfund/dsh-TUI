@@ -113,7 +113,7 @@ import type { Key } from '../ink/events/input-event.js'
 import { grokWorkingLine } from './chat/working-line.js'
 import { ModelPickerLoading, NewMessagesPill, PinnedTurnHeader, TranscriptSearch } from './chat/chrome.js'
 import { createOverlayKeyHandlers } from './chat/overlay-keys.js'
-import { selectionKeyIntent, selectionRestoreTarget, selectionStepId } from './chat/selection-mode.js'
+import { selectionKeyIntent, selectionRestoreTarget, selectionStepId, hiddenCursorRowIds } from './chat/selection-mode.js'
 import { useSidePanels } from './chat/use-side-panels.js'
 import { peekKey, useImagePreview } from './chat/use-image-preview.js'
 import { useWorkspaceCommands } from './chat/use-workspace-commands.js'
@@ -1189,7 +1189,11 @@ ing registered by a DSH
     // viewport moves only the cursor; the page starts scrolling when
     // the cursor reaches the edge, one row per step (force-mounting
     // folded window rows through the same path as history search).
-    const nextId = selectionStepId(selectableRows, selectedId, delta)
+    // Step past rows that render null under the current fold state: a
+    // folded group's hidden members would pin the highlight to the group
+    // row, reading as "j/k did nothing" until the next press.
+    const hiddenIds = hiddenCursorRowIds(channel.rows, expanded, expandedRows)
+    const nextId = selectionStepId(selectableRows, selectedId, delta, id => hiddenIds.has(id))
     if (nextId !== null) {
       setSelectedId(nextId)
       seekRowIntoView(nextId)
@@ -1405,6 +1409,13 @@ ing registered by a DSH
       // here (setters, seeks, overlays). stopImmediatePropagation stays
       // exactly where the old inline branches had it.
       const selectedRow = selectedId !== null ? selectableRows.find(row => row.id === selectedId) : undefined
+      // Rows rendering null under the current fold state (folded group
+      // members, absorbed reasoning): the cursor must skip them in every
+      // jump, or its highlight pins to the group row and reads as stuck.
+      const hiddenIds = hiddenCursorRowIds(channel.rows, expanded, expandedRows)
+      const visibleRows = selectionActive
+        ? selectableRows.filter(row => !hiddenIds.has(row.id))
+        : selectableRows
       const intent = selectionKeyIntent(input, key, {
         working: channel.working,
         helpOpen,
@@ -1457,7 +1468,7 @@ ing registered by a DSH
           // g / gg → first selectable row. In a long session the first
           // row sits behind the recent-rows fold — the reveal opens it
           // so forceMount can actually mount the row.
-          const first = selectableRows[0]
+          const first = visibleRows[0]
           if (first) {
             setSelectedId(first.id)
             revealAndSeekRow(first.id, 'nearest')
@@ -1468,7 +1479,7 @@ ing registered by a DSH
           // G → last selectable row AND the live tail: scrollToBottom
           // both bottom-aligns the row and re-pins sticky ("jump to the
           // end" means "follow the tail again" — grok semantics).
-          const last = selectableRows[selectableRows.length - 1]
+          const last = visibleRows[visibleRows.length - 1]
           if (last) {
             setSelectedId(last.id)
             handle?.scrollToBottom()

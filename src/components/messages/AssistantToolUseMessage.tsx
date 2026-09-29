@@ -587,7 +587,11 @@ export function AssistantToolUseMessage({
   useRevealVersion(revealVersion === undefined)
   const isRunning = tool.status === 'running'
   const isError = tool.status === 'error'
-  const displayArgs = verbose ? tool.argsFull ?? tool.argsText : tool.argsText
+  // Row-local expansion (l / selection) shares the verbose semantics: full
+  // args, unfolded header, uncapped body. The comments said "verbose/
+  // expanded" all along — this is the missing half of that contract.
+  const expanded = verbose || isExpanded
+  const displayArgs = expanded ? tool.argsFull ?? tool.argsText : tool.argsText
   const result = tool.resultFull ?? tool.resultText
   const name = toolDisplayName(tool.name)
   const minWidth = stringWidth(name) + 2
@@ -611,10 +615,10 @@ export function AssistantToolUseMessage({
   // marker is localized.
   const lang = getLang()
   const foldedHeader = React.useMemo(
-    () => headerIsTerminal && !verbose && headerTitle !== undefined
+    () => headerIsTerminal && !expanded && headerTitle !== undefined
       ? foldTerminalTitle(headerTitle, foldTerminalCommand)
       : undefined,
-    [headerIsTerminal, foldTerminalCommand, verbose, headerTitle, lang],
+    [headerIsTerminal, foldTerminalCommand, expanded, headerTitle, lang],
   )
 
   // Live elapsed clock while the call runs: the
@@ -668,12 +672,12 @@ export function AssistantToolUseMessage({
   // Long-line clip before anything downstream reads the body: the syntax
   // highlighter walks `bodySource` by line index, so the folded text must be
   // the single source of truth for both.
-  const bodyLines = verbose ? body : foldBodyLines(body)
+  const bodyLines = expanded ? body : foldBodyLines(body)
   const bodySource = bodyLines.map(line => line.text).join('\n')
   const argsLanguage = jsonArgsLanguage(displayArgs)
   // The footnote rides OUTSIDE the cap: it is a pointer, not content, and a
   // long error body must not be the reason it disappears.
-  const lines = capLines(bodyLines, cap, verbose, isError)
+  const lines = capLines(bodyLines, cap, expanded, isError)
   const rendered: BodyLine[] =
     footnote === undefined ? lines : [...lines, { text: footnote, tone: 'hint' }]
   // Smooth reveal (line-unit, pending CALL body only): model-authored prose
@@ -744,7 +748,7 @@ export function AssistantToolUseMessage({
               <Text dimColor={!headerLit}>{clipToWidth(blockTitle, headerTextBudget)}</Text>
             </Text>
           ) : (
-            <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} lit={headerLit} />
+            <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} collapsed={!expanded} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} lit={headerLit} />
           )}
           {blockFolded && isRunning && tool.startedAt !== undefined && (
             <Box flexWrap="nowrap">
@@ -770,8 +774,8 @@ export function AssistantToolUseMessage({
             <SplitDiffView
               diffs={view.diffs}
               width={columns - 4}
-              maxRows={verbose ? DIFF_BODY_MAX_LINES : cap}
-              verbose={verbose}
+              maxRows={expanded ? DIFF_BODY_MAX_LINES : cap}
+              verbose={expanded}
               toolBackground={ordinaryToolBackground}
               reveal={revealable ? { key: `${revealKey}:split` } : undefined}
             />

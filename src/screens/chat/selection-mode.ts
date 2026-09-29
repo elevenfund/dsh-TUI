@@ -2,6 +2,7 @@ import type { Key } from '../../ink/events/input-event.js'
 import type { ChatRow } from '../../dsh-adapter/channel.js'
 import { actionMatches } from '../../utils/keymap.js'
 import { isMod } from '../../utils/modifiers.js'
+import { reduceToolBlocks } from '../../components/messages/tool-blocks.js'
 
 /**
  * Selection-mode state machine, pure: given the key and a small snapshot of
@@ -114,15 +115,51 @@ export function selectionRestoreTarget(
   return target !== undefined ? target.id : null
 }
 
-/** Next cursor id for a one-row step, or null when there is no neighbor. */
+/** Next cursor id for a one-row step, or null when there is no neighbor.
+ *  `isHidden` skips rows that render null this frame (folded verb-group
+ *  members, absorbed reasoning) — without it the cursor can land on an
+ *  invisible member whose highlight stays pinned to the group row, and
+ *  j/k appears to need a second press to move. */
 export function selectionStepId(
   selectableRows: readonly ChatRow[],
   selectedId: number | null,
   delta: 1 | -1,
+  isHidden: (id: number) => boolean = () => false,
 ): number | null {
   if (selectedId === null) return null
   const index = selectableRows.findIndex(row => row.id === selectedId)
   if (index < 0) return null
-  const next = selectableRows[index + delta]
-  return next !== undefined ? next.id : null
+  for (let i = index + delta; i >= 0 && i < selectableRows.length; i += delta) {
+    const row = selectableRows[i]!
+    if (!isHidden(row.id)) return row.id
+  }
+  return null
+}
+
+const EMPTY_IDS: ReadonlySet<number> = new Set()
+
+/** Row ids that render null under the CURRENT fold state: folded verb-group
+ *  members beyond each group's first (the first renders as the group row)
+ *  plus the reasoning those groups absorbed. Mirrors MessageList's reduction
+ *  inputs exactly — same pure function, same unfold predicate (global expand
+ *  or ANY member's row-local expansion) — so this view of "hidden" cannot
+ *  drift from what the renderer paints. */
+export function hiddenCursorRowIds(
+  rows: readonly ChatRow[],
+  expanded: boolean,
+  expandedRows: ReadonlySet<number>,
+): ReadonlySet<number> {
+  if (expanded) return EMPTY_IDS
+  const base = reduceToolBlocks(rows)
+  let unfoldedKeys: Set<string> | undefined
+  for (const group of base.groups) {
+    if (group.members.some(member => expandedRows.has(member.row.id))) {
+      ;(unfoldedKeys ??= new Set<string>()).add(group.firstKey)
+    }
+  }
+  const state = unfoldedKeys === undefined ? base : reduceToolBlocks(rows, { expandedGroups: unfoldedKeys })
+  const hidden = new Set<number>(state.absorbedReasoning)
+  for (const id of state.groupedRows) hidden.add(id)
+  for (const group of state.groups) hidden.delete(group.members[0]!.row.id)
+  return hidden
 }

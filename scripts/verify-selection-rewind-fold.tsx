@@ -103,22 +103,23 @@ function report(name: string, ok: boolean, extra = ''): void {
   // stand-in) must highlight.
   check('P2 光标在首成员：组行高亮', await settled(() => lineHighlighted('Read 3 files')))
 
-  // Folded members render nothing of their own; the cursor stepping onto
-  // them must KEEP the group row highlighted (the pre-fix group row only
-  // matched the first member's id).
+  // Folded members render null; j/k must STEP PAST them in one press —
+  // the pre-fix cursor landed on a hidden member, pinned the highlight to
+  // the group row, and read as "j did nothing" until the next press.
   stdin.write('j')
   await keySleep(100)
-  check('P2 光标在隐藏成员 r2：组行仍高亮', await settled(() => lineHighlighted('Read 3 files')))
-  stdin.write('j')
+  check('P2 j 一步跨过隐藏成员到 bash 行', await settled(() => lineHighlighted('Bash(')))
+  stdin.write('k')
   await keySleep(100)
-  check('P2 光标在隐藏成员 r3：组行仍高亮', await settled(() => lineHighlighted('Read 3 files')))
+  check('P2 k 回到组行（不落隐藏成员）', await settled(() => lineHighlighted('Read 3 files')))
 
-  // `l` on a HIDDEN member (r3) must unfold the group — the pre-fix unfold
-  // only honored the first member's id.
+  // `l` on the group row (first member) unfolds the group; the unfold
+  // predicate honors ANY member's id, so a rewind-restored hidden member
+  // opens it too (P1's restore path above).
   stdin.write('l')
   await keySleep(100)
   const readRows = () => viewportLines().filter(line => line.includes('Read(')).length
-  check('P2 隐藏成员上 l 解组：成员行可见', await settled(() => readRows() >= 3), `${readRows()}`)
+  check('P2 组行上 l 解组：成员行可见', await settled(() => readRows() >= 3), `${readRows()}`)
 
   scene.finish('selection-fold')
 }
