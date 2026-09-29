@@ -217,6 +217,10 @@ const GROUPS = {
     ['verify-selection-subagents', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-subagents.tsx']],
     ['verify-selection-stream', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-stream.tsx']],
     ['verify-selection-narration', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-narration.tsx']],
+// 复检缺口补测（C-6.7/C-6.6）：rewind 成功后清选择光标（同号异容行假
+// 恢复）+ 折叠 verb-group 内光标（隐藏成员仍高亮组行、任意成员 l 解组）。
+// 双 Esc 开 picker（slash 路由需要 channel.commandList，fake 不带）。
+    ['verify-selection-rewind-fold', ['node', '--import', 'tsx/esm', 'scripts/verify-selection-rewind-fold.tsx']],
 // 长会话下的浏览区回归：RENDERED_ROW_CAP 折叠区外的 g/G 跳转（forceMount
 // 扩窗）、sticky 底部姿态与折叠生效。
     ['verify-transcript-selection-long', ['node', '--import', 'tsx/esm', 'scripts/verify-transcript-selection-long.tsx']],
@@ -673,6 +677,11 @@ const GROUPS = {
 // 缺席当前 provider 落首行）。键盘与 overlay 归约由 verify-chat-overlay
 // 覆盖，这里钉住两层共用的纯派生。
     ["verify-model-picker-groups", ['node', 'scripts/verify-model-picker-groups.mjs']],
+// 复检孤儿测试注册（曾两次漏登记进 GROUPS——脚本存在≠进 CI）：chat
+// overlay 归约（reducer 动作、picker 导航、stale gallery 动作）与图片
+// 预览（缩放命令链、staging barrier、unmount 回收）此前只能手跑。
+    ["verify-chat-overlay", ['node', '--import', 'tsx/esm', 'scripts/verify-chat-overlay.ts']],
+    ["verify-image-preview", ['node', '--import', 'tsx/esm', 'scripts/verify-image-preview.tsx']],
 // 全屏出厂默认迁移回归（0.9.x schema + cordis.patch.yml false→true 翻转）：
 // 翻转前钉在 settings 用户层的显式 false 首启被 unset 一次（marker 仅在
 // 写入成功后落盘，失败下次自愈重试），此后再写的 false 是用户主动选择
@@ -723,7 +732,10 @@ const GROUPS = {
 // 标题/未绑定保留漂浮行）、标题合成四级兜底链、生命周期透传、
 // verb-group 聚类（连续 read/search 折叠、bash/edit 断开、思考吸收、
 // 运行时态、展开记忆）。挂载渲染在 verify-tool-block-render.tsx。
-    ["verify-tool-blocks", ['node', '--import', 'tsx/esm', 'scripts/verify-tool-blocks.ts']],
+    ["verify-tool-blocks", ['node', '--import', 'tsx/esm', 'scripts/verify-tool-blocks.ts'], { DSH_TUI_LANG: 'en' }],
+// bucket 标签 i18n 的 zh 半边（复检新发现 10）：en 侧只钉英文文案，
+// 中文文案（动词 + 数量 + 名词 + · 分隔）在此钉 DSH_TUI_LANG=zh 断言。
+    ["verify-tool-blocks-zh", ['node', '--import', 'tsx/esm', 'scripts/verify-tool-blocks-zh.ts'], { DSH_TUI_LANG: 'zh' }],
 // smooth-reveal 游标数学（T0 同步断言）：revealStep 步进、首读/单调追加/
 // 非前缀替换/inactive/disabled 语义、行游标四态。时间轴行为（mid-flight
 // 采样、catch-up 衰减、共享 timer 生命周期）与挂载渲染留在原 .tsx。

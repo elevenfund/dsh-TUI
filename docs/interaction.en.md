@@ -602,13 +602,14 @@ The command menu merges local commands with the DSH command registry. Type `/` t
 - `/trace` — trajectory scene, also `Ctrl+T`.
 - `/rewind` — time travel, same as double-`Esc` on an empty input.
 - `/tree` — session family tree: every fork branch stitched together; hover previews a node,
-  click opens a rewind / fork-here / adopt-branch menu.
+  click opens a rewind / fork-here / adopt-branch menu. Vim keys in the list: `j/k` move,
+  `h/l` half-page scroll, `g/G` top/bottom; node menus take `j/k` too.
 - `/fork` — copy the current session into a resumable twin; the original is untouched.
 
 **Status**
 
 - `/context`, `/status`, `/cost`, `/balance` — official DeepSeek balance: summary row + hover details, click to refresh.
-- `/config`, `/doctor`, `/init`, `/agents`, `/jobs` — background jobs panel: status/elapsed/exit code, `k` kills.
+- `/config`, `/doctor`, `/init`, `/agents`, `/jobs` — background jobs panel: status/elapsed/exit code, `j/k` move, `x` stops.
 - `/settings`.
 
 **Model and display**

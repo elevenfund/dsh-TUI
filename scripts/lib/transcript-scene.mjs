@@ -263,6 +263,10 @@ export async function bootSelectionScene(rows = baseRows()) {
     submit() {},
     cancel: () => {},
     clear: () => {},
+    // PromptInput calls this the moment a draft starts with '/'; returning
+    // [] keeps the slash-command overlay closed (batteries that need it
+    // patch a richer fake onto the channel).
+    commandCompletions: () => [],
     notify(text) { notifyCalls.push(String(text)) },
     subagents: [],
     backgroundJobs: [],
