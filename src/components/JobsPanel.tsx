@@ -54,24 +54,47 @@ function JobRowLine({ job, focused }: { job: BackgroundJobState; focused: boolea
   const info = statusInfo(job.status)
   const duration = formatJobDuration(job)
   const detail = job.detail !== undefined && job.detail !== '' ? job.detail : undefined
-  // Reserve: glyph(2) id(~9) kind(~7) duration(~7) status(~6) separators(5×2)
-  // — the label takes the rest and hard-clips instead of wrapping.
-  const labelWidth = Math.max(10, (columns ?? 80) - 46)
+  // Fixed columns never yield to overflow: id/kind/duration/status carry task
+  // identity, and a mid-token cut ("bash-102" → "bash-10") reads as a DIFFERENT
+  // job (field report from a live session). Every fixed segment is measured —
+  // localized status labels are CJK-wide — and the label gets exactly what
+  // remains, so overflow can only ever clip the label. Belt and suspenders:
+  // Text carries no layout props in this fork, so the fixed columns ride in
+  // flexShrink={0} group boxes as well. 4 = panel paddingX(2)×2,
+  // 3 = `·` separators, 10 = gap={1} between the row's 11 no-detail children.
+  const avail = (columns ?? 80) -
+    (4 + 3 + 10 + 1 /*focus*/ + stringWidth(info.glyph) + stringWidth(job.id) +
+      stringWidth(job.kind) + stringWidth(duration) + stringWidth(info.label))
+  // The detail yields before the label starves below 8 columns; adding it
+  // costs its clipped width plus one separator and one gap.
+  let labelWidth = avail
+  let detailText: string | undefined
+  if (detail !== undefined) {
+    const detailWidth = Math.min(stringWidth(detail), Math.max(0, avail - 8))
+    if (detailWidth > 1) {
+      detailText = clipLine(detail, detailWidth)
+      labelWidth = avail - stringWidth(detailText) - 2
+    }
+  }
   return (
     <Box flexDirection="column">
       <Box flexDirection="row" gap={1}>
-        <Text color={focused ? 'accent' : undefined}>{focused ? '❯' : ' '}</Text>
-        <Text color={info.color}>{info.glyph}</Text>
-        <Text bold={focused} color={focused ? 'accent' : undefined}>{job.id}</Text>
-        <Text dimColor>·</Text>
-        <Text dimColor>{job.kind}</Text>
-        <Text dimColor>·</Text>
+        <Box flexShrink={0} flexDirection="row" gap={1}>
+          <Text color={focused ? 'accent' : undefined}>{focused ? '❯' : ' '}</Text>
+          <Text color={info.color}>{info.glyph}</Text>
+          <Text bold={focused} color={focused ? 'accent' : undefined}>{job.id}</Text>
+          <Text dimColor>·</Text>
+          <Text dimColor>{job.kind}</Text>
+          <Text dimColor>·</Text>
+        </Box>
         <Text bold={focused}>{clipLine(job.label, labelWidth)}</Text>
         <Box flexGrow={1} />
-        <Text dimColor>{duration}</Text>
-        {detail !== undefined && <><Text dimColor>·</Text><Text dimColor>{detail}</Text></>}
-        <Text dimColor>·</Text>
-        <Text color={info.color}>{info.label}</Text>
+        <Box flexShrink={0} flexDirection="row" gap={1}>
+          <Text dimColor>{duration}</Text>
+          {detailText !== undefined && <><Text dimColor>·</Text><Text dimColor>{detailText}</Text></>}
+          <Text dimColor>·</Text>
+          <Text color={info.color}>{info.label}</Text>
+        </Box>
       </Box>
       {focused && (
         <Box flexDirection="column">
