@@ -1797,7 +1797,6 @@ function TranscriptRow({
           <SubagentMessage
             subagent={subagent}
             marginTopOnTurn={marginTopOnTurn}
-            isExpanded={isExpanded}
             onClick={openSubagent}
           />
         </Box>

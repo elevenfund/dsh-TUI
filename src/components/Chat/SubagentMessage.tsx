@@ -6,6 +6,7 @@ import { t } from '../../i18n.js'
 import { toolNameColor } from '../messages/AssistantToolUseMessage.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { isMinimalMode } from '../../minimalMode.js'
+import { MULTIPLICATION_X } from '../../terminal-utils/figures.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
 
 /** The waterfall window is a Kimi Code style constant-height region. */
@@ -24,8 +25,8 @@ function tokens(row: SubagentRow): string {
 function status(row: SubagentRow): { glyph: string; label: string; color: keyof Theme | undefined } {
   const minimal = isMinimalMode()
   if (row.status === 'completed') return { glyph: minimal ? '✓' : '🟢', label: t('subagent-status-completed'), color: minimal ? undefined : 'success' }
-  if (row.status === 'failed') return { glyph: minimal ? '×' : '🔴', label: t('subagent-status-failed'), color: minimal ? undefined : 'error' }
-  if (row.status === 'cancelled') return { glyph: minimal ? '×' : '🔴', label: t('subagent-status-cancelled'), color: minimal ? undefined : 'error' }
+  if (row.status === 'failed') return { glyph: minimal ? MULTIPLICATION_X : '🔴', label: t('subagent-status-failed'), color: minimal ? undefined : 'error' }
+  if (row.status === 'cancelled') return { glyph: minimal ? MULTIPLICATION_X : '🔴', label: t('subagent-status-cancelled'), color: minimal ? undefined : 'error' }
   return { glyph: minimal ? '·' : '🟡', label: t('subagent-status-running'), color: minimal ? undefined : 'warning' }
 }
 /** Hard single-line clip by display width — a wrapped waterfall row would
@@ -58,8 +59,6 @@ function clipLine(text: string, maxWidth: number): string {
 export function SubagentMessage({ subagent, marginTopOnTurn, onClick }: {
   subagent: SubagentRow
   marginTopOnTurn: boolean
-  activityFrames?: string
-  isExpanded: boolean
   onClick?(event: ClickEvent): void
 }): React.ReactNode {
   const settled = subagent.status === 'completed' || subagent.status === 'failed' || subagent.status === 'cancelled'

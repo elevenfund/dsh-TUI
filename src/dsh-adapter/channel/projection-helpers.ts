@@ -51,10 +51,11 @@ export const BACKGROUND_START_ACK = /^started background job (\S+)/
 export const WORKFLOW_START_ACK = /^workflow "([^"]*)" started in the background as job ([^\s.]+)/
 
 /** The trailing note a shell tool appends when a foreground wait is
- *  promoted (`[still running after Xms; moved to background job <id>]`).
- *  The `]` anchor and no-`]` capture keep prose quoting this literal from
- *  minting phantom ids — the old `(\S+)` swallowed the bracket. */
-export const PROMOTED_JOB_ACK = /; moved to background job ([^\]\s]+)\]/
+ *  promoted. The engine emits it on its own line (the preceding body is
+ *  newline-terminated, a newline follows), followed by two explanation
+ *  lines — so the line-anchored form below is the exact engine shape, and
+ *  prose quoting the literal mid-line cannot mint a phantom id. */
+export const PROMOTED_JOB_ACK = /^\[still running after \d+ms; moved to background job ([^\]\s]+)\]$/m
 
 /** Narrow an optional plugin event without importing its module augmentation. */
 export function todoPanelItems(data: unknown): TodoPanelItem[] | undefined {

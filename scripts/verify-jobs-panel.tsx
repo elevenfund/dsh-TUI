@@ -142,12 +142,19 @@ console.log('--- A: BackgroundJobStore units ---')
   )
 
   // A7 — the three ack regexes against the exact engine copy (P0-2: the
-  // promoted capture used to swallow the closing bracket).
-  const promoted = PROMOTED_JOB_ACK.exec('[still running after 20000ms; moved to background job bash-7]\n')
-  check('A7 promoted 捕获不带 "]"', promoted?.[1] === 'bash-7', `${promoted?.[1]}`)
+  // promoted capture used to swallow the closing bracket; the line anchors
+  // keep quoted prose from minting phantom ids).
+  const promoted = PROMOTED_JOB_ACK.exec(
+    'prior output\n[still running after 20000ms; moved to background job bash-7]\nThe command keeps running in the background. You will be notified when it finishes; read newer output with job_output, stop it with job_kill.',
+  )
+  check('A7 promoted 捕获不带 "]"（引擎完整形态）', promoted?.[1] === 'bash-7', `${promoted?.[1]}`)
   check(
     'A7 叙述文本不 mint 幽灵 id',
     PROMOTED_JOB_ACK.exec('the log says it moved to background job bash-1 somewhere') === null,
+  )
+  check(
+    'A7 行中引用不 mint 幽灵 id',
+    PROMOTED_JOB_ACK.exec('grep hit: src/foo.ts: return `[still running after 5000ms; moved to background job bash-2]`') === null,
   )
   const workflow = WORKFLOW_START_ACK.exec('workflow "icon-check" started in the background as job workflow-1. Its return value arrives with the completion notice; check on it with job_output, stop it with job_kill.')
   check('A7 workflow ack 提名 + id', workflow?.[1] === 'icon-check' && workflow?.[2] === 'workflow-1', `${workflow?.[1]}|${workflow?.[2]}`)

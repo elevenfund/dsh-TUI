@@ -3,6 +3,7 @@ import { Box, Text } from '../ui.js'
 import type { SubagentState } from '../dsh-adapter/subagents.js'
 import { t } from '../i18n.js'
 import { isMinimalMode } from '../minimalMode.js'
+import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
 import type { ClickEvent } from '../ink/events/click-event.js'
 
 function formatDuration(ms: number): string {
@@ -32,7 +33,7 @@ export function SubagentCard({ subagent, focused, onClick }: SubagentCardProps):
   const minimal = isMinimalMode()
   const glyph = running ? (minimal ? '·' : '🟡')
     : subagent.status === 'unknown' ? (minimal ? '·' : '⚪')
-    : subagent.status === 'failed' || subagent.status === 'cancelled' ? (minimal ? '×' : '🔴')
+    : subagent.status === 'failed' || subagent.status === 'cancelled' ? (minimal ? MULTIPLICATION_X : '🔴')
     : (minimal ? '✓' : '🟢')
   const glyphColor = minimal ? undefined
     : running ? 'warning' as const

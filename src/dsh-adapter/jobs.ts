@@ -24,15 +24,16 @@ export interface BackgroundJobSnapshot {
 }
 
 /**
- * Duck-typed registry surface the channel consumes. `caller` is the owning
- * live agent (`Agent` in the harness) — typed as object here because the
- * UI only forwards the instance it already holds.
+ * Duck-typed registry surface the channel consumes. `caller` is an opaque
+ * token — the owning live agent (`Agent` in the harness) or the session id
+ * under the registry service shape — typed unknown because the UI only
+ * forwards the instance it already holds and never inspects it.
  */
 export interface JobsRuntime {
   /** Caller-owned + unowned job snapshots in registration order. */
-  list(caller?: object): BackgroundJobSnapshot[]
+  list(caller?: unknown): BackgroundJobSnapshot[]
   /** Request cancellation by id; resolves to 'requested'/'already-finished'. */
-  kill(id: string, caller?: object, reason?: string): unknown
+  kill(id: string, caller?: unknown, reason?: string): unknown
   /** Fires after every commit changing one owner's visible set; re-read. */
   onJobsChanged?(listener: (owner: unknown) => void): () => void
   /** Fires on every settlement with the terminal snapshot + owner. */
@@ -45,6 +46,11 @@ export interface BackgroundJobEvents {
   onSettled?(job: BackgroundJobState): void
   /** The visible set changed; the channel syncs rows and emits. */
   onChanged?(): void
+  /** Ids that fell past the tracked bound (oldest terminal first). Their
+   *  transcript cards stay — durable history — but the channel's
+   *  row-index entries for the ids can go, keeping the index bounded by
+   *  the live window instead of the session's job count. */
+  onEvicted?(ids: readonly string[]): void
 }
 
 /** Total tracked jobs kept (running plus most recent terminal ones). */
@@ -161,14 +167,17 @@ export class BackgroundJobStore {
       // jobs, so a retained ack would re-register the evicted id from the
       // next `list()` snapshot (at the Map tail — the newest-last order
       // invariant breaks and the revived row lost its outputLines).
+      const evicted: string[] = []
       for (const [id, job] of this.jobs) {
         if (this.jobs.size <= JOBS_MAX_TRACKED) break
         if (isTerminal(job.status)) {
           this.jobs.delete(id)
           this.acked.delete(id)
+          evicted.push(id)
           changed = true
         }
       }
+      if (evicted.length > 0) this.events.onEvicted?.(evicted)
     }
     if (changed) this.events.onChanged?.()
   }
@@ -210,13 +219,16 @@ export class BackgroundJobStore {
       // survive). The ack gate goes with the row or the evicted id would
       // re-register from the next `list()` snapshot (revival loop).
       if (this.jobs.size > JOBS_MAX_TRACKED) {
+        const evicted: string[] = []
         for (const [trimId, trimJob] of this.jobs) {
           if (this.jobs.size <= JOBS_MAX_TRACKED) break
           if (isTerminal(trimJob.status)) {
             this.jobs.delete(trimId)
             this.acked.delete(trimId)
+            evicted.push(trimId)
           }
         }
+        if (evicted.length > 0) this.events.onEvicted?.(evicted)
       }
       this.events.onChanged?.()
       return

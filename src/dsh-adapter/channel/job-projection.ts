@@ -60,6 +60,13 @@ export function createJobProjection(
   }
 
   const store = new BackgroundJobStore({
+    onEvicted(ids) {
+      // The transcript card stays (durable history); only the id->row
+      // index entry goes, keeping the index bounded by the live window
+      // instead of the session's job count. Safe: syncRows iterates the
+      // store snapshot, and the ack gate keeps an evicted id out of it.
+      for (const id of ids) jobRowsByJobId.delete(id)
+    },
     onSettled(job) {
       deps.notify(
         t(job.status === 'completed' ? 'jobs-toast-completed' : job.status === 'failed' ? 'jobs-toast-failed' : 'jobs-toast-killed', {
@@ -158,11 +165,6 @@ export function createJobProjection(
   const attach = (jobs: JobsRuntime | undefined, ownService?: (dispose: () => void) => void): void => {
     if (jobs === undefined) return
     detachActive?.()
-    // Reattaching the SAME registry (service-context remount) keeps the
-    // tracked history; a different registry instance is a new generation —
-    // drop the old cycle entirely so reused ids cannot alias old state.
-    // reset() itself stays delivery-silent here (the attachment token is
-    // still unpublished), so the ghost rows are dropped by hand.
     // Reattaching the SAME registry (service-context remount) keeps the
     // tracked history. A different registry instance is a new generation —
     // drop the old cycle entirely so reused ids cannot alias old state.
