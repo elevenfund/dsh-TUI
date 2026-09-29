@@ -148,8 +148,8 @@ console.log('--- Part A: fold row, narration binding, single-line, error, timing
       groupLine !== undefined && groupLine.includes('⏵ 并行读取两个配置'), groupLine ?? 'no group line')
     check('A3 组成员不再逐块渲染（cfg1.json 不在折叠屏上）',
       !ls.some(l => l.includes('cfg1.json')))
-    const bashLine = ls.find(l => l.includes('Bash') || l.includes('npm run build'))
-    check('A4 bash 块单行渲染（npm run build 标题在屏）', bashLine !== undefined, bashLine ?? 'no bash line')
+    const bashLine = ls.find(l => l.includes('跑一下构建'))
+    check('A4 bash 块单行渲染（narration 意图标题在屏，grok 式无裸工具名）', bashLine !== undefined, bashLine ?? 'no bash line')
     check('A5 narration 并入 bash 块标题（跑一下构建 同行）',
       bashLine !== undefined && bashLine.includes('跑一下构建'), bashLine ?? '')
     check('A6 块化单行折叠：bash result body 不渲染',
@@ -158,8 +158,8 @@ console.log('--- Part A: fold row, narration binding, single-line, error, timing
       ls.some(l => l.includes('broken.json')))
     check('A8 完成态耗时显示（· 4.2s 或 · 4s）',
       ls.some(l => /· ?4(\.2)?s/.test(l)), ls.find(l => /· ?\d/.test(l)) ?? 'no timing line')
-    check('A9 ⏵ 全部并入块标题（每条 ⏵ 行都含块上下文，无独立漂浮行）',
-      ls.filter(l => l.includes('⏵')).every(l => l.includes('Read') || l.includes('Bash')),
+    check('A9 ⏵ 全部并入块标题（⏵ 只出现在块行内，无独立漂浮行）',
+      ls.filter(l => l.includes('⏵')).every(l => l.includes('◆')),
       `lines=${JSON.stringify(ls.filter(l => l.includes('⏵')))}`)
   })
 }
@@ -205,7 +205,7 @@ console.log('--- Part C: running group — present tense + live timer ---')
       lines().find(l => l.includes('Reading')) ?? '')
     check('C3 running bash 块 live 计时在 header',
       await settled(() => {
-        const bash = lines().find(l => l.includes('Bash') || l.includes('npm run build'))
+        const bash = lines().find(l => l.includes('跑一下构建'))
         return bash !== undefined && /· ?\d+(\.\d+)?s/.test(bash)
       }), '')
   })

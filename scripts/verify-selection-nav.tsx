@@ -25,7 +25,7 @@ export {} // 模块边界：避免顶层 await/全局名与其他 verify 脚本�
 import { bootSelectionScene, markdownTurnRow, sleep, settled, FakeStdout, keySleep } from './lib/transcript-scene.mjs'
 
 const scene = await bootSelectionScene()
-const { stdin, channel, bump, check, finish, screenHas, findText, bgKey, fgKey, topOf, dimFg, defaultBg, plainFg, drained  } = scene
+const { stdin, channel, bump, check, finish, screenHas, findText, bgKey, fgKey, topOf, dimFg, defaultBg, plainFg, viewportLines, drained  } = scene
 
 // T1: 空闲 Tab 进入选择模式；PromptInput 挂起，打字不落地。
 stdin.write('\t')
@@ -35,12 +35,13 @@ await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
 check('T1 Tab 进入后打字失效',  await settled(() => !screenHas('zz')) )
 
 // T2: 进入即选中最后一个可选行——assistant 正文也可达（导航要能到最
-// 底部的输出）；视觉是 ● 点亮，不刷整行蓝底。
-const asstA = findText('●')
+// 底部的输出）；视觉是行首 ❯ 光标符（grok 式：文本行无 bullet，选中
+// 才有光标——user 行的 ❯ 是常驻的，所以断言找 ❯ 与 assistant 正文同行）。
+const asstCursor = viewportLines().some(line => line.includes('❯') && line.includes('assistant reply omega'))
 const bashA = findText('Bash(')
 check(
-  'T2 进入即选中末行 assistant 行（● 点亮、无整行背景）',
-  asstA !== null && fgKey(asstA.col, asstA.row) !== plainFg && bgKey(asstA.col, asstA.row) === defaultBg,
+  'T2 进入即选中末行 assistant 行（❯ 光标、无整行背景）',
+  asstCursor,
 )
 check('T2b tool 行保持无高亮', bashA !== null && bgKey(bashA.col, bashA.row) === defaultBg)
 

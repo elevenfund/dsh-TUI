@@ -6,7 +6,8 @@
  * 断言：
  *  1. 空 settled assistant 行被过滤——不出现孤立 ● 行（● 后无内容）；
  *  2. 前后的工具卡与真实正文不受影响；
- *  3. 空文本但 streaming 的 assistant 行保留（live dot 是“正在回答”信号）；
+ *  3. 空文本但 streaming 的 assistant 行保留（占位防跳动）但无 live dot
+ *     （grok 式：无内容即不可见，回答活动由底部状态行承载）；
  *  4. 落定翻转（streaming true→false 原地写、rows 身份不变）后过滤生效；
  *  5. 用户/通知等其他空文本行不受影响（kind 限定 assistant）。
  *
@@ -100,28 +101,27 @@ const inst = await render(
 {
   // 正向条件各自 settled；负向（孤立 ●/⏵ 不出现）在正向全部落定后的
   // 同帧同步判定——对空帧轮询「不存在」会立即真、等于没测。
-  check('工具卡正常渲染', await settled(() => screenLines().some(l => l.includes('Bash'))), '')
+  check('工具卡正常渲染（narration 意图标题，grok 式无裸工具名）', await settled(() => screenLines().some(l => l.includes('⏵ 正在跑测试'))), '')
   check('真实正文正常渲染', await settled(() => screenLines().join('\n').includes('REALBODY-END')), '')
   check('⏵ 行 + 正文混合行保留正文', await settled(() => screenLines().join('\n').includes('REALBODY2-END')), '')
-  check('空文本 streaming 行保留（live dot）', await settled(() => {
+  check('空文本 streaming 行无 live dot（grok 式：无内容即不可见，正文到达才渲染）', await settled(() => {
     const ls = screenLines()
-    const t = ls.findIndex(l => l.includes('Bash'))
-    return t >= 0 && ls.slice(t).some(l => l.includes('●'))
+    return loneDotLines(ls).length === 0 && ls.join('\n').includes('REALBODY-END')
   }), '')
   const lines = screenLines()
   const screen = lines.join('\n')
-  // bug 形状：工具卡【上方】的孤立 ●（空 settled assistant）。streaming
-  // 空行的 live dot 在工具卡下方，是设计行为，不算。
-  const toolRow = lines.findIndex(l => l.includes('Bash'))
+  // bug 形状：工具卡【上方】的孤立 ●（空 settled assistant）。assistant
+  // 行已无行首符号（grok 式），该形状在源头消失——保留防线断言。
+  const toolRow = lines.findIndex(l => l.includes('⏵ 正在跑测试'))
   const dotAboveTool = toolRow >= 0 && lines.slice(0, toolRow).some(l => /^●\s*$/.test(l))
-  check('空 settled assistant 行被过滤（工具卡上方无孤立 ●）', !dotAboveTool,
+  check('空 settled assistant 行被过滤（工具块上方无孤立 ●）', !dotAboveTool,
     `toolRow=${toolRow}`)
   // ⏵ 叙述行的归宿（tool-blocks 落地后）：绑定进其后第一个工具块的
-  // 标题行渲染（Bash 卡 header 的 dim 意图句），assistant 行本身渲染空、
-  // 被空行过滤收走——断言语义为「⏵ 文字出现在工具块行且上方无孤立 ●」。
+  // 标题行渲染（grok 式意图句，无裸工具名），assistant 行本身渲染空、
+  // 被空行过滤收走——断言语义为「⏵ 文字出现在工具块行（◆ 前缀）」。
   const toolBlockLine = lines.find(l => l.includes('⏵ 正在跑测试'))
-  const narrationInBlockTitle = toolBlockLine !== undefined && toolBlockLine.includes('Bash')
-  check('叙述-only 行并入工具块标题（⏵ 与 Bash 同行，上方无孤立 ●）', narrationInBlockTitle && !dotAboveTool,
+  const narrationInBlockTitle = toolBlockLine !== undefined && toolBlockLine.includes('◆')
+  check('叙述-only 行并入工具块标题（⏵ 在 ◆ 块行内，上方无孤立 ●）', narrationInBlockTitle && !dotAboveTool,
     `blockLine=${toolBlockLine ?? 'none'}`)
 }
 

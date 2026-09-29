@@ -487,9 +487,8 @@ await withTerminal(
     assert.equal(
       await settled(() => screen().includes('Image · only.png')),
       true,
-      'an image-only assistant is not filtered',
+      'an image-only assistant is not filtered (the label itself is the marker — assistant rows carry no bullet)',
     )
-    assert.match(screen(), /[●⏺]/u, 'the isolated image-only assistant keeps its marker')
   },
 )
 

@@ -1,6 +1,5 @@
 import React from 'react'
 import { Box, NoSelect, Text } from '../../ui.js'
-import { BLACK_CIRCLE } from '../../terminal-utils/figures.js'
 import { extractNarration } from '../../utils/narration.js'
 import { Markdown } from '../Markdown.js'
 
@@ -42,10 +41,10 @@ export function AssistantTextMessage({
     >
       <Box flexDirection="row">
         <NoSelect fromLeftEdge minWidth={2}>
-          {/* Selection cursor lights the bullet only — the row body stays
-              untinted (full-row highlight on plain text reads as an
-              accident, not a cursor affordance). */}
-          <Text color={isSelected ? 'suggestion' : 'text'}>{BLACK_CIRCLE}</Text>
+          {/* Grok keeps plain assistant text chrome-free (no bullet — bullets
+              belong to structured blocks). The selection cursor is the only
+              affordance: a prompt-like ❯ echoing the user-row marker. */}
+          {isSelected ? <Text color="suggestion">❯</Text> : <Text> </Text>}
         </NoSelect>
         <Box flexDirection="column">
           {narration !== undefined && <Text dimColor>{`⏵ ${narration}`}</Text>}

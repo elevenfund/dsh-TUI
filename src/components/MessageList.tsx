@@ -537,14 +537,18 @@ export function MessageList({
       : thinkingVisible
         ? sliced
         : sliced.filter(row => row.kind !== 'reasoning')
-    // Every rendered block gets a 1-row top margin except the
-    // first. Pre-pass over the FULL list so a windowed row keeps the exact
+    // Every rendered block gets a 1-row top margin except the first —
+    // EXCEPT between working-step rows (tool calls and their thoughts):
+    // grok stacks those with no blank row (the breathing room belongs to
+    // message boundaries, not between the steps of one turn).
+    // Pre-pass over the FULL list so a windowed row keeps the exact
     // spacing it would have in a fully-mounted list.
     const margins = new Map<number, boolean>()
     {
+      const stepKinds: ReadonlySet<ChatRow['kind']> = new Set(['tool', 'reasoning'])
       let prev: ChatRow['kind'] | undefined
       for (const row of out) {
-        margins.set(row.id, prev !== undefined)
+        margins.set(row.id, prev !== undefined && !(stepKinds.has(row.kind) && stepKinds.has(prev)))
         prev = row.kind
       }
     }
@@ -1614,8 +1618,12 @@ function TranscriptRow({
           ref={ref}
           onClick={foldClickable ? foldOnClick : undefined}
         >
+          {/* Column parity with the settled row (AssistantTextMessage):
+              streaming rows carry no bullet either — grok keeps plain text
+              chrome-free, and an empty streaming body then renders as a
+              silent spacer instead of a lone dangling dot. */}
           <Box minWidth={2}>
-            <Text color="text">●</Text>
+            <Text color="text"> </Text>
           </Box>
           <Box flexDirection="column">
             {/* The ⏵ narration line renders as the turn's dim step title

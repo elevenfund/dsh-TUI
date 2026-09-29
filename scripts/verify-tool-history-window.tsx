@@ -89,7 +89,10 @@ for (const fullscreen of [true, false]) {
       revision++
       app.rerender(<Harness />)
     }
-    assert.ok(await settled(() => latestFrame.includes(120) && latestFrame.length < 30),
+    // Compact block spacing (grok-style: no blank row between tool rows)
+    // fits more cards in the same window — the bound guards against a
+    // full-mount regression (120 cards), not an exact count.
+    assert.ok(await settled(() => latestFrame.includes(120) && latestFrame.length < 40),
       `${fullscreen ? 'fullscreen' : 'inline'}: historical failure pinned ${latestFrame.length} tool cards`)
     assert.ok(!latestFrame.includes(1), 'an offscreen footnote is not a force-mount request')
     if (!fullscreen) continue // Inline history uses the terminal's native scrollback.

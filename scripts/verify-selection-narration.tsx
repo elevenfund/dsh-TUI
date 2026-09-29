@@ -69,16 +69,17 @@ check('T38a 多段 ⏵ 步骤行全部渲染', await settled(() =>
   screenHas('⏵ count the log files') && screenHas('⏵ inspect the largest one') && screenHas('⏵ summarize the findings')))
 {
   const step1 = findText('⏵ count the log files')
-  const bash1 = findText('Bash')
+  const block1 = findText('◆')
   const body = findText('Second body note.')
   const step2 = findText('⏵ inspect the largest one')
   const step3 = findText('⏵ summarize the findings')
-  // 工具块化后（tool-blocks）：⏵ 意图并入其后工具块的标题行（Bash ⏵ …），
-  // 不再是独立步骤行+Name(args) 卡交错；未绑定的尾段 ⏵ 仍漂浮渲染。
+  // 工具块化后（tool-blocks）：⏵ 意图并入其后工具块的标题行（grok 式
+  // 意图句，无裸工具名），不再是独立步骤行+Name(args) 卡交错；未绑定
+  // 的尾段 ⏵ 仍漂浮渲染。块 1 行即 ◆ 所在行——step1 与它同行。
   check('T38b 意图并入块标题且顺序保持（块1→正文→块2→尾步）',
-    step1 !== null && bash1 !== null && body !== null && step2 !== null && step3 !== null
-    && step1.row === bash1.row && bash1.row < body.row && body.row < step2.row && step2.row < step3.row,
-    `rows: s1=${step1?.row} bash=${bash1?.row} body=${body?.row} s2=${step2?.row} s3=${step3?.row}`)
+    step1 !== null && block1 !== null && body !== null && step2 !== null && step3 !== null
+    && step1.row === block1.row && block1.row < body.row && body.row < step2.row && step2.row < step3.row,
+    `rows: s1=${step1?.row} block=${block1?.row} body=${body?.row} s2=${step2?.row} s3=${step3?.row}`)
 }
 stdin.write('\x1b') // Esc 退出选择模式
 await sleep(300) // 固定窗:pacing 等退出

@@ -736,12 +736,12 @@ export function AssistantToolUseMessage({
             toolName={tool.name}
           />
           {blockTitle !== undefined && !verbose && !isExpanded ? (
-            // Grok-style intent header: bold tool name + dim one-line intent
-            // (the bound `⏵` narration or presenter description). Expanding
+            // Grok-style intent header: the title IS the label (grok's
+            // execute block shows the description, never a bare tool name —
+            // the verb-category lives in the group suffix). Expanding
             // (verbose/click) falls back to the full Name(args) header shape.
             <Text>
-              <Text bold color={headerLit ? toolNameColor(tool.name) : undefined}>{name}</Text>
-              <Text dimColor={!headerLit}>{clipToWidth(blockTitle, headerTextBudget - stringWidth(name) - 1)}</Text>
+              <Text dimColor={!headerLit}>{clipToWidth(blockTitle, headerTextBudget)}</Text>
             </Text>
           ) : (
             <HeaderTitle name={name} title={headerTitle} isTerminal={headerIsTerminal} folded={foldedHeader} collapsed={!verbose} displayArgs={displayArgs} argsLanguage={argsLanguage} nameColor={toolNameColor(tool.name)} filePath={filePath} onOpenFile={onOpenFile} metaTooltip={() => toolCardMetaTooltip(tool, isRunning, isError)} headerTextBudget={headerTextBudget} lit={headerLit} />

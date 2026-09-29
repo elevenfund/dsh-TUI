@@ -310,8 +310,10 @@ export async function bootSelectionScene(rows = baseRows()) {
   check('S0 tool 头可见', bashPos0 !== null)
   const dimFg = bashPos0 ? fgKey(bashPos0.col, bashPos0.row) : ''
   const defaultBg = bashPos0 ? bgKey(bashPos0.col, bashPos0.row) : ''
-  // 未选中的 assistant 行首 ● 取 fg 基线（选中态点亮用）。
-  const asstPos0 = findText('●')
+  // 未选中的 assistant 行无行首符号（grok 式 chrome-free 文本行）——正文
+  // 首列取 fg 基线；选中态反馈是行首 ❯ 光标符（verify-selection-nav T2）。
+  // Long scenes pin the tail, so the assistant anchor switches to a filler row.
+  const asstPos0 = longScene ? findText('filler line') : findText('assistant reply omega')
   check('S0 assistant 行可见', asstPos0 !== null)
   const plainFg = asstPos0 ? fgKey(asstPos0.col, asstPos0.row) : ''
 
