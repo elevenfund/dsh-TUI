@@ -43,7 +43,7 @@ import createRenderer, { type Renderer } from './renderer.js';
 import { CellWidth, CharPool, cellAt, createScreen, HyperlinkPool, isEmptyCellAt, migrateScreenPools, StylePool } from './screen.js';
 import { applySearchHighlight } from './transcript-highlight.js';
 import { applySelectionOverlay, captureScrolledRows, clearSelection, createSelectionState, extendSelection, type FocusMove, findPlainTextUrlAt, getSelectedText, hasSelection, moveFocus, pickFollowForSelection, refreshSelectionFingerprint, type SelectionState, selectLineAt, selectWordAt, shiftAnchor, shiftSelection, shiftSelectionForFollow, shiftSelectionForViewportResize, shiftSelectionForViewportTranslation, startSelection, updateSelection } from './selection.js';
-import { isDecstbmSafe, SYNC_OUTPUT_SUPPORTED, serializeDiff, supportsDecrqmProbe, supportsExtendedKeys, supportsWin32InputMode, type Terminal, writeDiffToTerminal } from './terminal.js';
+import { isDecstbmSafe, SYNC_MARKERS_USELESS, serializeDiff, supportsDecrqmProbe, supportsExtendedKeys, supportsWin32InputMode, type Terminal, writeDiffToTerminal } from './terminal.js';
 import { CURSOR_HOME, cursorMove, cursorPosition, DISABLE_KITTY_KEYBOARD, DISABLE_MODIFY_OTHER_KEYS, DISABLE_WIN32_INPUT_MODE, ENABLE_KITTY_KEYBOARD, ENABLE_MODIFY_OTHER_KEYS, ENABLE_WIN32_INPUT_MODE, ERASE_SCREEN, ERASE_SCROLLBACK, SGR_RESET } from './termio/csi.js';
 import { DBP, DFE, DISABLE_MOUSE_TRACKING, ENABLE_MOUSE_TRACKING, ENTER_ALT_SCREEN, EXIT_ALT_SCREEN, SHOW_CURSOR } from './termio/dec.js';
 import { CLEAR_ITERM2_PROGRESS, CLEAR_TAB_STATUS, setClipboard, supportsTabStatus, wrapForMultiplexer } from './termio/osc.js';
@@ -1166,7 +1166,7 @@ export default class Ink {
       }
     }
     const tWrite = performance.now();
-    writeDiffToTerminal(this.terminal, optimized, this.altScreenActive && !SYNC_OUTPUT_SUPPORTED);
+    writeDiffToTerminal(this.terminal, optimized, this.altScreenActive && SYNC_MARKERS_USELESS);
     const writeMs = performance.now() - tWrite;
     // One frame reached the terminal. Components holding a widened mount
     // window until its content is actually flushed (MessageList's paint

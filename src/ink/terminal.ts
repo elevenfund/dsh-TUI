@@ -319,6 +319,19 @@ export function hasCursorUpViewportYankBug(): boolean {
 export const SYNC_OUTPUT_SUPPORTED = isSynchronizedOutputSupported()
 
 /**
+ * Whether DEC 2026 sync markers provably provide no benefit: tmux parses
+ * and proxies every byte but does not implement synchronized updates, so
+ * BSU/ESU only add parser work per frame. Every other terminal either
+ * implements DEC 2026 (atomic frames — the flicker fix for whole-viewport
+ * repaints like transcript expand/collapse) or safely ignores the unknown
+ * private mode per the xterm spec, so an unrecognized terminal must still
+ * GET the markers: env-detection misses real supporters over SSH
+ * (TERM_PROGRAM is not forwarded), and an unwrapped full-viewport repaint
+ * is exactly what reads as flicker.
+ */
+export const SYNC_MARKERS_USELESS = !!process.env.TMUX
+
+/**
  * Whether the DECSTBM hardware-scroll optimization may be used to paint
  * ScrollBox scrolls. Called once per frame — the same env reads as the
  * SYNC_OUTPUT_SUPPORTED gate, so the extra cost is a single comparison.
