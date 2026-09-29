@@ -66,15 +66,15 @@ export function selectionKeyIntent(
   if (!ctx.helpOpen && actionMatches('transcript', input, key)) return { type: 'toggle-transcript-mode' }
   if (key.upArrow || (plain && input === 'k')) return { type: 'move', delta: -1 }
   if (key.downArrow || (plain && input === 'j')) return { type: 'move', delta: 1 }
-  // l expands (vim right = open); only fold-bearing kinds respond, and only
+  // l / → expands (vim right = open); only fold-bearing kinds respond, and only
   // while the global expand state leaves room for a row-local registration.
-  if (plain && input === 'l' && ctx.selectedId !== null) {
+  if ((key.rightArrow || (plain && input === 'l')) && ctx.selectedId !== null) {
     const foldBearing = ctx.selectedKind === 'reasoning' || ctx.selectedKind === 'tool'
     if (foldBearing && !ctx.expanded && !ctx.expandedRows.has(ctx.selectedId)) return { type: 'expand' }
     return { type: 'none' }
   }
-  // h collapses (vim left = close); no seek — the shrink leaves the row put.
-  if (plain && input === 'h' && ctx.selectedId !== null) {
+  // h / ← collapses (vim left = close); no seek — the shrink leaves the row put.
+  if ((key.leftArrow || (plain && input === 'h')) && ctx.selectedId !== null) {
     const foldBearing = ctx.selectedKind === 'reasoning' || ctx.selectedKind === 'tool'
     if (foldBearing && ctx.expandedRows.has(ctx.selectedId)) return { type: 'collapse' }
     return { type: 'none' }
