@@ -455,15 +455,17 @@ const runningJob = {
 await withTerminal(
   () => React.createElement(JobCard, { job: runningJob, marginTopOnTurn: false }),
   async screen => {
-    // Static props: settle on every positive condition, then the snapshot
+    // Static props: settle on every positive conditions, then the snapshot
     // frame has fully painted them and the checks below are stable.
     await settled(() => {
       const s = screen()
-      return s.includes('pwsh-1') && s.includes('gh run watch 42') &&
+      return s.includes('gh run watch 42') &&
         s.includes('build step 1 ok') && s.includes('build step 2 ok')
     })
     const text = screen()
-    check('C1 运行卡头含 id/label', text.includes('pwsh-1') && text.includes('gh run watch 42'))
+    // grok bg_task shape: bold Task label + started verb + label; the job
+    // id/kind live in the /jobs panel, the live duration suffix ticks here.
+    check('C1 运行卡头含动词语义与 label', /已启动：|started: /.test(text) && text.includes('gh run watch 42'))
     check('C1 瀑布呈现镜像输出', text.includes('build step 1 ok') && text.includes('build step 2 ok'))
   },
 )
@@ -477,7 +479,7 @@ await withTerminal(
     // waterfall gutter) is stable on that same frame.
     await settled(() => {
       const s = screen()
-      return s.includes('pwsh-1') && s.includes('gh run watch 42')
+      return s.includes('gh run watch 42') && /已启动：|started: /.test(s)
     })
     const text = screen()
     check(
@@ -493,15 +495,17 @@ await withTerminal(
     marginTopOnTurn: false,
   }),
   async screen => {
-    // Positive anchor: settled card head with its exit detail has painted;
-    // the folded waterfall's absence is stable on that frame.
+    // Positive anchor: the settled card head has painted; the folded
+    // waterfall's absence is stable on that frame.
     await settled(() => {
       const s = screen()
-      return s.includes('pwsh-1') && s.includes('exit code: 0')
+      return s.includes('gh run watch 42') && /已完成（|completed in /.test(s)
     })
     const text = screen()
     check('C2 落定卡折叠（无瀑布行）', !text.includes('│ build step 1 ok'))
-    check('C2 落定卡头含 exit detail', text.includes('exit code: 0'))
+    // grok completed shape carries the duration in the verb phrase; the
+    // exit detail surfaces on failed/killed cards as a trailing parenthetical.
+    check('C2 落定卡头含 completed 动词', /已完成（|completed in /.test(text))
   },
 )
 await withTerminal(

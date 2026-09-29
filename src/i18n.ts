@@ -1150,6 +1150,12 @@ const dict = {
 
   // ── background jobs (ctx.jobs): JobCard / JobsPanel / status chip ─────
   'jobs-card-prefix': { zh: '任务：', en: 'job: ' },
+  'jobs-card-task': { zh: '任务', en: 'Task' },
+  'jobs-card-started': { zh: '已启动：', en: 'started: ' },
+  'jobs-card-stopping': { zh: '停止中：', en: 'stopping: ' },
+  'jobs-card-completed': { zh: '已完成（{duration}）：', en: 'completed in {duration}: ' },
+  'jobs-card-failed': { zh: '失败（{duration}）：', en: 'failed in {duration}: ' },
+  'jobs-card-killed': { zh: '已终止（{duration}）：', en: 'killed in {duration}: ' },
   'jobs-status-running': { zh: '运行中', en: 'running' },
   'jobs-status-stopping': { zh: '停止中', en: 'stopping' },
   'jobs-status-completed': { zh: '已完成', en: 'completed' },

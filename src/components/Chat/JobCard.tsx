@@ -82,15 +82,24 @@ export function JobCard({ job, marginTopOnTurn, onClick }: {
   const clickable = onClick !== undefined
   const rowWidth = Math.max(20, (columns ?? 80) - WATERFALL_GUTTER)
   const activity = settled ? [] : job.outputLines.slice(-WATERFALL_ROWS)
-  // A settled job's terminal detail ('exit code: 0') rides the header; a
-  // failed/killed one also keeps it as the explanatory tail line.
+  // A settled job's terminal detail ('exit code: 1') rides the failed/
+  // killed tail; a completed one has nothing left to explain.
   const headerDetail = job.detail !== undefined && job.detail !== '' ? job.detail : undefined
-  const headerName = `${t('jobs-card-prefix')}${job.id}`
   const duration = formatJobDuration(job)
-  const fixedHeader = [
-    info.glyph, headerName, '·', job.kind, '·', '', '·', duration,
-    ...(headerDetail === undefined ? [] : ['·', headerDetail]), '·', info.label,
-  ].join(' ')
+  // grok bg_task shape: "Task completed in 3s: <label>" — one bold "Task"
+  // label, a muted verb phrase carrying the duration, the label, and the
+  // exit detail as a trailing parenthetical. The live running card keeps
+  // its ticking "· 12s" suffix (dsh data-channel extra over grok's static
+  // started line). Job id and kind stay in the /jobs panel the card opens.
+  const verbKey =
+    job.status === 'completed' ? 'jobs-card-completed'
+      : job.status === 'failed' ? 'jobs-card-failed'
+        : job.status === 'killed' ? 'jobs-card-killed'
+          : job.status === 'stopping' ? 'jobs-card-stopping'
+            : 'jobs-card-started'
+  const verbText = settled ? t(verbKey, { duration }) : t(verbKey)
+  const exitDetail = settled && job.status !== 'completed' && headerDetail !== undefined ? ` (${headerDetail})` : ''
+  const fixedHeader = `${info.glyph} ${t('jobs-card-task')} ${verbText}${exitDetail}${settled ? '' : ` · ${duration}`}`
   const labelWidth = Math.max(0, (columns ?? 80) - stringWidth(fixedHeader))
 
   // 点击打开 /jobs 面板；hover 不刷整行背景（转录视觉保持安静），只把
@@ -109,17 +118,12 @@ export function JobCard({ job, marginTopOnTurn, onClick }: {
     <Box flexDirection="row" gap={1}>
       <Text color={hovered && clickable ? 'accent' : info.color}>{info.glyph}</Text>
       <Text bold color={hovered && clickable ? 'accent' : undefined}>
-        {headerName}
+        {t('jobs-card-task')}
       </Text>
-      <Text dimColor>·</Text>
-      <Text dimColor>{job.kind}</Text>
-      <Text dimColor>·</Text>
-      <Text>{clipLine(job.label, labelWidth)}</Text>
-      <Text dimColor>·</Text>
-      <Text dimColor>{duration}</Text>
-      {headerDetail !== undefined && <><Text dimColor>·</Text><Text dimColor>{headerDetail}</Text></>}
-      <Text dimColor>·</Text>
-      <Text color={info.color}>{info.label}</Text>
+      <Text dimColor>{verbText}</Text>
+      <Text dimColor>{clipLine(job.label, labelWidth)}</Text>
+      {exitDetail !== '' && <Text dimColor>{exitDetail}</Text>}
+      {!settled && <Text dimColor>{`· ${duration}`}</Text>}
     </Box>
     {!settled && activity.length > 0 && activity.map((line, index) => (
       // key 不含 time（同 SubagentMessage 的约定）：内容更新走 in-place
