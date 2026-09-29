@@ -708,6 +708,10 @@ const GROUPS = {
 // 斜杠命令描述 i18n 回归（issue #41）：/ 菜单与 ? 帮助菜单描述随
 // /lang 中英切换，外部命令查不到映射回退注册表原文，窄终端中文不劈字。
     ["verify-i18n-command-descriptions", ['node', '--import', 'tsx/esm', 'scripts/verify-i18n-command-descriptions.tsx']],
+// i18n 字典静态门禁（原 verify:build 专属，不在 cascade——jobs-card 单花括号
+// bug 因此漏过 cascade 全绿直达提交）：单花括号手误、双语占位符漂移、
+// 死 key、src 英文文案字面量四类静默失败，纯静态脚本归 t0。
+    ["verify-i18n", ['node', '--import', 'tsx/esm', 'scripts/verify-i18n.ts']],
 // /help 长命令面回归（issue #368）：80×24/80×18/60×18 均须保留提示，
 // ↑/↓、翻页、Home/End 与滚轮可达首尾且不滚动底层 transcript；关闭重开
 // 回顶，pending 预览只在 help 关闭后恢复，组合键不改写背后的 Chat 状态。

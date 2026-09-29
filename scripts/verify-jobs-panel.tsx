@@ -466,6 +466,9 @@ await withTerminal(
     // grok bg_task shape: bold Task label + started verb + label; the job
     // id/kind live in the /jobs panel, the live duration suffix ticks here.
     check('C1 运行卡头含动词语义与 label', /已启动：|started: /.test(text) && text.includes('gh run watch 42'))
+    // The live duration suffix must be a substituted number (startedAt 65s ago),
+    // not a literal {duration} — the single-brace bug verify-i18n now catches.
+    check('C1 运行卡 live 时长已插值', /· 1m[0-9]+s/.test(text), text.split('\n')[0] ?? '')
     check('C1 瀑布呈现镜像输出', text.includes('build step 1 ok') && text.includes('build step 2 ok'))
   },
 )
@@ -499,13 +502,14 @@ await withTerminal(
     // waterfall's absence is stable on that frame.
     await settled(() => {
       const s = screen()
-      return s.includes('gh run watch 42') && /已完成（|completed in /.test(s)
+      return s.includes('gh run watch 42') && /已完成（1m[0-9]+s）：|completed in 1m[0-9]+s: /.test(s)
     })
     const text = screen()
     check('C2 落定卡折叠（无瀑布行）', !text.includes('│ build step 1 ok'))
-    // grok completed shape carries the duration in the verb phrase; the
-    // exit detail surfaces on failed/killed cards as a trailing parenthetical.
-    check('C2 落定卡头含 completed 动词', /已完成（|completed in /.test(text))
+    // grok completed shape carries the SUBSTITUTED duration in the verb phrase
+    // (65s startedAt → 1mNs; a literal {duration} here is the single-brace bug);
+    // the exit detail surfaces on failed/killed cards as a trailing parenthetical.
+    check('C2 落定卡头含插值后的 completed 动词', /已完成（1m[0-9]+s）：|completed in 1m[0-9]+s: /.test(text))
   },
 )
 await withTerminal(
