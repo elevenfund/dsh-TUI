@@ -213,7 +213,15 @@ function fixture(jobs?: unknown, options: { throwOnEvent?: string; effectCleanup
       return () => { unsubscribes += 1 }
     },
   }
-  const { ctx, raw } = fixture(jobs)
+  const { ctx, raw, agent, listeners } = fixture(jobs)
+  // The store shadows un-acked registry rows (no ack = the model never saw
+  // the job). In production the `started background job <id>` ack text in a
+  // tool result drives store.onStarted; route the same event pair here so
+  // the attachment's list() promotes the fixture job into backgroundJobs
+  // through the production path instead of poking the store directly.
+  const route = listeners.get('session/event')!
+  route(agent.session, { type: 'tool/call', data: { callId: 'c-jobs-ack', name: 'bash', arguments: JSON.stringify({ command: 'before dispose', run_in_background: true }) }, time: 1 })
+  route(agent.session, { type: 'tool/result', data: { message: { source: { callId: 'c-jobs-ack' }, content: [{ type: 'text', text: 'started background job retained-job' }] } }, time: 2 })
   const unregister = registerTuiChannel(ctx, raw)
   const mount = mountChannelUi(ctx, raw, undefined, 'new')
   assert.equal(lists, 1)

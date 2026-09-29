@@ -347,9 +347,11 @@ const overview = () => pluginsInfoLines('', { grants, host })
 {
   const commands = readFileSync(join(root, 'src/commands.ts'), 'utf8')
   check1("LOCAL_COMMANDS carries 'plugins'", /\{ name: 'plugins', description: /.test(commands))
-  const chat = readFileSync(join(root, 'src/screens/Chat.tsx'), 'utf8')
-  check1("Chat.tsx dispatches case 'plugins' to channel.pluginsInfo(rawInput)",
-    chat.includes("case 'plugins':") && chat.includes('channel.pluginsInfo(rawInput)'))
+  // runCommand was extracted from Chat.tsx (4e868a0); the dispatch lives in
+  // screens/chat/run-command.tsx now.
+  const runCommand = readFileSync(join(root, 'src/screens/chat/run-command.tsx'), 'utf8')
+  check1("run-command.tsx dispatches case 'plugins' to channel.pluginsInfo(rawInput)",
+    runCommand.includes("case 'plugins':") && runCommand.includes('channel.pluginsInfo(rawInput)'))
   check1('channel interface declares pluginsInfo(args)', readFileSync(join(root, 'src/adapter/ports/channel-ui.ts'), 'utf8').includes('pluginsInfo(args: string): string[]'))
   // Reports were extracted from channel.ts. Exercise their live ctx lookup
   // instead of pinning an implementation location with root-source regexes.
