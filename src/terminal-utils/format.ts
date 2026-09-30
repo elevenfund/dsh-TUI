@@ -36,39 +36,17 @@ export function formatTokens(count: number): string {
 }
 
 /**
- * Format a duration in milliseconds as a compact `h`/`m`/`s` string
- * (e.g. `12s`, `3m 4s`, `1h 2m`).
- * Negative durations are clamped to zero; a zero duration renders as `0s`.
+ * Format a duration in milliseconds as a compact one-fact string:
+ * `3.2s` under a minute (one fraction digit — short steps keep their
+ * sub-second precision), `1m04s` under an hour, `1h02m` beyond. Minutes
+ * carry no fraction. Negative durations are clamped to zero.
  * @param durationMs - Duration in milliseconds.
- * @param options - `mostSignificantOnly` stops at the first non-zero unit
- *                  (e.g. `1h`, `3m`) instead of emitting every unit.
- * @returns The space-joined duration string.
+ * @returns The compact duration string.
  */
-export function formatDuration(
-  durationMs: number,
-  options: { mostSignificantOnly?: boolean } = {},
-): string {
-  const { mostSignificantOnly = false } = options
-
-  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-
-  const parts: string[] = []
-  let stopAfterFirst = false
-
-  if (hours > 0) {
-    parts.push(`${hours}h`)
-    stopAfterFirst = mostSignificantOnly
-  }
-  if (!stopAfterFirst && minutes > 0) {
-    parts.push(`${minutes}m`)
-    stopAfterFirst = mostSignificantOnly && hours === 0
-  }
-  if (!stopAfterFirst && (seconds > 0 || parts.length === 0)) {
-    parts.push(`${seconds}s`)
-  }
-
-  return parts.join(' ')
+export function formatDuration(durationMs: number): string {
+  const clamped = Math.max(0, durationMs)
+  if (clamped < 60_000) return `${(Math.floor(clamped / 100) / 10).toFixed(1)}s`
+  const minutes = Math.floor(clamped / 60_000)
+  if (minutes < 60) return `${minutes}m${String(Math.floor((clamped % 60_000) / 1000)).padStart(2, '0')}s`
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}m`
 }

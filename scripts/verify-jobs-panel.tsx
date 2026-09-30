@@ -135,7 +135,7 @@ console.log('--- A: BackgroundJobStore units ---')
 
   check(
     'A6 时长格式化',
-    formatJobDuration({ startedAt: 0, finishedAt: 3000 }) === '3s'
+    formatJobDuration({ startedAt: 0, finishedAt: 3000 }) === '3.0s'
       && formatJobDuration({ startedAt: 0, finishedAt: 192_000 }) === '3m12s'
       && formatJobDuration({ startedAt: 0, finishedAt: 3_720_000 }) === '1h02m',
     `${formatJobDuration({ startedAt: 0, finishedAt: 192_000 })}`,

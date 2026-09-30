@@ -9,16 +9,9 @@ import { isPlainReturnInput } from '../utils/modifiers.js'
 import { toolNameColor } from './messages/AssistantToolUseMessage.js'
 import { getCliHighlightPromise } from '../terminal-utils/cliHighlight.js'
 import { isMinimalMode } from '../minimalMode.js'
+import { formatDuration } from '../terminal-utils/format.js'
 import type { Theme } from '../theme.js'
 import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  const min = Math.floor(ms / 60000)
-  const sec = Math.floor((ms % 60000) / 1000)
-  return `${min}m${sec}s`
-}
 
 function formatTimestamp(ts: number): string {
   return new Date(ts).toLocaleTimeString()

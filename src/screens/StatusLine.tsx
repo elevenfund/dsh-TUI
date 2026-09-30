@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Text, useTerminalSize } from '../ui.js'
 import { formatTokens } from '../terminal-utils/format.js'
+import { formatDuration } from '../terminal-utils/format.js'
 import { t } from '../i18n.js'
 import { formatContextUsage, DEFAULT_STATUS_BAR, normalizeStatusBar, type StatusBarConfig } from '../tuiDisplayPrefs.js'
 import { estimateSessionCostCny, estimateSessionCostSplitCny, isDeepSeekOfficialProvider, isPeakHour } from '../deepseekPricing.js'
@@ -21,8 +22,7 @@ const NO_SUBAGENTS: readonly SubagentState[] = []
  *  time instead of ticking. */
 function formatSubagentDuration(sub: SubagentState): string {
   const ms = (sub.completedAt ?? Date.now()) - sub.startedAt
-  const seconds = Math.floor(ms / 1000)
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`
+  return formatDuration(ms)
 }
 import type { ChannelUi as Channel } from '../adapter/channel/ui-policy.js'
 import type { SelectionSnapshot } from '../dsh-adapter/ide-channel.js'

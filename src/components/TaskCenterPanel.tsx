@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Text, useInput, ScrollBox, type ScrollBoxHandle, useTerminalSize, useAnimationFrame } from '../ui.js'
 import { formatJobDuration, type BackgroundJobState } from '../dsh-adapter/jobs.js'
+import { formatDuration } from '../terminal-utils/format.js'
 import type { SubagentState } from '../dsh-adapter/subagents.js'
 import { t } from '../i18n.js'
 import { Divider } from './design-system/Divider.js'
@@ -53,8 +54,7 @@ function subagentStatusInfo(sub: SubagentState): { glyph: string; color: 'warnin
 function formatSubagentDuration(sub: SubagentState): string {
   const running = sub.status === 'running' || sub.status === 'starting'
   const ms = running ? Date.now() - sub.startedAt : (sub.completedAt !== undefined ? sub.completedAt - sub.startedAt : 0)
-  const seconds = Math.floor(ms / 1000)
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`
+  return formatDuration(ms)
 }
 
 function subagentTokens(sub: SubagentState): number {

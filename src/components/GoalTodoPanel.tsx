@@ -5,6 +5,7 @@ import type { ChannelGoal, TodoPanelItem } from '../dsh-adapter/channel.js'
 import { t } from '../i18n.js'
 import { modLabel } from '../utils/modifiers.js'
 import { BLACK_CIRCLE } from '../terminal-utils/figures.js'
+import { formatDuration } from '../terminal-utils/format.js'
 
 /** Maximum todo rows shown before the overflow line. */
 const MAX_TODOS = 8
@@ -31,11 +32,7 @@ function phaseColor(phase: ChannelGoal['phase']): 'success' | 'warning' | 'error
   return undefined
 }
 
-/** `47s` under a minute, `3m12s` after — same shape as the subagent cards. */
-function formatDuration(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000))
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`
-}
+/** Duration shape comes from the shared formatDuration (subagent cards, tool cards). */
 
 /**
  * Compact goal chip for the status footer: phase glyph + rounds, colored by

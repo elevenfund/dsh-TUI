@@ -7,6 +7,7 @@
  */
 
 import { stringWidth } from '../ink/stringWidth.js'
+import { formatDuration as sharedFormatDuration } from '../terminal-utils/format.js'
 import type { Theme } from '../theme.js'
 import type { TrajKind } from '../dsh-adapter/types.js'
 
@@ -49,15 +50,9 @@ export function formatClock(time: number): string {
  * never reflows when a fast call is followed by a slow one.
  */
 export function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '—'
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
-  if (ms < 3_600_000) {
-    const minutes = Math.floor(ms / 60_000)
-    return `${minutes}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s`
-  }
-  const hours = Math.floor(ms / 3_600_000)
-  return `${hours}h${String(Math.floor((ms % 3_600_000) / 60_000)).padStart(2, '0')}m`
+  // Single formatting source: terminal-utils/formatDuration. The wrapper
+  // keeps this domain's `—` for unreadable (NaN/negative) readings.
+  return Number.isFinite(ms) && ms >= 0 ? sharedFormatDuration(ms) : '—'
 }
 
 /** Compact token count: `840` / `12.4k` / `1.1M`. */

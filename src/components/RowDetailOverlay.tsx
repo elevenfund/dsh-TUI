@@ -3,6 +3,7 @@ import { Box, ScrollBox, Text, useTerminalSize, type ScrollBoxHandle } from '../
 import type { ChatRow } from '../adapter/ports/channel-view.js'
 import { truncateToWidth } from '../ink/truncateToWidth.js'
 import { t } from '../i18n.js'
+import { formatDuration } from '../terminal-utils/format.js'
 import { Markdown } from './Markdown.js'
 import { toolDisplayName } from './messages/toolNames.js'
 
@@ -24,8 +25,6 @@ function summarizeArgs(argsText: string): string {
   }
   return argsText
 }
-
-const secondsOf = (ms: number): string => `${(Math.round(ms / 100) / 10).toFixed(1)}s`
 
 /**
  * One Text per source line. Ink's Text does not break on `\n` — folding a
@@ -81,9 +80,9 @@ export function RowDetailOverlay({
   const tool = row.kind === 'tool' ? row.tool : undefined
   const isError = tool?.status === 'error'
   const title = tool
-    ? `${toolDisplayName(tool.name)}(${truncateToWidth(summarizeArgs(tool.argsText), 48)}) · ${isError ? t('row-detail-error') : secondsOf(tool.durationMs ?? 0)}`
+    ? `${toolDisplayName(tool.name)}(${truncateToWidth(summarizeArgs(tool.argsText), 48)}) · ${isError ? t('row-detail-error') : formatDuration(tool.durationMs ?? 0)}`
     : row.kind === 'reasoning'
-      ? `${t('row-detail-thinking')} · ${secondsOf(row.durationMs ?? 0)}`
+      ? `${t('row-detail-thinking')} · ${formatDuration(row.durationMs ?? 0)}`
       : row.kind === 'assistant'
         ? t('row-detail-assistant')
         : t('row-detail-user')

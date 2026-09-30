@@ -215,7 +215,7 @@ check('tool card rendered', contentLines.some(l => l.includes('Bash') && l.inclu
 // 5. Tool card carries the settled duration on the header.
 check(
   'tool duration on header',
-  contentLines.some(l => l.includes('Bash') && l.includes('· 8s')),
+  contentLines.some(l => l.includes('Bash') && l.includes('· 8.0s')),
   'Bash(...) · 8s',
 )
 

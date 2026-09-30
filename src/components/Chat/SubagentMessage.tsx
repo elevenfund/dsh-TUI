@@ -5,6 +5,7 @@ import type { Theme } from '../../theme.js'
 import { t } from '../../i18n.js'
 import { toolNameColor } from '../messages/AssistantToolUseMessage.js'
 import { stringWidth } from '../../ink/stringWidth.js'
+import { formatDuration } from '../../terminal-utils/format.js'
 import { isMinimalMode } from '../../minimalMode.js'
 import { MULTIPLICATION_X } from '../../terminal-utils/figures.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
@@ -14,10 +15,6 @@ const WATERFALL_ROWS = 3
 /** Card left padding + the `│ ` gutter prefix. */
 const WATERFALL_GUTTER = 4
 
-function duration(ms = 0): string {
-  const seconds = Math.floor(ms / 1000)
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`
-}
 function tokens(row: SubagentRow): string {
   const total = row.tokens?.total ?? ((row.tokens?.input ?? 0) + (row.tokens?.output ?? 0) || 0)
   return total > 0 ? `${total} tok` : '- tok'
@@ -97,7 +94,7 @@ export function SubagentMessage({ subagent, marginTopOnTurn, onClick }: {
       <Text bold color={hovered && clickable ? 'accent' : undefined}>{`${t('subagent-card-prefix')}${subagent.description}`}</Text>
       <Text dimColor>·</Text><Text>{subagent.model ?? subagent.provider ?? 'default'}</Text>
       {subagent.effort && <><Text dimColor>·</Text><Text dimColor>{subagent.effort}</Text></>}
-      <Text dimColor>·</Text><Text dimColor>{duration(elapsed)}</Text>
+      <Text dimColor>·</Text><Text dimColor>{formatDuration(elapsed ?? 0)}</Text>
       <Text dimColor>·</Text><Text dimColor>{tokens(subagent)}</Text>
       <Text dimColor>·</Text><Text dimColor>{subagent.toolCalls.length} tools</Text>
       <Text dimColor>·</Text><Text color={info.color}>{info.label}</Text>

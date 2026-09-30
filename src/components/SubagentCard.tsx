@@ -4,12 +4,8 @@ import type { SubagentState } from '../dsh-adapter/subagents.js'
 import { t } from '../i18n.js'
 import { isMinimalMode } from '../minimalMode.js'
 import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
+import { formatDuration } from '../terminal-utils/format.js'
 import type { ClickEvent } from '../ink/events/click-event.js'
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000)
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`
-}
 
 export interface SubagentCardProps { subagent: SubagentState; focused?: boolean; onClick?(event: ClickEvent): void }
 

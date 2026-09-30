@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Text, useAnimationFrame } from '../ui.js'
 import { formatJobDuration, type BackgroundJobState } from '../dsh-adapter/jobs.js'
+import { formatDuration } from '../terminal-utils/format.js'
 import type { SubagentState } from '../dsh-adapter/subagents.js'
 import { t } from '../i18n.js'
 import { stringWidth } from '../ink/stringWidth.js'
@@ -72,8 +73,7 @@ export function AgentStrip({ jobs, subagents, onOpenCenter, onOpenSubagent }: Ag
     })
   }
   const pushSubagent = (sub: SubagentState): void => {
-    const elapsed = Math.max(0, Math.floor((Date.now() - sub.startedAt) / 1000))
-    const duration = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m${elapsed % 60}s`
+    const duration = formatDuration(Math.max(0, Date.now() - sub.startedAt))
     const live = sub.output[sub.output.length - 1]
     lines.push({
       key: `sub-${sub.agentId}`,
