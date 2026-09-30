@@ -8,7 +8,7 @@ import { ExitButton } from './SubagentDashboard.js'
 import { isPlainReturnInput } from '../utils/modifiers.js'
 import { isMinimalMode } from '../minimalMode.js'
 import { stringWidth } from '../ink/stringWidth.js'
-import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
+import { MULTIPLICATION_X, BLACK_CIRCLE } from '../terminal-utils/figures.js'
 import { clipLineToWidth } from '../ink/truncateToWidth.js'
 
 export interface JobsPanelProps {
@@ -22,15 +22,15 @@ function statusInfo(status: BackgroundJobStatus): { glyph: string; label: string
   const minimal = isMinimalMode()
   switch (status) {
     case 'completed':
-      return { glyph: minimal ? '✓' : '●', label: t('jobs-status-completed'), color: minimal ? undefined : 'success' }
+      return { glyph: minimal ? '✓' : BLACK_CIRCLE, label: t('jobs-status-completed'), color: minimal ? undefined : 'success' }
     case 'failed':
-      return { glyph: minimal ? MULTIPLICATION_X : '●', label: t('jobs-status-failed'), color: minimal ? undefined : 'error' }
+      return { glyph: minimal ? MULTIPLICATION_X : BLACK_CIRCLE, label: t('jobs-status-failed'), color: minimal ? undefined : 'error' }
     case 'killed':
-      return { glyph: minimal ? MULTIPLICATION_X : '●', label: t('jobs-status-killed'), color: minimal ? undefined : 'error' }
+      return { glyph: minimal ? MULTIPLICATION_X : BLACK_CIRCLE, label: t('jobs-status-killed'), color: minimal ? undefined : 'error' }
     case 'stopping':
-      return { glyph: minimal ? '·' : '●', label: t('jobs-status-stopping'), color: minimal ? undefined : 'warning' }
+      return { glyph: minimal ? '·' : BLACK_CIRCLE, label: t('jobs-status-stopping'), color: minimal ? undefined : 'warning' }
     default:
-      return { glyph: minimal ? '·' : '●', label: t('jobs-status-running'), color: minimal ? undefined : 'warning' }
+      return { glyph: minimal ? '·' : BLACK_CIRCLE, label: t('jobs-status-running'), color: minimal ? undefined : 'warning' }
   }
 }
 
