@@ -36,19 +36,23 @@ type Entry =
   | { section: 'subagents'; subagent: SubagentState }
 
 function jobStatusInfo(status: BackgroundJobState['status']): { glyph: string; color: 'warning' | 'success' | 'error' | undefined; label: string } {
-  if (status === 'completed') return { glyph: '✓', color: 'success', label: t('jobs-status-completed') }
-  if (status === 'failed') return { glyph: MULTIPLICATION_X, color: 'error', label: t('jobs-status-failed') }
-  if (status === 'killed') return { glyph: MULTIPLICATION_X, color: 'error', label: t('jobs-status-killed') }
-  if (status === 'stopping') return { glyph: '·', color: 'warning', label: t('jobs-status-stopping') }
-  return { glyph: BLACK_CIRCLE, color: 'warning', label: t('jobs-status-running') }
+  // Minimal mode drops the color (JobsPanel symmetry): the glyphs alone
+  // carry the state, so a monochrome terminal reads the same panel.
+  const minimal = isMinimalMode()
+  if (status === 'completed') return { glyph: '✓', color: minimal ? undefined : 'success', label: t('jobs-status-completed') }
+  if (status === 'failed') return { glyph: MULTIPLICATION_X, color: minimal ? undefined : 'error', label: t('jobs-status-failed') }
+  if (status === 'killed') return { glyph: MULTIPLICATION_X, color: minimal ? undefined : 'error', label: t('jobs-status-killed') }
+  if (status === 'stopping') return { glyph: '·', color: minimal ? undefined : 'warning', label: t('jobs-status-stopping') }
+  return { glyph: minimal ? '·' : BLACK_CIRCLE, color: minimal ? undefined : 'warning', label: t('jobs-status-running') }
 }
 
 function subagentStatusInfo(sub: SubagentState): { glyph: string; color: 'warning' | 'success' | 'error' | undefined; label: string } {
+  const minimal = isMinimalMode()
   const running = sub.status === 'running' || sub.status === 'starting'
-  if (running) return { glyph: BLACK_CIRCLE, color: 'warning', label: t('subagent-status-running') }
+  if (running) return { glyph: minimal ? '·' : BLACK_CIRCLE, color: minimal ? undefined : 'warning', label: t('subagent-status-running') }
   if (sub.status === 'unknown') return { glyph: '○', color: undefined, label: t('subagent-status-unknown') }
-  if (sub.status === 'failed' || sub.status === 'cancelled') return { glyph: MULTIPLICATION_X, color: 'error', label: t('subagent-status-failed') }
-  return { glyph: '✓', color: 'success', label: t('subagent-status-completed') }
+  if (sub.status === 'failed' || sub.status === 'cancelled') return { glyph: MULTIPLICATION_X, color: minimal ? undefined : 'error', label: t('subagent-status-failed') }
+  return { glyph: '✓', color: minimal ? undefined : 'success', label: t('subagent-status-completed') }
 }
 
 function formatSubagentDuration(sub: SubagentState): string {
