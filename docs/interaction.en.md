@@ -10,14 +10,14 @@
 | `Tab` | Complete a `/` command or `@` file; while the model is working, queue non-empty input as a post-turn follow-up |
 | `Ctrl+Enter` | Interrupt the running turn and process the input immediately |
 | `Shift+Enter` / `Ctrl+J` | Insert a newline at the caret; `Ctrl+J` (LF) is the fallback when the terminal cannot report the Shift modifier; macOS Terminal.app uses `Option+Enter` |
-| `Shift+Tab` | Cycle the configured session modes (default: default → plan → full-access) |
+| `Shift+Tab` | Cycle the configured session modes (default: default → plan → full-access); third-party permission presets available at runtime append to the end of the cycle in registry order — `custom`/`status`, canonical presets, duplicate identities, and unsafe tokens never join |
 | `Alt/Option+Up` | Pull the latest undelivered message back into the editor |
 | `Up/Down` | Select menu items; in ordinary input, browse history or move through multiline text |
 | `Ctrl+V` / `Alt+V` | Insert clipboard text or files; images are sent as durable attachments. Use `Alt+V` when the terminal intercepts `Ctrl+V` |
 | `Alt+G` | Edit the current input in an external editor (`$VISUAL` → `$EDITOR`); saving and quitting fills it back, `:cq`/non-zero exit keeps the draft; with neither variable set the TUI asks you to configure one (no `vi` fallback) (was `Ctrl+G`, which now opens the task center) |
 | `Ctrl+G` | Open the **task center**: background tasks and subagents in one classified panel (dedicated section below) |
 | `Ctrl+Shift+E` | Expand the fullscreen draft editor (or click the `⛶` affordance at the end of the input row): line numbers + current-line highlight + live line/char stats<br>`Enter` inserts a newline, `Ctrl+Enter` or the Send button sends, `Esc` or the Collapse button keeps the draft and returns<br>wheel-scrolls freely; click/drag/double-click selection work as in the inline prompt; remappable via `/settings` |
-| `Esc` | Ladder: close help → close the image preview → close the command menu → close the file menu (only the current `@` token)<br>→ **with a selection in the prompt input: only clear it (text untouched)** → interrupt the turn and redeliver pending messages → clear non-empty input → double-tap on empty input = rewind<br>in fullscreen, an active mouse selection is cleared first (not copied) |
+| `Esc` | Two levels, one step per press. Level 1: close the topmost overlay (help → image preview → command menu → file menu, only the current `@` token) → leave selection mode (draft untouched) → interrupt a running turn (pending messages are redelivered right after the interrupt). Level 2 (idle, no overlay): **with a selection in the prompt input, only clear it (text untouched)** → clear non-empty input (an oversized draft folds into a block first) → a second press within 3s on empty input = rewind<br>in fullscreen, an active mouse selection is cleared first (not copied) |
 | `Esc` / `Ctrl+C` / `Enter` while an image preview is open | Close the preview and restore the surface underneath; other keys are not passed through |
 | `Left` / `Right` in the image modal | Previous / next image, no wrapping; caret peeks keep arrows with the prompt |
 | `←` (empty input) | Background this session and open the session-management screen (same as `/bg`) |
@@ -70,6 +70,15 @@ fold are remappable in `/settings` → `dsh-tui` →
   inline, accessibility, and multiplexer sessions).
 - Plugins provide the keyboard path for the same action through a slash command or `tuiShortcuts`.
 - A refused rich registration returns `undefined`; an admitted one returns a disposer that removes both the view and its Cordis effect.
+
+## Layered semantics of h/l and the arrow keys
+
+The meaning of `h`/`l` (and `←`/`→`) layers with the surface that owns the keyboard; the direction stays constant: `l` = expand / enter / right, `h` = collapse / back / left.
+
+- **Message browsing (selection mode)**: `l`/`→` expands and `h`/`←` collapses the cursor row's fold — only thinking and tool rows have one; replies and user messages are no-ops. Expanding pins the row head to the viewport top; collapsing leaves the row put. Row-to-row navigation is `j`/`k` — `h`/`l` never move the cursor.
+- **Inside detail overlays**: the selection-mode detail card is a purely vertical scroll surface — `h`/`l` and `←`/`→` do nothing there (scrolling belongs to `j`/`k`, half pages to `u`/`d`, either end to `g`/`G`). The subagent transcript detail restores the fold meaning — `l`/`h` expand / collapse the latest thinking row; the subagent detail scene and the image preview use `←`/`→` for paging / switching images.
+- **Fold-group expand/collapse**: tool cards and thinking folds in the transcript read one row-level expansion state — clicking a card face, `l`/`h` in selection mode, and the `Ctrl+O` global toggle all write it; the direction is always `l` expand, `h` collapse.
+- **Other surfaces**: in the prompt `←`/`→` (vim NORMAL `h`/`l`) move the caret; session management uses `h`/`l` to switch columns; `/tree` scrolls half a page; the trajectory scene switches views with `h`. While a filter or query is live, these keys go back to typing.
 
 ## Editing keys
 
@@ -191,8 +200,17 @@ Click a staged `[Image #N]` token or a transcript thumbnail to open one shared, 
 
 - Esc or a click outside the card dismisses the preview until the caret leaves and returns; a click on the token always shows it.
 - The prompt, status rows and sticky header stay visible.
-- Open original opens the unchanged bytes in the system viewer and preserves colors and animation.
+- The title reads `Image #N — format · WxH · size · filename`.
+- The bottom row shows the source path for a staged image (`open original: …`, head-and-tail kept with the middle elided when long); historical images show the filename.
+- Open original opens the unchanged bytes in the system viewer and preserves colors and animation; the original is exported only on click, into a private `dsh-tui-original-*` system temp directory that survives TUI exit for external viewers and is removable by the usual temp-file cleanup.
 - Without Kitty/Sixel graphics, the preview falls back to a metadata-only card; narrow terminals get the same.
+- A stale `[Image #N]` (over 128 staged images, or after a session switch) reports a clear warning when clicked, sent, or used as a slash-command argument.
+
+### Thumbnails and fallback
+
+- After sending, user images reproject into the transcript from the persisted session events; assistant/tool results carrying image blocks take the same preview path.
+- Kitty graphics or Sixel render thumbnails; everything else (inline, accessibility, multiplexers, or a failed read) shows the text fallback.
+- Switching or resuming sessions never depends on the original local paths.
 
 ### Zoom, pan, and switching
 
@@ -252,8 +270,8 @@ brings it back.
 
 | Key | Action |
 | --- | --- |
-| `←` `→` | Choose the column that owns the keyboard (rail / sessions); exactly one `❯` is on screen |
-| `↑` `↓` / `PgUp` `PgDn` / wheel | Move in the rail; move in the session list (row 0 is the new-session card) |
+| `←` `→` / `h` `l` | Choose the column that owns the keyboard (rail / sessions); exactly one `❯` is on screen |
+| `↑` `↓` / `k` `j` / `PgUp` `PgDn` / wheel | Move in the rail; move in the session list (row 0 is the new-session card) |
 | Type | Filter the selected workspace's sessions live (title, directory, branch, model) |
 | `Enter` | Sessions: enter the row under the cursor (row 0 = start a session in this workspace). Rail: open that workspace's action menu |
 | `Ctrl+Enter` | Start a session in the workspace under the cursor (either column) |
@@ -262,6 +280,8 @@ brings it back.
 | `Ctrl+L` | Re-read the workspace registry and the session listing |
 | `Shift+Tab` | Rail: open the action menu of the workspace under the cursor |
 | `Esc` | Dismiss a notice → clear the filter → leave the screen |
+
+The vim keys `h`/`j`/`k`/`l` only work while the filter is empty — mid-filter they are ordinary typed characters.
 
 The rail's menu has four entries:
 
@@ -391,6 +411,8 @@ In the detail scene `←/→` page through Summary / Output / Tools (the output 
 | Key | Action |
 | --- | --- |
 | `↑` / `↓` / `k` / `j` | Move the focus across BOTH sections (vim keys) |
+| `g` / `G` | Jump to the first / last task row |
+| `PgUp` / `PgDn` | Page the focus by half a viewport |
 | `Enter` | Open the subagent's **full conversation transcript** (user bubbles, markdown replies, folded reasoning toggled with `l/h`, tool cards — same rendering semantics as the main chat; a streaming child refreshes live with tail-follow; `↑/↓/j/k` scroll, `g`/`G` top/bottom, `Ctrl+F/B` (plus `PageUp/PageDown`, `u/d`) half-page) |
 | `x` | Stop the focused running row: kill a job (`job_kill`), interrupt a running subagent (stops the current turn) |
 | `d` | Drop the focused settled subagent from the list (persisted preference — restarts and log replay do not resurrect it; stop it first; the transcript card in the main conversation stays) |
@@ -603,13 +625,14 @@ The command menu merges local commands with the DSH command registry. Type `/` t
 - `/rewind` — time travel, same as double-`Esc` on an empty input.
 - `/tree` — session family tree: every fork branch stitched together; hover previews a node,
   click opens a rewind / fork-here / adopt-branch menu. Vim keys in the list: `j/k` move,
-  `h/l` half-page scroll, `g/G` top/bottom; node menus take `j/k` too.
+  `h/l` (plus `←`/`→`, `PgUp`/`PgDn`) half-page scroll; `Ctrl+F` forks here, `Ctrl+B`
+  adopts a branch; node menus take `j/k` plus first-letter jumps.
 - `/fork` — copy the current session into a resumable twin; the original is untouched.
 
 **Status**
 
 - `/context`, `/status`, `/cost`, `/balance` — official DeepSeek balance: summary row + hover details, click to refresh.
-- `/config`, `/doctor`, `/init`, `/agents`, `/jobs` — background jobs panel: status/elapsed/exit code, `j/k` move, `x` stops.
+- `/config`, `/doctor`, `/init`, `/agents`, `/jobs` — background jobs panel: status/elapsed/exit code; `j/k` (or `↑/↓`) move, `g/G` jump to either end, `PgUp/PgDn` page, `x` stops.
 - `/settings`.
 
 **Model and display**
@@ -689,3 +712,26 @@ Additional forms:
 `/connect` and `/hooks` are currently compatibility placeholders.
 
 - When the DSH composition has no matching capability, each command explains that explicitly rather than silently doing nothing.
+
+## External injection channel (editor integration)
+
+A running session opens one **local injection channel exclusive to that session**, for editor plugins (such as `dsh.nvim`) to push context into the prompt.
+
+- It is the counterpart of OpenCode's `POST /tui/publish`.
+- But it rides a local socket instead of an HTTP port: no port allocation, no auth surface.
+- The endpoint is cleaned up automatically when the session exits.
+
+- **Transport**: Unix domain socket `~/.dsh-tui/inject/<sessionId>.sock`
+  (a named pipe `\\.\pipe\dsh-tui-inject-<sessionId>` on Windows).
+- **Discovery**: `~/.dsh-tui/inject/servers.json` lists every live session
+  (`pid`, `sessionId`, `cwd`, `socketPath`); clients match a project by `cwd`
+  and pick the target session, and the record is removed when the session exits.
+- **Protocol**: newline-delimited JSON, one message per line:
+  `{"type":"prompt.append","text":"@src/foo.ts "}` appends text to the prompt;
+  `{"type":"command.execute","command":"prompt.submit"}` submits the current
+  input. Appended text that ends with a space (OpenCode convention) stays
+  unsubmitted for further editing.
+- **Wiring**: appends reuse the prompt's `PromptController.append`, submissions
+  go through `channel.submit` (while working they land in the inbox and are
+  processed after the turn). See `src/dsh-adapter/inject-channel.ts`; the
+  regression gate is `scripts/verify-inject-channel.mjs`.
