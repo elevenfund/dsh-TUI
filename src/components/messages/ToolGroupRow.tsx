@@ -36,7 +36,7 @@ function clipToWidth(text: string, width: number): string {
 /**
  * The verb-group fold row (grok "Read 4 files"): one line standing in for a
  * run of consecutive groupable tool calls. The label aggregates per-verb
- * counts in the right tense; a bound `⏵` narration becomes the row's intent
+ * counts in the right tense; a bound narration becomes the row's intent
  * title with the count label as its dim suffix. A running member pulses the
  * diamond and drives a live timer; clicking unfolds the run member-by-member.
  */
@@ -53,7 +53,10 @@ export function ToolGroupRow({ group, marginTopOnTurn, isSelected = false, onCli
   // Budget: diamond(2) + gaps + timer + selection marker leave this much for
   // the title line at common widths; the clip keeps CJK-safe truncation.
   const titleBudget = Math.max(8, columns - (elapsed !== undefined ? 14 : 4))
-  const title = group.narration !== undefined ? `⏵ ${group.narration}` : group.label
+  // The narration title carries no marker glyph: it must read exactly like
+  // any other fold row's title (user feedback — the ⏵ prefix broke visual
+  // parity between narration-titled and plain folds).
+  const title = group.narration ?? group.label
   const suffix = group.narration !== undefined ? group.label : undefined
   return (
     <Box

@@ -65,13 +65,13 @@ channel.rows = [
   { id: 6, kind: 'assistant', text: '⏵ summarize the findings' },
 ]
 bump()
-check('T38a 多段 ⏵ 步骤行全部渲染', await settled(() =>
-  screenHas('⏵ count the log files') && screenHas('⏵ inspect the largest one') && screenHas('⏵ summarize the findings')))
+check('T38a 多段 ⏵ 步骤行全部渲染（绑定段无前缀，尾段漂浮保留 ⏵）', await settled(() =>
+  screenHas('count the log files') && screenHas('inspect the largest one') && screenHas('⏵ summarize the findings')))
 {
-  const step1 = findText('⏵ count the log files')
+  const step1 = findText('count the log files')
   const block1 = findText('◆')
   const body = findText('Second body note.')
-  const step2 = findText('⏵ inspect the largest one')
+  const step2 = findText('inspect the largest one')
   const step3 = findText('⏵ summarize the findings')
   // 工具块化后（tool-blocks）：⏵ 意图并入其后工具块的标题行（grok 式
   // 意图句，无裸工具名），不再是独立步骤行+Name(args) 卡交错；未绑定

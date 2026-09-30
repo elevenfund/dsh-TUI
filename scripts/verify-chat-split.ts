@@ -5,7 +5,7 @@
  * 无 FakeStdout、无按键节奏 sleep（T0 层：构造即数据）。
  */
 import { strict as assert } from 'node:assert'
-import { selectionKeyIntent, selectionRestoreTarget, selectionStepId } from '../src/screens/chat/selection-mode.js'
+import { selectionKeyIntent, selectionRestoreTarget, selectionStepId, hiddenCursorRowIds } from '../src/screens/chat/selection-mode.js'
 import { inputGuardAction } from '../src/screens/chat/input-guard.js'
 import { createOverlayKeyHandlers } from '../src/screens/chat/overlay-keys.js'
 import type { Key } from '../src/ink/events/input-event.js'
@@ -80,6 +80,40 @@ check('从中间上移', selectionStepId(rows as never, 2, -1) === 1)
 check('末尾下移 → null（不动）', selectionStepId(rows as never, 3, 1) === null)
 check('光标 null → null', selectionStepId(rows as never, null, 1) === null)
 check('选中项不在列表 → null', selectionStepId(rows as never, 99, 1) === null)
+
+// ---- hiddenCursorRowIds：MessageList 渲染前过滤的镜像（双击回归） ----
+// id=3 绑定到 id=4 且 strip 后为空 → 不渲染；id=5 带正文 → 渲染；
+// id=8 未绑定 → 漂浮渲染；id=2/7 reasoning 受 thinkingVisible 控制。
+const hiddenRows = [
+  { id: 1, kind: 'user', text: 'go' },
+  { id: 2, kind: 'reasoning', text: 'think' },
+  { id: 3, kind: 'assistant', text: '⏵ 意图', streaming: false },
+  { id: 4, kind: 'tool', text: '', tool: { callId: 'a', name: 'bash', argsText: '{}', status: 'ok' } },
+  { id: 5, kind: 'assistant', text: '⏵ 意图带正文\n\n正文', streaming: false },
+  { id: 6, kind: 'tool', text: '', tool: { callId: 'b', name: 'bash', argsText: '{}', status: 'ok' } },
+  { id: 7, kind: 'reasoning', text: 'tail think' },
+  { id: 8, kind: 'assistant', text: '⏵ 未绑定意图', streaming: false },
+] as never
+const hiddenOf = (expanded: boolean, thinkingVisible = true) =>
+  hiddenCursorRowIds(hiddenRows, expanded, new Set<number>(), thinkingVisible)
+check('绑定的纯 narration 行隐藏（一跳直达工具行，双击回归）', hiddenOf(false).has(3))
+check('全局展开时纯 narration 行仍隐藏（expanded 早退 drift 回归）', hiddenOf(true).has(3))
+check('带正文的绑定 narration 行可见', !hiddenOf(false).has(5))
+check('未绑定 narration 行可见（漂浮渲染）', !hiddenOf(false).has(8))
+check('thinking 关闭时 reasoning 全隐藏', hiddenOf(false, false).has(2) && hiddenOf(false, false).has(7))
+check('thinking 开启时 reasoning 可见', !hiddenOf(false).has(2) && !hiddenOf(false).has(7))
+check('工具行本体可见', !hiddenOf(false).has(4))
+const groupRows = [
+  { id: 1, kind: 'assistant', text: '⏵ 批量读', streaming: false },
+  { id: 2, kind: 'tool', text: '', tool: { callId: 'r1', name: 'read', argsText: '{}', status: 'ok' } },
+  { id: 3, kind: 'tool', text: '', tool: { callId: 'r2', name: 'read', argsText: '{}', status: 'ok' } },
+] as never
+check('折叠组成员除首行外隐藏', hiddenCursorRowIds(groupRows, false, new Set<number>()).has(3) &&
+  !hiddenCursorRowIds(groupRows, false, new Set<number>()).has(2))
+check('任一成员局部展开 → 组解除折叠', !hiddenCursorRowIds(groupRows, false, new Set<number>([3])).has(3))
+check('折叠组的纯 narration 行隐藏', hiddenCursorRowIds(groupRows, false, new Set<number>()).has(1))
+check('步进一次直达工具行（从 reasoning 跳过隐藏 narration，双击症状消除）',
+  selectionStepId(hiddenRows, 2, 1, id => hiddenOf(false).has(id)) === 4)
 
 // ---- inputGuardAction：surface 路由 ----
 const guardCtx = (over: Partial<Parameters<typeof inputGuardAction>[0]> = {}) => ({

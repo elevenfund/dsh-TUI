@@ -101,7 +101,7 @@ const inst = await render(
 {
   // 正向条件各自 settled；负向（孤立 ●/⏵ 不出现）在正向全部落定后的
   // 同帧同步判定——对空帧轮询「不存在」会立即真、等于没测。
-  check('工具卡正常渲染（narration 意图标题，grok 式无裸工具名）', await settled(() => screenLines().some(l => l.includes('⏵ 正在跑测试'))), '')
+  check('工具卡正常渲染（narration 意图标题，grok 式无裸工具名）', await settled(() => screenLines().some(l => l.includes('正在跑测试'))), '')
   check('真实正文正常渲染', await settled(() => screenLines().join('\n').includes('REALBODY-END')), '')
   check('⏵ 行 + 正文混合行保留正文', await settled(() => screenLines().join('\n').includes('REALBODY2-END')), '')
   check('空文本 streaming 行无 live dot（grok 式：无内容即不可见，正文到达才渲染）', await settled(() => {
@@ -112,16 +112,17 @@ const inst = await render(
   const screen = lines.join('\n')
   // bug 形状：工具卡【上方】的孤立 ●（空 settled assistant）。assistant
   // 行已无行首符号（grok 式），该形状在源头消失——保留防线断言。
-  const toolRow = lines.findIndex(l => l.includes('⏵ 正在跑测试'))
+  const toolRow = lines.findIndex(l => l.includes('正在跑测试'))
   const dotAboveTool = toolRow >= 0 && lines.slice(0, toolRow).some(l => /^●\s*$/.test(l))
   check('空 settled assistant 行被过滤（工具块上方无孤立 ●）', !dotAboveTool,
     `toolRow=${toolRow}`)
   // ⏵ 叙述行的归宿（tool-blocks 落地后）：绑定进其后第一个工具块的
-  // 标题行渲染（grok 式意图句，无裸工具名），assistant 行本身渲染空、
-  // 被空行过滤收走——断言语义为「⏵ 文字出现在工具块行（◆ 前缀）」。
-  const toolBlockLine = lines.find(l => l.includes('⏵ 正在跑测试'))
-  const narrationInBlockTitle = toolBlockLine !== undefined && toolBlockLine.includes('◆')
-  check('叙述-only 行并入工具块标题（⏵ 在 ◆ 块行内，上方无孤立 ●）', narrationInBlockTitle && !dotAboveTool,
+  // 标题行渲染（grok 式意图句，无裸工具名、无 ⏵ 前缀），assistant 行本身
+  // 渲染空、被空行过滤收走——断言语义为「叙述文字出现在工具块行
+  // （◆ 前缀）且不带 ⏵」。
+  const toolBlockLine = lines.find(l => l.includes('正在跑测试'))
+  const narrationInBlockTitle = toolBlockLine !== undefined && toolBlockLine.includes('◆') && !toolBlockLine.includes('⏵')
+  check('叙述-only 行并入工具块标题（◆ 块行内无 ⏵ 前缀，上方无孤立 ●）', narrationInBlockTitle && !dotAboveTool,
     `blockLine=${toolBlockLine ?? 'none'}`)
 }
 

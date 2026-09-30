@@ -1341,11 +1341,10 @@ export function MessageList({
               toolResultView={tool?.resultView}
               toolStartedAt={tool?.startedAt}
               toolDurationMs={tool?.durationMs}
-              blockTitle={blockState.blocks.get(row.id)?.titleSource === 'narration'
-                ? `⏵ ${blockState.blocks.get(row.id)?.title}`
-                : blockState.blocks.get(row.id)?.titleSource === 'description'
-                  ? blockState.blocks.get(row.id)?.title
-                  : undefined}
+              blockTitle={blockState.blocks.get(row.id)?.titleSource === 'narration' ||
+                blockState.blocks.get(row.id)?.titleSource === 'description'
+                ? blockState.blocks.get(row.id)?.title
+                : undefined}
               blockFolded={(() => {
                 const block = blockState.blocks.get(row.id)
                 return block !== undefined && SINGLE_LINE_VERBS.has(block.verb)

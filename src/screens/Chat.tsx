@@ -1192,7 +1192,7 @@ ing registered by a DSH
     // Step past rows that render null under the current fold state: a
     // folded group's hidden members would pin the highlight to the group
     // row, reading as "j/k did nothing" until the next press.
-    const hiddenIds = hiddenCursorRowIds(channel.rows, expanded, expandedRows)
+    const hiddenIds = hiddenCursorRowIds(channel.rows, expanded, expandedRows, thinkingVisible)
     const nextId = selectionStepId(selectableRows, selectedId, delta, id => hiddenIds.has(id))
     if (nextId !== null) {
       setSelectedId(nextId)
@@ -1412,7 +1412,7 @@ ing registered by a DSH
       // Rows rendering null under the current fold state (folded group
       // members, absorbed reasoning): the cursor must skip them in every
       // jump, or its highlight pins to the group row and reads as stuck.
-      const hiddenIds = hiddenCursorRowIds(channel.rows, expanded, expandedRows)
+      const hiddenIds = hiddenCursorRowIds(channel.rows, expanded, expandedRows, thinkingVisible)
       const visibleRows = selectionActive
         ? selectableRows.filter(row => !hiddenIds.has(row.id))
         : selectableRows

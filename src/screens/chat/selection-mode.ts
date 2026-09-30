@@ -3,6 +3,7 @@ import type { ChatRow } from '../../dsh-adapter/channel.js'
 import { actionMatches } from '../../utils/keymap.js'
 import { isMod } from '../../utils/modifiers.js'
 import { reduceToolBlocks } from '../../components/messages/tool-blocks.js'
+import { stripNarration } from '../../utils/narration.js'
 
 /**
  * Selection-mode state machine, pure: given the key and a small snapshot of
@@ -136,30 +137,40 @@ export function selectionStepId(
   return null
 }
 
-const EMPTY_IDS: ReadonlySet<number> = new Set()
-
-/** Row ids that render null under the CURRENT fold state: folded verb-group
- *  members beyond each group's first (the first renders as the group row)
- *  plus the reasoning those groups absorbed. Mirrors MessageList's reduction
- *  inputs exactly — same pure function, same unfold predicate (global expand
- *  or ANY member's row-local expansion) — so this view of "hidden" cannot
- *  drift from what the renderer paints. */
+/** Row ids that render null under the CURRENT fold state, mirroring the
+ *  filters MessageList applies BEFORE virtualization — or the cursor lands
+ *  on an invisible row and a step reads as eaten. Three sources:
+ *  folded verb-group members beyond each group's first (the first renders
+ *  as the group row), the reasoning those groups absorbed, and MessageList's
+ *  rendersEmptyAssistant / thinkingVisible drops (a settled assistant row
+ *  whose consumed `⏵` narration was its entire text, and every reasoning
+ *  row while thinking display is off) — the latter two apply regardless of
+ *  the global expand state, so there is no expanded early-exit here. */
 export function hiddenCursorRowIds(
   rows: readonly ChatRow[],
   expanded: boolean,
   expandedRows: ReadonlySet<number>,
+  thinkingVisible = true,
 ): ReadonlySet<number> {
-  if (expanded) return EMPTY_IDS
   const base = reduceToolBlocks(rows)
-  let unfoldedKeys: Set<string> | undefined
+  const unfoldedKeys = new Set<string>()
   for (const group of base.groups) {
-    if (group.members.some(member => expandedRows.has(member.row.id))) {
-      ;(unfoldedKeys ??= new Set<string>()).add(group.firstKey)
+    if (expanded || group.members.some(member => expandedRows.has(member.row.id))) {
+      unfoldedKeys.add(group.firstKey)
     }
   }
-  const state = unfoldedKeys === undefined ? base : reduceToolBlocks(rows, { expandedGroups: unfoldedKeys })
+  const state = unfoldedKeys.size > 0 ? reduceToolBlocks(rows, { expandedGroups: unfoldedKeys }) : base
   const hidden = new Set<number>(state.absorbedReasoning)
   for (const id of state.groupedRows) hidden.add(id)
   for (const group of state.groups) hidden.delete(group.members[0]!.row.id)
+  for (const row of rows) {
+    // rendersEmptyAssistant, verbatim from MessageList's visible-rows filter.
+    if (row.kind === 'assistant' && row.streaming !== true &&
+      state.narrationConsumed.has(row.id) &&
+      stripNarration(row.text ?? '').trim() === '' &&
+      (row.images?.length ?? 0) === 0) hidden.add(row.id)
+    // thinkingVisible=false drops every reasoning row from the render.
+    if (row.kind === 'reasoning' && !thinkingVisible) hidden.add(row.id)
+  }
   return hidden
 }

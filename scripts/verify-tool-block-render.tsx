@@ -1,8 +1,9 @@
 /**
  * verify-tool-block-render — 工具调用块渲染回归（挂载级，真实 MessageList）：
  *
- *  1. verb-group 折叠行：连续 read 聚成一行，绑定的 `⏵` narration 并入
- *     组行标题（`⏵ …  ·  Read 2 files`），不再作为独立漂浮行出现；
+ *  1. verb-group 折叠行：连续 read 聚成一行，绑定的 narration 并入
+ *     组行标题（`…  ·  Read 2 files`，无 ⏵ 前缀，与普通折叠行视觉一致），
+ *     不再作为独立漂浮行出现；
  *  2. narration 并入单块标题（bash 卡 header 显示意图句）；
  *  3. 块化单行折叠：bash 卡的 result body 不渲染（grok-style one-line）；
  *  4. 错误块仍在消息流（input 兜底标题可见）；
@@ -144,22 +145,22 @@ console.log('--- Part A: fold row, narration binding, single-line, error, timing
     const ls = lines()
     const groupLine = ls.find(l => l.includes('Read 2 files'))
     check('A1 verb-group 折叠行渲染（Read 2 files）', groupLine !== undefined)
-    check('A2 ⏵ narration 并入组行标题（同一行，不漂浮）',
-      groupLine !== undefined && groupLine.includes('⏵ 并行读取两个配置'), groupLine ?? 'no group line')
+    check('A2 narration 并入组行标题（同一行，不漂浮，无 ⏵ 前缀）',
+      groupLine !== undefined && groupLine.includes('并行读取两个配置') && !groupLine.includes('⏵'), groupLine ?? 'no group line')
     check('A3 组成员不再逐块渲染（cfg1.json 不在折叠屏上）',
       !ls.some(l => l.includes('cfg1.json')))
     const bashLine = ls.find(l => l.includes('跑一下构建'))
     check('A4 bash 块单行渲染（narration 意图标题在屏，grok 式无裸工具名）', bashLine !== undefined, bashLine ?? 'no bash line')
-    check('A5 narration 并入 bash 块标题（跑一下构建 同行）',
-      bashLine !== undefined && bashLine.includes('跑一下构建'), bashLine ?? '')
+    check('A5 narration 并入 bash 块标题（跑一下构建 同行，无 ⏵ 前缀）',
+      bashLine !== undefined && bashLine.includes('跑一下构建') && !bashLine.includes('⏵'), bashLine ?? '')
     check('A6 块化单行折叠：bash result body 不渲染',
       !ls.some(l => l.includes('BUILD-OUTPUT-LINE-1')))
     check('A7 错误块 input 兜底标题在屏（broken.json）',
       ls.some(l => l.includes('broken.json')))
     check('A8 完成态耗时显示（· 4.2s 或 · 4s）',
       ls.some(l => /· ?4(\.2)?s/.test(l)), ls.find(l => /· ?\d/.test(l)) ?? 'no timing line')
-    check('A9 ⏵ 全部并入块标题（⏵ 只出现在块行内，无独立漂浮行）',
-      ls.filter(l => l.includes('⏵')).every(l => l.includes('◆')),
+    check('A9 绑定后 narration 标题不带 ⏵ 前缀（屏幕无任何 ⏵ 行）',
+      ls.every(l => !l.includes('⏵')),
       `lines=${JSON.stringify(ls.filter(l => l.includes('⏵')))}`)
   })
 }
