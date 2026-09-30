@@ -236,4 +236,34 @@ stdin.write('mm')
 check('T14d 退出后打字恢复', await settled(() => screenHas('mm')))
 FakeStdout.onWrite = null
 
+// T31 — dangling selectedId guard (D-1): the real paths that renumber row
+// ids (rewind, session reset) clear the cursor, but the selection keymap
+// must also survive a cursor pointing at an id the transcript no longer
+// holds — no crash, step keys degrade to no-ops, and a jump (G) re-seats
+// the cursor on the fresh bottom row, so the mode stays recoverable.
+stdin.write('\t')
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
+check('T31a 进入选择模式', await settled(() => screenHas('esc to return to input')))
+;(channel.rows as Array<Record<string, unknown>>).splice(
+  0,
+  (channel.rows as Array<Record<string, unknown>>).length,
+  { id: 9001, kind: 'user', text: 'fresh turn alpha' },
+  { id: 9002, kind: 'assistant', text: 'fresh reply beta', streaming: false },
+)
+bump()
+check('T31b rows 整体替换后界面存活', await settled(() => screenHas('fresh reply beta')))
+stdin.write('j')
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
+stdin.write('k')
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
+check('T31c 悬空 id 下步进不崩溃（界面仍渲染）', await settled(() => screenHas('fresh reply beta') && screenHas('esc to return to input')))
+stdin.write('G')
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
+check(
+  'T31d G 从悬空 id 恢复光标到新末行',
+  await settled(() => viewportLines().some(line => line.includes('❯') && line.includes('fresh reply beta'))),
+)
+stdin.write('\x1b')
+await keySleep(100) // 键间节奏（每键一次 commit；PACE 免疫）
+
 finish('verify-selection-nav')
