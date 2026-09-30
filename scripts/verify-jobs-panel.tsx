@@ -190,6 +190,34 @@ console.log('--- A: BackgroundJobStore units ---')
   check('A9 reset 后同 id 注册回到 shadow', racer.snapshot().length === 0)
   racer.onStarted('bash-9', 'sleep 9')
   check('A9 重 ack 晋升且 command 正确', racer.get('bash-9')?.command === 'sleep 9')
+
+  // A10 — shadow capacity (C-3): replay parks one terminal shadow entry
+  // per historical id. The trim keeps the bound (terminal-first, live
+  // always survive), and a capacity-denied id stays un-tracked even once
+  // acked — the eviction contract extended to the shadow tier.
+  const parked = new BackgroundJobStore()
+  parked.replace(
+    Array.from({ length: JOBS_MAX_TRACKED + 5 }, (_, i) => ({
+      id: `old-${i}`, kind: 'bash', label: 'x', status: i < 3 ? 'running' as const : 'completed' as const, startedAt: i, finishedAt: i + 1,
+    })),
+  )
+  for (let i = 0; i < JOBS_MAX_TRACKED + 5; i += 1) parked.onStarted(`old-${i}`, 'x')
+  parked.replace(
+    Array.from({ length: JOBS_MAX_TRACKED + 5 }, (_, i) => ({
+      id: `old-${i}`, kind: 'bash', label: 'x', status: i < 3 ? 'running' as const : 'completed' as const, startedAt: i, finishedAt: i + 1,
+    })),
+  )
+  const parkedRows = parked.snapshot()
+  check('A10 shadow 容量：ack 后总数有界',
+    parkedRows.length <= JOBS_MAX_TRACKED,
+    `len=${parkedRows.length}`)
+  check('A10 shadow 容量：存活永远保留',
+    parkedRows.filter(job => job.status === 'running').length === 3,
+    `running=${parkedRows.filter(job => job.status === 'running').length}`)
+  parked.reset()
+  parked.replace([snap('old-3', 'completed', { finishedAt: 2 })])
+  parked.onStarted('old-3', 'x')
+  check('A10 reset 回收 denied 标记（同 id 可重新注册）', parked.snapshot().length === 1)
 }
 
 // ---------------------------------------------------------------------------

@@ -87,6 +87,9 @@ export class BackgroundJobStore {
   private readonly acked = new Set<string>()
   /** Un-acked registry rows, kept so a late ack can still promote them. */
   private readonly shadow = new Map<string, BackgroundJobSnapshot>()
+  /** Ids a shadow trim rejected — they stay un-tracked even once acked
+   *  (the eviction contract), until the bound recycles the oldest mark. */
+  private readonly shadowDenied = new Set<string>()
   /** Commands captured from start acks that arrived before the registry
    *  registered the job (the tool/result stream and the registry commit can
    *  race); consumed on registration. */
@@ -112,6 +115,10 @@ export class BackgroundJobStore {
       if (prev === undefined) {
         // Un-acked rows stay shadowed (no ChatRow, no panel entry, no
         // history): a foreground wait the model never saw as a job.
+        // Capacity-denied ids stay un-tracked even once acked — the trim
+        // decided this row's history ends here, so a parked early ack must
+        // not build it back from a later snapshot.
+        if (this.shadowDenied.has(snap.id)) continue
         if (!this.acked.has(snap.id)) {
           this.shadow.set(snap.id, snap)
           continue
@@ -156,10 +163,38 @@ export class BackgroundJobStore {
       changed = true
     }
     // Shadowed foreground waits that vanished were settled-and-removed by
-    // the tool layer before any ack: leave without a trace.
+    // the tool layer before any ack: leave without a trace. The parked
+    // command goes with it — the entry would otherwise wait forever for an
+    // ack that can no longer arrive.
     if (this.shadow.size > 0) {
       for (const id of this.shadow.keys()) {
-        if (!seen.has(id)) this.shadow.delete(id)
+        if (!seen.has(id)) {
+          this.shadow.delete(id)
+          this.pendingCommands.delete(id)
+        }
+      }
+    }
+    // Shadow capacity mirrors the tracked bound, with the same preference:
+    // terminal entries trim first and live ones always survive. Replay can
+    // park one terminal entry per historical id the live registry will
+    // never register again; un-acked waits must not accumulate without
+    // limit. The denied mark keeps the eviction contract: an ack parked
+    // before the trim must not build the dropped row back later, and the
+    // mark set itself stays bounded (insertion order recycles the oldest).
+    if (this.shadow.size > JOBS_MAX_TRACKED) {
+      for (const [id, snap] of this.shadow) {
+        if (this.shadow.size <= JOBS_MAX_TRACKED) break
+        if (isTerminal(snap.status)) {
+          this.shadow.delete(id)
+          this.pendingCommands.delete(id)
+          this.shadowDenied.add(id)
+        }
+      }
+      if (this.shadowDenied.size > JOBS_MAX_TRACKED) {
+        for (const id of this.shadowDenied) {
+          if (this.shadowDenied.size <= JOBS_MAX_TRACKED) break
+          this.shadowDenied.delete(id)
+        }
       }
     }
     if (this.jobs.size > JOBS_MAX_TRACKED) {
@@ -190,6 +225,9 @@ export class BackgroundJobStore {
    * consumed by the next replace().
    */
   onStarted(id: string, command: string): void {
+    // Capacity-denied: no row exists and none may be built — parking the
+    // command would wait forever for a promotion that can no longer happen.
+    if (this.shadowDenied.has(id)) return
     this.acked.add(id)
     const job = this.jobs.get(id)
     if (job !== undefined) {
@@ -277,11 +315,12 @@ export class BackgroundJobStore {
 
   /** Drop everything (session swap / transcript wipe / registry reload). */
   reset(): void {
-    if (this.jobs.size === 0 && this.shadow.size === 0 && this.acked.size === 0 && this.pendingCommands.size === 0) return
+    if (this.jobs.size === 0 && this.shadow.size === 0 && this.acked.size === 0 && this.pendingCommands.size === 0 && this.shadowDenied.size === 0) return
     this.jobs.clear()
     this.shadow.clear()
     this.acked.clear()
     this.pendingCommands.clear()
+    this.shadowDenied.clear()
     this.events.onChanged?.()
   }
 }
