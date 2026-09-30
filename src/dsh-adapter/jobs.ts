@@ -25,21 +25,31 @@ export interface BackgroundJobSnapshot {
 }
 
 /**
- * Duck-typed registry surface the channel consumes. `caller` is an opaque
- * token — the owning live agent (`Agent` in the harness) or the session id
- * under the registry service shape — typed unknown because the UI only
- * forwards the instance it already holds and never inspects it.
+ * The host registry as the channel may find it — the current session-keyed
+ * service shape (@deepseek-ai/dsh-jobs) or the legacy duck-typed
+ * Agent-caller shape. The bridge picks per call so a mixed embedder works;
+ * the caller is an opaque token the UI only forwards, never inspects.
  */
-export interface JobsRuntime {
+export interface JobsRuntimeService {
   /** Caller-owned + unowned job snapshots in registration order. */
-  list(caller?: unknown): BackgroundJobSnapshot[]
+  list?(caller?: string): BackgroundJobSnapshot[]
   /** Request cancellation by id; resolves to 'requested'/'already-finished'. */
-  kill(id: string, caller?: unknown, reason?: string): unknown
+  kill?(id: string, caller?: string, reason?: string): unknown
+  /** Change delivery under the service shape (all owners). */
+  events?: { subscribe?(filter: { owners: 'all' }, listener: () => void): () => void }
+}
+
+/** The legacy duck-typed shape (Agent-instance caller + callback mouths). */
+export interface JobsRuntimeLegacy {
+  list?(caller?: unknown): BackgroundJobSnapshot[]
+  kill?(id: string, caller?: unknown, reason?: string): unknown
   /** Fires after every commit changing one owner's visible set; re-read. */
   onJobsChanged?(listener: (owner: unknown) => void): () => void
   /** Fires on every settlement with the terminal snapshot + owner. */
   onJobDone?(listener: (snapshot: BackgroundJobSnapshot, owner: unknown) => void): () => void
 }
+
+export type JobsRuntime = JobsRuntimeService | JobsRuntimeLegacy
 
 /** Store event hooks the channel injects (toast on settle, emit on change). */
 export interface BackgroundJobEvents {

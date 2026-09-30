@@ -1,7 +1,7 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { markChannelReadDirty } from '../../adapter/channel/read-view.js'
 import { t } from '../../i18n.js'
-import { BackgroundJobStore, formatJobDuration, type JobsRuntime } from '../jobs.js'
+import { BackgroundJobStore, formatJobDuration, type JobsRuntime, type JobsRuntimeService, type JobsRuntimeLegacy } from '../jobs.js'
 import type { ChannelOwner } from './owner.js'
 import type { ChannelState, ChatRow, JobControl } from './types.js'
 
@@ -116,27 +116,26 @@ export function createJobProjection(
     kill(id: string, reason?: string): unknown
     subscribe(onChange: () => void): (() => void) | undefined
   } {
-    const registry = jobs as unknown as {
-      list?(caller?: string): unknown[]
-      kill?(id: string, caller?: string, reason?: string): unknown
-      events?: { subscribe?(filter: { owners: 'all' }, listener: () => void): () => void }
-    }
+    // Union members, not double casts: the embedder serves either shape and
+    // the bridge picks per call.
+    const service = jobs as JobsRuntimeService
+    const legacy = jobs as JobsRuntimeLegacy
     const sessionId = (): string | undefined => {
       const id = (deps.agent() as { id?: unknown } | undefined)?.id
       return typeof id === 'string' ? id : undefined
     }
     return {
       list() {
-        if (typeof registry.list === 'function') return registry.list(sessionId()) ?? []
-        return (jobs.list(deps.agent()) ?? []) as unknown[]
+        if (typeof service.list === 'function') return service.list(sessionId()) ?? []
+        return legacy.list?.(deps.agent()) ?? []
       },
       kill(id, reason) {
-        if (typeof registry.kill === 'function') return registry.kill(id, sessionId(), reason)
-        return jobs.kill?.(id, deps.agent(), reason)
+        if (typeof service.kill === 'function') return service.kill(id, sessionId(), reason)
+        return legacy.kill?.(id, deps.agent(), reason)
       },
       subscribe(onChange) {
-        const subscribe = registry.events?.subscribe
-        if (typeof subscribe === 'function') return subscribe.call(registry.events, { owners: 'all' }, onChange)
+        const subscribe = service.events?.subscribe
+        if (typeof subscribe === 'function') return subscribe.call(service.events, { owners: 'all' }, onChange)
         // Legacy duck-type serves two mouths — onJobsChanged for mutations,
         // onJobDone for settlements — and embedders may provide either or
         // both, so register each optional mouth and combine their disposers.
@@ -145,8 +144,8 @@ export function createJobProjection(
         // transactional: a throwing second registration unwinds the first.
         const disposers: Array<(() => void) | undefined> = []
         try {
-          if (typeof jobs.onJobsChanged === 'function') disposers.push(jobs.onJobsChanged(onChange))
-          if (typeof jobs.onJobDone === 'function') disposers.push(jobs.onJobDone(onChange))
+          if (typeof legacy.onJobsChanged === 'function') disposers.push(legacy.onJobsChanged(onChange))
+          if (typeof legacy.onJobDone === 'function') disposers.push(legacy.onJobDone(onChange))
         } catch (error) {
           for (const dispose of disposers.splice(0)) dispose?.()
           throw error
