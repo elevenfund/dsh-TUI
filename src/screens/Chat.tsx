@@ -120,7 +120,7 @@ import { useWorkspaceCommands } from './chat/use-workspace-commands.js'
 import { createRunCommand } from './chat/run-command.js'
 import { createRewindCommands } from './chat/rewind.js'
 import { InputCluster } from './chat/InputCluster.js'
-import { searchableText, useTranscriptSearch } from './chat/use-transcript-search.js'
+import { searchableText, useTranscriptSearch, useTranscriptSearchState } from './chat/use-transcript-search.js'
 import { inputGuardAction } from './chat/input-guard.js'
 import { useModelPicker } from './chat/use-model-picker.js'
 import { useViewportState } from './chat/use-viewport-state.js'
@@ -592,10 +592,7 @@ export function Chat({
     setSelectionActive(false)
     setShowAllMessages(false)
     setLoadedContextOpen(false)
-    setSearchQuery('')
-    setSearchCursor(0)
-    setSearchCount(0)
-    setSearchCurrent(0)
+    resetSearch()
     closeBtw()
     repaintTranscript()
   }, [channel.agentId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -791,10 +788,10 @@ export function Chat({
    *  Only the bar's open/closed mode lives in `overlay`; the query and match
    *  counters persist past the bar closing so n/N keep walking the matches. */
   const searchActive = overlay.kind === 'search'
-  const [searchQuery, setSearchQuery] = React.useState('')
-  const [searchCursor, setSearchCursor] = React.useState(0)
-  const [searchCount, setSearchCount] = React.useState(0)
-  const [searchCurrent, setSearchCurrent] = React.useState(0)
+  const {
+    searchQuery, setSearchQuery, searchCursor, setSearchCursor,
+    searchCount, setSearchCount, searchCurrent, setSearchCurrent, resetSearch,
+  } = useTranscriptSearchState()
   const searchAnchorRef = React.useRef(0)
   const rowRefsRef = React.useRef(new Map<number, DOMElement>())
   const { setQuery: setHighlight } = useSearchHighlight()
@@ -1530,10 +1527,7 @@ ing registered by a DSH
       // search is active on the transcript screen where `/` isn't a command).
       if (expanded) {
         searchAnchorRef.current = handle?.getScrollTop() ?? 0
-        setSearchQuery('')
-        setSearchCursor(0)
-        setSearchCurrent(0)
-        setSearchCount(0)
+        resetSearch()
         dispatchOverlay({ type: 'open', overlay: { kind: 'search' } })
         event.stopImmediatePropagation()
       }

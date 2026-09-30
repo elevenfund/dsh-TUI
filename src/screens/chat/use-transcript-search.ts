@@ -14,6 +14,35 @@ export function searchableText(row: ChatRow): string {
 }
 
 /**
+ * The `/` transcript-search UI state (query, composer cursor, match count,
+ * current match) plus the one reset every entry path shares: a fresh search
+ * starts from an empty query regardless of what the previous run left.
+ */
+export function useTranscriptSearchState() {
+  const [searchQuery, setSearchQuery] = React.useState('')
+  const [searchCursor, setSearchCursor] = React.useState(0)
+  const [searchCount, setSearchCount] = React.useState(0)
+  const [searchCurrent, setSearchCurrent] = React.useState(0)
+  const resetSearch = React.useCallback(() => {
+    setSearchQuery('')
+    setSearchCursor(0)
+    setSearchCount(0)
+    setSearchCurrent(0)
+  }, [])
+  return {
+    searchQuery,
+    setSearchQuery,
+    searchCursor,
+    setSearchCursor,
+    searchCount,
+    setSearchCount,
+    searchCurrent,
+    setSearchCurrent,
+    resetSearch,
+  }
+}
+
+/**
  * `/` transcript incsearch state: the per-render match list (rows is a live
  * in-place array, so a useMemo would freeze at mount), the highlight/count
  * sync effect, and the current-match keep-in-view effect. Extracted
