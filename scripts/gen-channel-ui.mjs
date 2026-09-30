@@ -53,6 +53,36 @@ const MARKER_END = '// @gen end'
 
 const checkOnly = process.argv.includes('--check')
 
+/** Hand-maintained surfaces a display key must also reach (semantic work
+ *  the generator cannot do): the /settings copy + applyDisplay in
+ *  plugin.ts, and the initial values in state.ts. A key missing from a
+ *  surface still typechecks — the generator warns instead of silently
+ *  skipping it. Presence is textual (schema key OR renamed property). */
+const MANUAL_SURFACES = [
+  { label: 'applyDisplay + /settings copy', path: path.join(root, 'src/dsh-adapter/plugin.ts') },
+  { label: 'initial values', path: STATE_PATH },
+]
+
+function auditManualSurfaces(fields) {
+  const warnings = []
+  for (const surface of MANUAL_SURFACES) {
+    let source
+    try {
+      source = readFileSync(surface.path, 'utf8')
+    } catch {
+      warnings.push(`gen-channel-ui: WARN cannot audit ${surface.label} (${surface.path} unreadable)`)
+      continue
+    }
+    for (const field of fields) {
+      const present = source.includes(`'${field.key}'`) || source.includes(`'${field.property}'`)
+        || source.includes(`${field.key}:`) || source.includes(`${field.property}:`)
+      if (!present) warnings.push(`gen-channel-ui: WARN "${field.key}" is absent from ${surface.label} — a new display key must reach every hand-maintained surface or that surface silently skips it`)
+    }
+  }
+  for (const warning of warnings) console.warn(warning)
+  return warnings.length
+}
+
 async function loadChannelUiFields() {
   const schemaUrl = new URL('../src/dsh-adapter/index.ts', import.meta.url)
   const { Config } = await import(schemaUrl.href)
@@ -143,3 +173,6 @@ if (checkOnly && (stateUpdated || policyUpdated)) {
   console.error('gen-channel-ui: --check failed — generated blocks are stale; run the generator')
   process.exitCode = 1
 }
+// Surface audit runs in every mode: the warning is the point (a silently
+// skipped hand-maintained surface), not the exit code.
+auditManualSurfaces(fields)
