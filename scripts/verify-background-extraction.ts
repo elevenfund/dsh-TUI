@@ -169,6 +169,23 @@ for (const label of ['ctx lookup throws', 'agents.get throws']) {
     { type: 'agent/inbox/spliced', time: 9900, data: { inserted: [{ content: [
       { type: 'text', text: 'unrelated user message' },
     ], source: { kind: 'user' } }] } },
+    // C-1 regression shape: a long child id length-bounds the summary past
+    // the outcome phrase — only the structured stopReason can name the ending.
+    // The phraseless fallback path alone would read this child as failed.
+    { type: 'subagent/catalog', time: 1500, data: { childId: 'sess_child-with-a-very-long-durable-id-0123456789abcdef', childCreatedAt: 1450, label: '截断结算' } },
+    { type: 'agent/inbox/spliced', time: 9950, data: { inserted: [{ content: [
+      { type: 'text', text: 'Background subagent sess_child-with-a-very-long-durable-id-0123456789abcdef finished…' },
+    ], source: { kind: 'subagent-settled', form: 'notice', senderSessionId: 'sess_child-with-a-very-long-durable-id-0123456789abcdef', summary: 'Background subagent sess_child-with-a-very-long-durable-id-0123456789abcdef finished…', stopReason: 'completed' } }] } },
+    // Structured stopReason also carries the stopped and failure flavours
+    // without relying on the phrase at all.
+    { type: 'subagent/catalog', time: 1600, data: { childId: 'child-e', childCreatedAt: 1550, label: '结构化停止' } },
+    { type: 'agent/inbox/spliced', time: 9960, data: { inserted: [{ content: [
+      { type: 'text', text: 'irrelevant body' },
+    ], source: { kind: 'subagent-settled', form: 'notice', senderSessionId: 'child-e', summary: 'irrelevant summary', stopReason: 'aborted' } }] } },
+    { type: 'subagent/catalog', time: 1700, data: { childId: 'child-f', childCreatedAt: 1650, label: '结构化失败' } },
+    { type: 'agent/inbox/spliced', time: 9970, data: { inserted: [{ content: [
+      { type: 'text', text: 'irrelevant body' },
+    ], source: { kind: 'subagent-settled', form: 'notice', senderSessionId: 'child-f', summary: 'irrelevant summary', stopReason: 'max-tokens' } }] } },
   ])
   const byId = new Map(projection.store.snapshot().map(s => [s.agentId, s]))
   assert.equal(byId.get('child-a')?.status, 'completed', 'settled fold: completed outcome replaces unknown')
@@ -177,6 +194,10 @@ for (const label of ['ctx lookup throws', 'agents.get throws']) {
   assert.equal(byId.get('child-b')?.status, 'cancelled', 'stopped settlement folds to cancelled')
   assert.equal(byId.get('child-c')?.status, 'failed', 'failed settlement folds to failed')
   assert.equal(byId.get('child-d')?.status, 'unknown', 'catalog-only child without a settlement stays unknown')
+  assert.equal(byId.get('sess_child-with-a-very-long-durable-id-0123456789abcdef')?.status, 'completed',
+    'C-1: structured stopReason rescues the outcome when the summary phrase is truncated away')
+  assert.equal(byId.get('child-e')?.status, 'cancelled', 'structured aborted stopReason folds to cancelled without any phrase')
+  assert.equal(byId.get('child-f')?.status, 'failed', 'structured max-tokens stopReason folds to failed without any phrase')
   owner.dispose()
 }
 

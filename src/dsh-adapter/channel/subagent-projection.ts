@@ -199,7 +199,7 @@ export function createSubagentProjection(
       // instead of the registry-less `unknown` default.
       for (const item of Array.isArray(data.inserted) ? data.inserted : []) {
         if (typeof item !== 'object' || item === null) continue
-        const source = (item as { source?: { kind?: unknown; senderSessionId?: unknown; summary?: unknown } | null }).source
+        const source = (item as { source?: { kind?: unknown; senderSessionId?: unknown; summary?: unknown; stopReason?: unknown } | null }).source
         if (!source || source.kind !== 'subagent-settled') continue
         const settledChild = typeof source.senderSessionId === 'string' ? source.senderSessionId : undefined
         if (settledChild === undefined) continue
@@ -208,13 +208,24 @@ export function createSubagentProjection(
         // Defensive: a settlement without its catalog row (log damage) still
         // gets a row so the outcome is visible.
         if (!store.has(settledChild)) store.onDiscovered(settledChild, { label: undefined, childCreatedAt: eventTime(event) })
-        if (summary.includes('finished and will do no further work')) {
+        // Outcome mapping prefers the structured stopReason (durable since the
+        // engine started attaching it): the summary line is length-bounded, so
+        // a long child id truncates the phrase out of it. The phrase sniff is
+        // the legacy fallback for logs written before the field existed.
+        const stopReason = typeof source.stopReason === 'string' ? source.stopReason : undefined
+        if (stopReason === 'completed') {
+          store.onCompleted(settledChild, closingMessageOf(item as { content?: unknown }) || undefined, 'completed', endedAt)
+        } else if (stopReason === 'aborted') {
+          store.onCancelled(settledChild, 'cancelled', undefined, endedAt)
+        } else if (stopReason !== undefined) {
+          // max-tokens / refusal / error / abnormal — every other stop reason
+          // is a failure flavour: the parent must not treat the task as done.
+          store.onFailed(settledChild, summary || 'failed before it finished', endedAt)
+        } else if (summary.includes('finished and will do no further work')) {
           store.onCompleted(settledChild, closingMessageOf(item as { content?: unknown }) || undefined, 'completed', endedAt)
         } else if (summary.includes('was stopped before it finished')) {
           store.onCancelled(settledChild, 'cancelled', undefined, endedAt)
         } else {
-          // max-tokens / refusal / error / abnormal — every other settlement
-          // line is a failure flavour.
           store.onFailed(settledChild, summary || 'failed before it finished', endedAt)
         }
       }
