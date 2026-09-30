@@ -205,6 +205,29 @@ export function TaskCenterPanel({
       scrollRef.current?.scrollBy(1)
       return
     }
+    // g / G jump to the first / last row; PgUp/PgDn page the focus by half
+    // a viewport (the same jump/paging rule the unified pickers use).
+    if (input === 'g' && !key.ctrl && !key.meta && !key.super) {
+      event.stopImmediatePropagation()
+      setFocusIndex(0)
+      scrollRef.current?.scrollTo(0)
+      return
+    }
+    if (input === 'G' && !key.ctrl && !key.meta && !key.super) {
+      event.stopImmediatePropagation()
+      setFocusIndex(entries.length - 1)
+      scrollRef.current?.scrollTo(Number.MAX_SAFE_INTEGER)
+      return
+    }
+    if (key.pageUp || key.pageDown) {
+      event.stopImmediatePropagation()
+      const page = Math.max(1, Math.floor((scrollRef.current?.getViewportHeight() ?? 12) / 2))
+      setFocusIndex(i => key.pageDown
+        ? Math.min(entries.length - 1, Math.max(0, i) + page)
+        : Math.max(0, Math.min(entries.length - 1, i) - page))
+      scrollRef.current?.scrollBy(key.pageDown ? page : -page)
+      return
+    }
     if (isPlainReturnInput(input, key)) {
       event.stopImmediatePropagation()
       if (focusedEntry?.section === 'subagents' && onOpenSubagent) onOpenSubagent(focusedEntry.subagent.agentId)

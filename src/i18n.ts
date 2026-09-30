@@ -815,8 +815,8 @@ const dict = {
   'goal-todo-fold-hint': { zh: '{{mod}}q 折叠', en: '{{mod}}q to fold' },
   'help-commands-title': { zh: '命令：', en: 'commands:' },
   'help-scroll-hint': {
-    zh: '↑/↓ 滚动 · PgUp/PgDn 翻页 · Home/End 首尾 · Esc 关闭',
-    en: '↑/↓ scroll · PgUp/PgDn page · Home/End jump · Esc close',
+    zh: 'j/k 或 ↑/↓ 滚动 · PgUp/PgDn 翻页 · g/G 或 Home/End 首尾 · Esc 关闭',
+    en: 'j/k or ↑/↓ scroll · PgUp/PgDn page · g/G or Home/End jump · Esc close',
   },
   'tips-title': { zh: '使用技巧（快捷键 · 命令 · 工作流 · 个性化 · 避坑）', en: 'Usage tips (shortcuts · commands · workflow · display · gotchas)' },
   'tips-hint': { zh: '↑/↓ 滚动 · Esc 关闭', en: '↑/↓ scroll · Esc to close' },

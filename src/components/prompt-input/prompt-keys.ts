@@ -955,6 +955,28 @@ export function createPromptKeyHandler(deps: PromptKeyDeps): (input: string, key
         event.stopImmediatePropagation()
         return
       }
+      // Vim keys match the unified picker navigation (j/k/g/G), so reading
+      // the command list never leaves the home row.
+      if (input === 'j' && !isMod(key) && !key.meta) {
+        helpScrollRef.current?.scrollBy(1)
+        event.stopImmediatePropagation()
+        return
+      }
+      if (input === 'k' && !isMod(key) && !key.meta) {
+        helpScrollRef.current?.scrollBy(-1)
+        event.stopImmediatePropagation()
+        return
+      }
+      if (input === 'g' && !isMod(key) && !key.meta && !key.super) {
+        helpScrollRef.current?.scrollTo(0)
+        event.stopImmediatePropagation()
+        return
+      }
+      if (input === 'G' && !isMod(key) && !key.meta && !key.super) {
+        helpScrollRef.current?.scrollTo(Number.MAX_SAFE_INTEGER)
+        event.stopImmediatePropagation()
+        return
+      }
       if (key.home) {
         helpScrollRef.current?.scrollTo(0)
         event.stopImmediatePropagation()

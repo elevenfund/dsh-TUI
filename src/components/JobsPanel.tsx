@@ -126,11 +126,12 @@ function timeOf(ms: number): string {
 /**
  * `/jobs` overlay panel — every background job of the current session with
  * live status, elapsed/total duration and terminal detail (exit code).
- * Keyboard matches the Task Center: ↑/k move up, ↓/j move down, x stops
- * the focused live job (`k`-kills was a same-key-opposite-meaning trap
- * against the Task Center's k=move), Esc closes; the focused row expands
- * a detail block (full label, start/finish times, mirrored output tail).
- * The panel is the deep view behind the transcript job cards.
+ * Keyboard matches the Task Center: ↑/k move up, ↓/j move down, g/G jump to
+ * the first/last row, PgUp/PgDn page, x stops the focused live job
+ * (`k`-kills was a same-key-opposite-meaning trap against the Task Center's
+ * k=move), Esc closes; the focused row expands a detail block (full label,
+ * start/finish times, mirrored output tail). The panel is the deep view
+ * behind the transcript job cards.
  */
 export function JobsPanel({ jobs, onClose, onKill }: JobsPanelProps): React.ReactNode {
   const [focusIndex, setFocusIndex] = React.useState(0)
@@ -157,6 +158,29 @@ export function JobsPanel({ jobs, onClose, onKill }: JobsPanelProps): React.Reac
       event.stopImmediatePropagation()
       setFocusIndex(i => Math.min(jobs.length - 1, i + 1))
       scrollRef.current?.scrollBy(1)
+      return
+    }
+    // g / G jump to the first / last row; PgUp/PgDn page the focus by half
+    // a viewport (the same jump/paging rule the Task Center uses).
+    if (input === 'g' && !key.ctrl && !key.meta && !key.super) {
+      event.stopImmediatePropagation()
+      setFocusIndex(0)
+      scrollRef.current?.scrollTo(0)
+      return
+    }
+    if (input === 'G' && !key.ctrl && !key.meta && !key.super) {
+      event.stopImmediatePropagation()
+      setFocusIndex(jobs.length - 1)
+      scrollRef.current?.scrollTo(Number.MAX_SAFE_INTEGER)
+      return
+    }
+    if (key.pageUp || key.pageDown) {
+      event.stopImmediatePropagation()
+      const page = Math.max(1, Math.floor((scrollRef.current?.getViewportHeight() ?? 12) / 2))
+      setFocusIndex(i => key.pageDown
+        ? Math.min(jobs.length - 1, Math.max(0, i) + page)
+        : Math.max(0, Math.min(jobs.length - 1, i) - page))
+      scrollRef.current?.scrollBy(key.pageDown ? page : -page)
       return
     }
     // x stops the focused live job — same verb as the Task Center row.
