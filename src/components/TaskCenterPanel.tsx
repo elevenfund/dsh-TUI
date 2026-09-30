@@ -9,8 +9,8 @@ import { ExitButton } from './SubagentDashboard.js'
 import { isPlainReturnInput } from '../utils/modifiers.js'
 import { FollowUpLine, useFollowUpInput } from './SubagentFollowUpInput.js'
 import { isMinimalMode } from '../minimalMode.js'
-import { stringWidth } from '../ink/stringWidth.js'
 import { MULTIPLICATION_X, BLACK_CIRCLE } from '../terminal-utils/figures.js'
+import { clipLineToWidth } from '../ink/truncateToWidth.js'
 
 export interface TaskCenterPanelProps {
   jobs: readonly BackgroundJobState[]
@@ -68,20 +68,6 @@ function subagentTokens(sub: SubagentState): number {
 }
 
 /** Hard single-line clip by display width (shared rule with JobsPanel). */
-function clipLine(text: string, maxWidth: number): string {
-  if (maxWidth <= 1) return ''
-  let width = 0
-  let index = 0
-  while (index < text.length) {
-    const next = text.codePointAt(index)!
-    const char = String.fromCodePoint(next)
-    const charWidth = stringWidth(char)
-    if (width + charWidth > maxWidth - 1) break
-    width += charWidth
-    index += char.length
-  }
-  return index < text.length ? `${text.slice(0, index)}…` : text
-}
 
 function TaskRow({ entry, focused, columns, onOpen }: { entry: Entry; focused: boolean; columns: number; onOpen?: () => void }): React.ReactNode {
   const info = entry.section === 'tasks' ? jobStatusInfo(entry.job.status) : subagentStatusInfo(entry.subagent)
@@ -92,7 +78,7 @@ function TaskRow({ entry, focused, columns, onOpen }: { entry: Entry; focused: b
       <Text dimColor>·</Text>
       <Text dimColor>{entry.job.kind}</Text>
       <Text dimColor>·</Text>
-      <Text bold={focused} color={focused ? 'accent' : undefined}>{clipLine(entry.job.label, labelWidth)}</Text>
+      <Text bold={focused} color={focused ? 'accent' : undefined}>{clipLineToWidth(entry.job.label, labelWidth)}</Text>
       <Box flexGrow={1} />
       <Text dimColor>{formatJobDuration(entry.job)}</Text>
       <Text dimColor>·</Text>
@@ -100,7 +86,7 @@ function TaskRow({ entry, focused, columns, onOpen }: { entry: Entry; focused: b
     </>
   ) : (
     <>
-      <Text bold={focused} color={focused ? 'accent' : undefined}>{clipLine(entry.subagent.description, labelWidth)}</Text>
+      <Text bold={focused} color={focused ? 'accent' : undefined}>{clipLineToWidth(entry.subagent.description, labelWidth)}</Text>
       <Text dimColor>·</Text>
       <Text>{entry.subagent.model ?? entry.subagent.provider ?? 'default'}</Text>
       <Box flexGrow={1} />
@@ -112,10 +98,10 @@ function TaskRow({ entry, focused, columns, onOpen }: { entry: Entry; focused: b
   const detail = entry.section === 'tasks' ? (
     <>
       {entry.job.command !== undefined && (
-        <Text dimColor wrap="truncate">{`    ${t('jobs-panel-command')} ${clipLine(entry.job.command, labelWidth + 24)}`}</Text>
+        <Text dimColor wrap="truncate">{`    ${t('jobs-panel-command')} ${clipLineToWidth(entry.job.command, labelWidth + 24)}`}</Text>
       )}
       {entry.job.outputLines.slice(-4).map((line, index) => (
-        <Text key={`${entry.job.id}-out-${index}`} dimColor wrap="truncate">{`    │ ${clipLine(line, labelWidth + 24)}`}</Text>
+        <Text key={`${entry.job.id}-out-${index}`} dimColor wrap="truncate">{`    │ ${clipLineToWidth(line, labelWidth + 24)}`}</Text>
       ))}
     </>
   ) : (() => {
@@ -125,10 +111,10 @@ function TaskRow({ entry, focused, columns, onOpen }: { entry: Entry; focused: b
     return (
       <>
         {tool !== undefined && (
-          <Text dimColor wrap="truncate">{`    ${t('task-center-last-tool')} ${clipLine(tool.name ?? '', labelWidth + 24)}`}</Text>
+          <Text dimColor wrap="truncate">{`    ${t('task-center-last-tool')} ${clipLineToWidth(tool.name ?? '', labelWidth + 24)}`}</Text>
         )}
         {live !== undefined && (
-          <Text dimColor wrap="truncate">{`    │ ${clipLine(live, labelWidth + 24)}`}</Text>
+          <Text dimColor wrap="truncate">{`    │ ${clipLineToWidth(live, labelWidth + 24)}`}</Text>
         )}
       </>
     )

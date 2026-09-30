@@ -1,12 +1,12 @@
 import React from 'react'
 import { Box, Text, useTerminalSize } from '../../ui.js'
 import { useAnimationFrame } from '../../ink/hooks/use-animation-frame.js'
-import { stringWidth } from '../../ink/stringWidth.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
 import type { DOMElement } from '../../ink/dom.js'
 import { formatDuration } from '../../terminal-utils/format.js'
 import { ToolUseLoader } from '../ToolUseLoader.js'
 import type { ToolGroupModel } from './tool-blocks.js'
+import { clipToWidth } from '../../ink/truncateToWidth.js'
 
 type Props = {
   group: ToolGroupModel
@@ -19,19 +19,6 @@ type Props = {
   ref?: React.Ref<DOMElement>
 }
 
-function clipToWidth(text: string, width: number): string {
-  if (width <= 1) return '…'
-  if (stringWidth(text) <= width) return text
-  let used = 0
-  let out = ''
-  for (const ch of text) {
-    const w = stringWidth(ch)
-    if (used + w > width - 1) break
-    out += ch
-    used += w
-  }
-  return `${out}…`
-}
 
 /**
  * The verb-group fold row (grok "Read 4 files"): one line standing in for a

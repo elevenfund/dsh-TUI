@@ -4,11 +4,11 @@ import type { SubagentRow } from '../../dsh-adapter/channel.js'
 import type { Theme } from '../../theme.js'
 import { t } from '../../i18n.js'
 import { toolNameColor } from '../messages/AssistantToolUseMessage.js'
-import { stringWidth } from '../../ink/stringWidth.js'
 import { formatDuration } from '../../terminal-utils/format.js'
 import { isMinimalMode } from '../../minimalMode.js'
 import { MULTIPLICATION_X } from '../../terminal-utils/figures.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
+import { clipLineToWidth } from '../../ink/truncateToWidth.js'
 
 /** The waterfall window is a Kimi Code style constant-height region. */
 const WATERFALL_ROWS = 3
@@ -28,22 +28,6 @@ function status(row: SubagentRow): { glyph: string; label: string; color: keyof 
 }
 /** Hard single-line clip by display width — a wrapped waterfall row would
  * break the constant-height window. */
-function clipLine(text: string, maxWidth: number): string {
-  if (maxWidth <= 1) return ''
-  let width = 0
-  let index = 0
-  while (index < text.length) {
-    // Advance by the next full code point so wide glyphs (CJK, emoji) are
-    // never split in half.
-    const next = text.codePointAt(index)!
-    const char = String.fromCodePoint(next)
-    const charWidth = stringWidth(char)
-    if (width + charWidth > maxWidth - 1) break
-    width += charWidth
-    index += char.length
-  }
-  return index < text.length ? `${text.slice(0, index)}…` : text
-}
 
 /**
  * Borderless, fixed-height activity card embedded directly in the transcript
@@ -117,7 +101,7 @@ export function SubagentMessage({ subagent, marginTopOnTurn, onClick }: {
             {lastRunning.argsPreview !== undefined && (
               <>
                 <Text color={toolNameColor(lastRunning.name)}>{lastRunning.name}</Text>
-                <Text dimColor>{` (${clipLine(lastRunning.argsPreview.replace(/\s+/g, ' ').trim(), Math.max(10, rowWidth - lastRunning.name.length - 6))})`}</Text>
+                <Text dimColor>{` (${clipLineToWidth(lastRunning.argsPreview.replace(/\s+/g, ' ').trim(), Math.max(10, rowWidth - lastRunning.name.length - 6))})`}</Text>
               </>
             )}
           </>
@@ -128,7 +112,7 @@ export function SubagentMessage({ subagent, marginTopOnTurn, onClick }: {
               <Text color="success">✓</Text>
               <Text color={toolNameColor(previousDone.name)}>{previousDone.name}</Text>
               {previousDone.argsPreview !== undefined && (
-                <Text dimColor>{` (${clipLine(previousDone.argsPreview.replace(/\s+/g, ' ').trim(), Math.max(10, rowWidth - previousDone.name.length - 6))})`}</Text>
+                <Text dimColor>{` (${clipLineToWidth(previousDone.argsPreview.replace(/\s+/g, ' ').trim(), Math.max(10, rowWidth - previousDone.name.length - 6))})`}</Text>
               )}
             </>
           )
@@ -139,10 +123,10 @@ export function SubagentMessage({ subagent, marginTopOnTurn, onClick }: {
       // key 不含 time：含 time 的 key 让每个 animation tick 都变成
       // unmount+mount，DOMElement/Yoga node churn 且 nodeCache 失配扩大
       // terminal damage。内容更新走 in-place diff。
-      <Text key={`${subagent.agentId}-wf-${index}`} dimColor wrap="truncate">{`  │ ${clipLine(activity[index] ?? '', rowWidth)}`}</Text>
+      <Text key={`${subagent.agentId}-wf-${index}`} dimColor wrap="truncate">{`  │ ${clipLineToWidth(activity[index] ?? '', rowWidth)}`}</Text>
     ))}
     {settled && subagent.status === 'failed' && subagent.error && (
-      <Text color="error" wrap="truncate">{`  └ ${clipLine(subagent.error, rowWidth)}`}</Text>
+      <Text color="error" wrap="truncate">{`  └ ${clipLineToWidth(subagent.error, rowWidth)}`}</Text>
     )}
   </Box>
 }

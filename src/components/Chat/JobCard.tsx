@@ -7,6 +7,7 @@ import { t } from '../../i18n.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { isMinimalMode } from '../../minimalMode.js'
 import { MULTIPLICATION_X, BLACK_CIRCLE } from '../../terminal-utils/figures.js'
+import { clipLineToWidth } from '../../ink/truncateToWidth.js'
 
 /** The waterfall window mirrors the subagent card: a constant-height region. */
 const WATERFALL_ROWS = 3
@@ -37,20 +38,6 @@ function statusInfo(status: BackgroundJobStatus): { glyph: string; label: string
 
 /** Hard single-line clip by display width — a wrapped waterfall row would
  *  break the constant-height window. */
-function clipLine(text: string, maxWidth: number): string {
-  if (maxWidth <= 1) return ''
-  let width = 0
-  let index = 0
-  while (index < text.length) {
-    const next = text.codePointAt(index)!
-    const char = String.fromCodePoint(next)
-    const charWidth = stringWidth(char)
-    if (width + charWidth > maxWidth - 1) break
-    width += charWidth
-    index += char.length
-  }
-  return index < text.length ? `${text.slice(0, index)}…` : text
-}
 
 /**
  * Live background-job card embedded in the transcript (`kind: 'job'`),
@@ -121,7 +108,7 @@ export function JobCard({ job, marginTopOnTurn, onClick }: {
         {t('jobs-card-task')}
       </Text>
       <Text dimColor>{verbText}</Text>
-      <Text dimColor>{clipLine(job.label, labelWidth)}</Text>
+      <Text dimColor>{clipLineToWidth(job.label, labelWidth)}</Text>
       {exitDetail !== '' && <Text dimColor>{exitDetail}</Text>}
       {!settled && <Text dimColor>{`· ${duration}`}</Text>}
     </Box>
@@ -130,11 +117,11 @@ export function JobCard({ job, marginTopOnTurn, onClick }: {
       // diff，避免每个 tick 都 unmount+mount。瀑布只在有镜像输出时出现
       // （后台任务静默是常态——无输出时卡片就是头行，不摆空 gutter）。
       <Text key={`${job.id}-wf-${index}`} dimColor wrap="truncate">
-        {`  │ ${clipLine(line, rowWidth)}`}
+        {`  │ ${clipLineToWidth(line, rowWidth)}`}
       </Text>
     ))}
     {settled && job.status !== 'completed' && headerDetail !== undefined && (
-      <Text dimColor wrap="truncate">{`  └ ${clipLine(headerDetail, rowWidth)}`}</Text>
+      <Text dimColor wrap="truncate">{`  └ ${clipLineToWidth(headerDetail, rowWidth)}`}</Text>
     )}
   </Box>
 }

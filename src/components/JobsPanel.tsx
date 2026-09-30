@@ -9,6 +9,7 @@ import { isPlainReturnInput } from '../utils/modifiers.js'
 import { isMinimalMode } from '../minimalMode.js'
 import { stringWidth } from '../ink/stringWidth.js'
 import { MULTIPLICATION_X } from '../terminal-utils/figures.js'
+import { clipLineToWidth } from '../ink/truncateToWidth.js'
 
 export interface JobsPanelProps {
   jobs: readonly BackgroundJobState[]
@@ -34,20 +35,6 @@ function statusInfo(status: BackgroundJobStatus): { glyph: string; label: string
 }
 
 /** Hard single-line clip by display width (shared rule with the job card). */
-function clipLine(text: string, maxWidth: number): string {
-  if (maxWidth <= 1) return ''
-  let width = 0
-  let index = 0
-  while (index < text.length) {
-    const next = text.codePointAt(index)!
-    const char = String.fromCodePoint(next)
-    const charWidth = stringWidth(char)
-    if (width + charWidth > maxWidth - 1) break
-    width += charWidth
-    index += char.length
-  }
-  return index < text.length ? `${text.slice(0, index)}…` : text
-}
 
 function JobRowLine({ job, focused }: { job: BackgroundJobState; focused: boolean }): React.ReactNode {
   const { columns } = useTerminalSize()
@@ -72,7 +59,7 @@ function JobRowLine({ job, focused }: { job: BackgroundJobState; focused: boolea
   if (detail !== undefined) {
     const detailWidth = Math.min(stringWidth(detail), Math.max(0, avail - 8))
     if (detailWidth > 1) {
-      detailText = clipLine(detail, detailWidth)
+      detailText = clipLineToWidth(detail, detailWidth)
       labelWidth = avail - stringWidth(detailText) - 2
     }
   }
@@ -87,7 +74,7 @@ function JobRowLine({ job, focused }: { job: BackgroundJobState; focused: boolea
           <Text dimColor>{job.kind}</Text>
           <Text dimColor>·</Text>
         </Box>
-        <Text bold={focused}>{clipLine(job.label, labelWidth)}</Text>
+        <Text bold={focused}>{clipLineToWidth(job.label, labelWidth)}</Text>
         <Box flexGrow={1} />
         <Box flexShrink={0} flexDirection="row" gap={1}>
           <Text dimColor>{duration}</Text>
@@ -100,11 +87,11 @@ function JobRowLine({ job, focused }: { job: BackgroundJobState; focused: boolea
         <Box flexDirection="column">
           {/* 详情块：完整任务名 + 命令 + 起止/输出更新时间 + 镜像输出尾巴。 */}
           <Text dimColor wrap="truncate">
-            {`    ${t('jobs-card-prefix')}${clipLine(job.label, Math.max(10, labelWidth + 24))}`}
+            {`    ${t('jobs-card-prefix')}${clipLineToWidth(job.label, Math.max(10, labelWidth + 24))}`}
           </Text>
           {job.command !== undefined && (
             <Text dimColor wrap="truncate">
-              {`    ${t('jobs-panel-command')} ${clipLine(job.command, Math.max(10, labelWidth + 24))}`}
+              {`    ${t('jobs-panel-command')} ${clipLineToWidth(job.command, Math.max(10, labelWidth + 24))}`}
             </Text>
           )}
           <Text dimColor wrap="truncate">
@@ -115,7 +102,7 @@ function JobRowLine({ job, focused }: { job: BackgroundJobState; focused: boolea
           {job.outputLines.length > 0 ? (
             job.outputLines.map((line, index) => (
               <Text key={`${job.id}-detail-${index}`} dimColor wrap="truncate">
-                {`    │ ${clipLine(line, Math.max(10, labelWidth + 24))}`}
+                {`    │ ${clipLineToWidth(line, Math.max(10, labelWidth + 24))}`}
               </Text>
             ))
           ) : (

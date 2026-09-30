@@ -4,7 +4,7 @@ import { formatJobDuration, type BackgroundJobState } from '../dsh-adapter/jobs.
 import { formatDuration } from '../terminal-utils/format.js'
 import type { SubagentState } from '../dsh-adapter/subagents.js'
 import { t } from '../i18n.js'
-import { stringWidth } from '../ink/stringWidth.js'
+import { clipLineToWidth } from '../ink/truncateToWidth.js'
 
 export interface AgentStripProps {
   jobs: readonly BackgroundJobState[]
@@ -19,20 +19,6 @@ export interface AgentStripProps {
 const MAX_ROWS = 3
 
 /** Hard single-line clip by display width (shared rule with JobsPanel). */
-function clipLine(text: string, maxWidth: number): string {
-  if (maxWidth <= 1) return ''
-  let width = 0
-  let index = 0
-  while (index < text.length) {
-    const next = text.codePointAt(index)!
-    const char = String.fromCodePoint(next)
-    const charWidth = stringWidth(char)
-    if (width + charWidth > maxWidth - 1) break
-    width += charWidth
-    index += char.length
-  }
-  return index < text.length ? `${text.slice(0, index)}…` : text
-}
 
 function subagentTokens(sub: SubagentState): number {
   const tokens = sub.tokens
@@ -65,7 +51,7 @@ export function AgentStrip({ jobs, subagents, onOpenCenter, onOpenSubagent }: Ag
         <>
           <Text color="ansi:yellowBright">●</Text>
           <Text bold dimColor>{job.id}</Text>
-          <Text dimColor>{clipLine(job.label, 60)}</Text>
+          <Text dimColor>{clipLineToWidth(job.label, 60)}</Text>
           <Box flexGrow={1} />
           <Text dimColor>{formatJobDuration(job)}</Text>
         </>
@@ -81,8 +67,8 @@ export function AgentStrip({ jobs, subagents, onOpenCenter, onOpenSubagent }: Ag
       node: (
         <>
           <Text color="ansi:yellowBright">◐</Text>
-          <Text bold>{clipLine(sub.description, 28)}</Text>
-          {live !== undefined && <Text dimColor>{clipLine(live, 48)}</Text>}
+          <Text bold>{clipLineToWidth(sub.description, 28)}</Text>
+          {live !== undefined && <Text dimColor>{clipLineToWidth(live, 48)}</Text>}
           <Box flexGrow={1} />
           <Text dimColor>{`${duration} · ↓${subagentTokens(sub)}`}</Text>
         </>

@@ -18,6 +18,7 @@ import type { Theme } from '../../theme.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
 import { revealLinesOf, snapReveal } from '../smoothReveal.js'
 import { useRevealVersion } from '../../hooks/useRevealVersion.js'
+import { clipToWidth } from '../../ink/truncateToWidth.js'
 
 type Props = {
   tool: ToolRow
@@ -315,19 +316,6 @@ function clipHeaderArgs(args: string): string {
 /** Clip a single-line header string to a DISPLAY-width budget (cells, not
  *  chars — CJK counts 2). Used by the grok-style one-line terminal header:
  *  the command's first line must never wrap. */
-function clipToWidth(text: string, width: number): string {
-  if (width <= 1) return '…'
-  if (stringWidth(text) <= width) return text
-  let used = 0
-  let out = ''
-  for (const ch of text) {
-    const w = stringWidth(ch)
-    if (used + w > width - 1) break
-    out += ch
-    used += w
-  }
-  return `${out}…`
-}
 
 /** Terminal-card header folding shape: the line actually rendered, the source
  *  lines the multi-line fold hid, and the characters the long-line clip hid. */
