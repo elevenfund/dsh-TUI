@@ -3,11 +3,14 @@ import { t, getLang, setLang, writeLangPref, subscribeLang, LANGS, type Lang } f
 
 import { AlternateScreen, Box, Image, Text, useInput, ScrollBox, type ScrollBoxHandle, useTheme, useTerminalSize } from '../ui.js'
 import * as tuiKit from '../ui.js'
-
+import { usePageInset } from '../components/PageMargin.js'
+import { POINTER } from '../terminal-utils/figures.js'
 import { isPlainReturnInput, modLabel } from '../utils/modifiers.js'
-import { actionMatches } from '../utils/keymap.js'
-
+import { actionMatches, effectiveComboDisplay, primaryComboString } from '../utils/keymap.js'
+import { formatTokens } from '../terminal-utils/format.js'
 import { homeDir } from '../utils/paths.js'
+import { execFileNoThrow } from '../utils/execFileNoThrow.js'
+import type { LlmModelInfo, LlmProviderInfo } from '../adapter/ports/channel-view.js'
 import { cleanRenderText, cleanScalarText } from '../dsh-adapter/sanitize.js'
 import {
   modelPickerLanding,
@@ -20,6 +23,16 @@ import type { QuestionStore } from '../dsh-adapter/questions.js'
 import { TuiDialogStore } from '../dsh-adapter/dialogs.js'
 import { TuiStatusStore, type TuiStatusViewUi } from '../dsh-adapter/status.js'
 import { ActivityStore, useActivity } from '../dsh-adapter/activity-store.js'
+import type { TranscriptImage } from '../dsh-adapter/transcript-images.js'
+import { rasterToPng, setMathPreviewOpener, type MathPreviewRequest } from '../components/mathPreview.js'
+import { renderMathRaster, type MathRenderRequest } from '../math/renderer.js'
+
+/** Formula preview rasters are re-typeset at this cell scale (2× the
+ *  transcript's) so the card's 100–800% zoom stays sharp instead of upscaling
+ *  the inline pixels. Bounded like the other image budgets. */
+const MATH_PREVIEW_SCALE = 2
+const MATH_PREVIEW_MAX_COLUMNS = 480
+const MATH_PREVIEW_MAX_ROWS = 64
 import type { TuiShortcutHost } from '../dsh-adapter/shortcuts.js'
 import type { TuiThemeHost } from '../dsh-adapter/themes.js'
 
@@ -35,6 +48,10 @@ import { useCopyOnSelect } from '../ink/hooks/use-copy-on-select.js'
 import { useSelection } from '../ink/hooks/use-selection.js'
 
 import { LogoHeader, MessageList } from '../components/MessageList.js'
+import { splashFontIdOf } from '../components/splashFonts.js'
+import { StarPrompt, WhaleCouponPrompt, type StarAttempt } from '../components/StarPrompt.js'
+import type { WhaleCouponStore } from '../dsh-adapter/oauth/bonus.js'
+import { dueStarModal, markStarAsked, STAR_MILESTONES } from '../usageStats.js'
 import { TimelineRail } from '../components/TimelineRail.js'
 import { ScrollbarGutter } from '../components/ScrollbarGutter.js'
 import type { TimelineSnapshot } from '../ink/timeline-rail.js'
@@ -47,7 +64,10 @@ import type { InjectController } from '../dsh-adapter/inject-channel.js'
 import { PromptEditorLayer, usePromptEditorOpen } from '../components/PromptEditor.js'
 import { GoalTodoPanel } from '../components/GoalTodoPanel.js'
 import { AutoRecapRow } from '../components/AutoRecapRow.js'
+import { CompactionStatusRow } from '../components/CompactionStatusRow.js'
 import { BalanceReportRow } from '../components/BalanceReportRow.js'
+import type { BalanceResult } from '../deepseekBalance.js'
+import { estimateSessionCostSnapshotCny } from '../deepseekPricing.js'
 import { LoadedContextPanel } from '../components/LoadedContextPanel.js'
 import { StatusLine } from './StatusLine.js'
 import { WorkingSpinner, useThinkingStatus } from '../components/WorkingSpinner.js'
@@ -58,6 +78,10 @@ import { PluginStatusViewBoundary } from '../components/PluginStatusViewBoundary
 import { ImagePreviewOverlay } from '../components/ImagePreviewOverlay.js'
 import { RowDetailOverlay } from '../components/RowDetailOverlay.js'
 import { SkillsPicker, SkillsPickerLoading } from '../components/SkillsPicker.js'
+import { MigrateConfirm, MigratePicker } from '../components/MigratePicker.js'
+import { collectMigratePickerRows, MIGRATE_SCAN_SPECS, parseImportSummary, resolveMigrateCommand, type MigratePickerRow } from '../dsh-adapter/migrate/picker.js'
+import { collectActivitySamples, recentAgentsFrom, type ActivitySample } from '../dsh-adapter/migrate/recent-agents.js'
+import { MIGRATION_ADAPTERS } from '../dsh-adapter/migrate/index.js'
 import { SessionSupervisor } from './SessionSupervisor.js'
 import { SessionTree } from './SessionTree.js'
 import { Settings } from './Settings.js'
@@ -99,8 +123,13 @@ import instances from '../ink/instances.js'
 import { useExternalVersion } from '../hooks/useExternalVersion.js'
 import { TrajectoryScene } from './TrajectoryScene.js'
 import { resumeFailureText } from '../sessions/resumeFailure.js'
-
-
+import { markHomeSeen } from '../homePrefs.js'
+import { extendTrajectory, projectWave, type TrajBuild } from '../dsh-adapter/trajectory/index.js'
+import { miniWakeWidth } from '../components/trajectory/MiniWake.js'
+import { readTrajectorySeen, writeTrajectorySeen } from '../trajectoryPrefs.js'
+import type { RawTrajEvent as SessionEvent } from '../adapter/ports/channel-view.js'
+import { LoadingState } from '../components/design-system/LoadingState.js'
+import { Pane } from '../components/design-system/Pane.js'
 import { loadHistory, type HistoryEntry } from '../history.js'
 
 import {
@@ -168,6 +197,11 @@ const STATUS_VIEW_UI = Object.freeze({
 /** Shared empty snapshot for hosts whose channel has no event log. */
 
 const COMMAND_RESULT_CELLS = 200
+
+/** Ceiling for one `dsh-tui migrate` child run. Discovery parses every source
+ *  file, but a healthy import of thousands of conversations finishes well
+ *  inside this; without a cap a wedged child would hang the loop forever. */
+const MIGRATE_CHILD_TIMEOUT_MS = 30 * 60 * 1000
 
 function cleanCommandError(error: unknown): string {
   try {
@@ -238,6 +272,8 @@ let fallbackDialogStore: TuiDialogStore | undefined
 let fallbackStatusStore: TuiStatusStore | undefined
 /** Standalone mounts (tests, bare embeds) without the composition root's store. */
 let fallbackActivityStore: ActivityStore | undefined
+const noCouponSubscription = (): (() => void) => () => undefined
+const noCouponSnapshot = (): null => null
 
 /** Identity of one caret-preview dismissal: the token (its title) on the
  *  image, so the same image staged twice is dismissed per token. */
@@ -246,6 +282,7 @@ export function Chat({
   questionStore,
   approvalStore,
   extensionDialogs,
+  bonusNotices,
   extensionStatus,
   activityStore,
   extensionShortcuts,
@@ -259,6 +296,7 @@ export function Chat({
   promptControllerRef: promptControllerRefProp,
   renderScene,
   openHomeOnBoot,
+  starPrompt,
 }: {
   channel: Channel
   renderScene?: (id: string, channel: Channel) => React.ReactNode
@@ -275,6 +313,8 @@ export function Chat({
    * park unanswered (their `timeoutMs` is the plugin's guard).
    */
   extensionDialogs?: TuiDialogStore
+  /** Server-confirmed login bonuses awaiting presentation in the TUI. */
+  bonusNotices?: WhaleCouponStore
   /** Plugin text and bounded rich status contributions. */
   extensionStatus?: TuiStatusStore
   /** Session-scoped activity values published by the working-activity plugin. */
@@ -323,6 +363,14 @@ export function Chat({
    */
   openHomeOnBoot?: boolean
   /**
+   * Test seam for the startup star modal (usage milestones 99h / 999
+   * launches): `null` disables the modal outright; `dir` points the usage
+   * ledger at a fixture directory; overriding the actions keeps it fully
+   * interactive without spawning `gh` or a browser. Production leaves it
+   * undefined.
+   */
+  starPrompt?: { dir?: string; onStar?: () => StarAttempt | Promise<StarAttempt>; onOpen?: () => void } | null
+  /**
    * The composer's live controller, published every render. Exposed as a prop
    * so a regression can read the draft the composer HOLDS — the ownership
    * question (does a screen swap lose it?) is about state, not about pixels.
@@ -367,6 +415,10 @@ export function Chat({
     listener => dialogs.subscribe(listener),
     () => dialogs.getSnapshot(),
   )
+  const coupon = React.useSyncExternalStore(
+    bonusNotices?.subscribe ?? noCouponSubscription,
+    bonusNotices?.getSnapshot ?? noCouponSnapshot,
+  )
   // Plugin status contributions: text keys join into one line; bounded rich
   // views keep their own rows immediately above the prompt.
   const statusContributions = extensionStatus ?? (fallbackStatusStore ??= new TuiStatusStore())
@@ -396,18 +448,6 @@ export function Chat({
       channel.notify(t('ext-shortcut-failed', { combo }), { color: 'error', timeoutMs: 4000 })
     })
   }, [extensionShortcuts, channel])
-  // When a questionnaire batch completes, fold a Q&A summary into the
-  // transcript (the tool card itself is hidden from the message list).
-  const questionOpenRef = React.useRef(questionSnapshot !== null)
-  React.useEffect(() => {
-    const wasOpen = questionOpenRef.current
-    questionOpenRef.current = questionSnapshot !== null
-    if (wasOpen && questionSnapshot === null) {
-      for (const summary of questionStore.takeSummaries()) {
-        channel.pushLocal(summary.title, summary.lines)
-      }
-    }
-  }, [channel, questionSnapshot, questionStore])
   const [expanded, setExpanded] = React.useState(false)
   const [helpOpen, setHelpOpen] = React.useState(false)
   const [handle, setHandle] = React.useState<ScrollBoxHandle | null>(null)
@@ -425,6 +465,7 @@ export function Chat({
   const [timeline, setTimeline] = React.useState<TimelineSnapshot>({
     turns: [],
     activeId: null,
+    pinnedId: null,
     upId: null,
     downId: null,
   })
@@ -450,6 +491,17 @@ export function Chat({
    * list while the fresh one loads, exactly as the boolean era did.
    */
   const [overlay, dispatchOverlay] = React.useReducer(chatOverlayReducer, NO_OVERLAY)
+  // `/migrate` picker rows (null = collecting in the background; the picker
+  // shows its empty state until the sub-second scan lands).
+  const [migrateRows, setMigrateRows] = React.useState<MigratePickerRow[] | null>(null)
+  // Multi-select state (PRD): checked agent ids + the confirmation layer's
+  // frozen snapshot of the checked rows.
+  const [migrateChecked, setMigrateChecked] = React.useState<ReadonlySet<string>>(new Set())
+  const [migratePending, setMigratePending] = React.useState<readonly MigratePickerRow[]>([])
+  // Smart-hint arming: while the migration hint notification is up, a bare
+  // Enter (empty prompt, no overlay) jumps straight into the picker with
+  // that source pre-checked (PRD #4). Any other key disarms.
+  const [migrateHintAgent, setMigrateHintAgent] = React.useState<string | null>(null)
   // Chat and PromptInput both receive one parsed stdin batch. Keep the
   // permission focus synchronous so arrow+Enter in the same batch uses the
   // post-arrow row rather than the previous render's index.
@@ -535,6 +587,135 @@ export function Chat({
    *  browser, a screen rather than a panel: it owns its own focus, staged
    *  drafts and keyboard; Chat only opens it. */
   const [settingsOpen, setSettingsOpen] = React.useState(false)
+  /** 99h / 999 次的"求 star"开屏弹窗（`usageStats` 记账，一档只弹一次）：
+   * 只在启动时判定一次——回合进行中、或已有整屏界面在开（如开机首页），
+   * 这一轮不弹也**不记账**，留给下一次启动。`starPrompt` 是测试缝：传
+   * `null` 显式关闭，传 actions 覆写两个按钮（不跑真 gh、不开真浏览器）。 */
+  /** 本次会话是否已经 star 成功（开屏彩蛋标题切「捡到小星星啦」）。 */
+  const [starred, setStarred] = React.useState(false)
+  const [starModal, setStarModal] = React.useState<{ index: number; phase: 'ask' | 'done' } | null>(null)
+  // 单发闩：只在第一个"安静的开屏视口"上武装定时器。700ms 窗口内整屏
+  // 界面打开 → cleanup 掐掉定时器且**不再重臂**（记账只发生在回调里，
+  // 所以这一档完好留给下一次启动）；整屏界面随后关闭也不追到聊天视图
+  // 上补弹——开屏求星不追人。
+  const starModalArmedRef = React.useRef(false)
+  /** 预览缝（`DSH_TUI_STAR_MODAL=1`）：启动即弹一次 99h 档的弹窗，**既不
+   * 读账本也不记账**——给作者看效果、给回归夹具用；生产不设这个变量。 */
+  const starModalPreview = process.env.DSH_TUI_STAR_MODAL === '1'
+  React.useEffect(() => {
+    if (starModalArmedRef.current) return
+    if (starPrompt === null) return
+    if (supervisorOpen || treeOpen || settingsOpen || channel.working) return
+    starModalArmedRef.current = true
+    // 让开屏先画半秒：弹窗压在介绍动画之上，而不是同抢第一帧。
+    const timer = setTimeout(() => {
+      // 到点时回合已经开始的仍不弹（channel 是活对象，读到的是当前值）。
+      if (channel.working) return
+      if (starModalPreview) {
+        const preview = STAR_MILESTONES.findIndex(milestone => milestone.hours === 99)
+        if (preview >= 0) setStarModal({ index: preview, phase: 'ask' })
+        return
+      }
+      const index = dueStarModal(starPrompt?.dir)
+      if (index === null) return
+      markStarAsked(index, starPrompt?.dir)
+      setStarModal({ index, phase: 'ask' })
+    }, 700)
+    return () => { clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在整屏界面开合时重判；闩保证只武装一次
+  }, [supervisorOpen, treeOpen, settingsOpen])
+  /** `/star` 命令、开屏标语的点击/`Alt+S` 共用的一键动作：异步跑 gh，界面
+   * 全程不阻塞，结果回来按四类各报一句（成功 / 没装 gh / 没登录 / 失败）。
+   * `starPrompt.onStar` 存在时走同一条测试缝（夹具因此不会真的去 star）。 */
+  /** 打开仓库页（走 `starPrompt.onOpen` 测试缝——夹具里不会真的拉起浏览器）。 */
+  const openStarPage = React.useCallback((): void => {
+    const seam = starPrompt?.onOpen
+    if (seam !== undefined) { seam(); return }
+    void import('../starAction.js').then(({ STAR_REPO }) => {
+      openExternal(`https://github.com/${STAR_REPO}`)
+    })
+  }, [starPrompt])
+  const runStarAction = React.useCallback((): void => {
+    const seam = starPrompt?.onStar
+    void (seam !== undefined
+      ? Promise.resolve(seam())
+      : import('../starAction.js').then(async ({ starRepo, STAR_REPO }) => {
+        const url = `https://github.com/${STAR_REPO}`
+        const outcome = await starRepo()
+        if (outcome.kind === 'starred') return { kind: 'starred' as const }
+        if (outcome.kind === 'no-gh') return { kind: 'no-gh' as const, url }
+        if (outcome.kind === 'not-authed') return { kind: 'not-authed' as const, url }
+        return { kind: 'failed' as const, detail: outcome.detail, url }
+      })).then(attempt => {
+      if (attempt.kind === 'starred') {
+        setStarred(true)
+        // 成功就演一段庆祝（女仆娘接住星星）——`/star`、`Alt+S`、标语点击
+        // 都是这一条路。整屏界面开着或回合进行中时弹窗放不下，退回一句
+        // 通知，用户至少知道 star 点上了。
+        const blocked = channel.working || supervisorOpen || treeOpen || settingsOpen
+        const index = STAR_MILESTONES.findIndex(milestone => milestone.hours === 99)
+        if (!blocked && index >= 0) {
+          setStarModal({ index, phase: 'done' })
+          return
+        }
+        channel.notify(t('star-ok'), { color: 'success' })
+        return
+      }
+      if (attempt.kind === 'no-gh') {
+        // 本机没法一键（没装 gh / 没登录）→ **自动**打开仓库页让用户自己点，
+        // 通知里说明原因（浏览器没拉起来时 URL 也还在文案里）。
+        openStarPage()
+        channel.notify(t('star-no-gh', { url: attempt.url }), { color: 'warning' })
+        return
+      }
+      if (attempt.kind === 'not-authed') {
+        openStarPage()
+        channel.notify(t('star-not-authed', { url: attempt.url }), { color: 'warning' })
+        return
+      }
+      channel.notify(t('star-failed', { detail: attempt.detail, url: attempt.url }), { color: 'error' })
+    })
+  }, [channel, starPrompt, openStarPage, supervisorOpen, treeOpen, settingsOpen])
+  const starModalActions = React.useMemo(() => ({
+    // 弹窗自己演结果（成功→庆祝、失败→留在卡里说明原因），所以这里把
+    // 结局**回传**给它；`/star` 命令那条路仍走 runStarAction 的 notify。
+    onStar: (): StarAttempt | Promise<StarAttempt> => {
+      const seam = starPrompt?.onStar
+      // 成功把开屏彩蛋切成「捡到星星」版；gh 缺失/未登录**自动**打开仓库页
+      // （与一键路径同一套兜底）。注意**不要**给返回值再包一层 `.then()`——
+      // 多一个微任务会让弹窗"庆祝那一帧"被紧随其后的 Enter 关窗批掉
+      //（夹具 C8/C9 实测）。这里只挂副作用、原样返回。
+      const afterAttempt = (attempt: StarAttempt): StarAttempt => {
+        if (attempt.kind === 'starred') setStarred(true)
+        else if (attempt.kind === 'no-gh' || attempt.kind === 'not-authed') openStarPage()
+        return attempt
+      }
+      if (seam !== undefined) {
+        const result = seam()
+        if (result instanceof Promise) {
+          void result.then(afterAttempt)
+          return result
+        }
+        return afterAttempt(result)
+      }
+      const run = import('../starAction.js').then(async ({ starRepo, STAR_REPO }) => {
+        const url = `https://github.com/${STAR_REPO}`
+        const outcome = await starRepo()
+        if (outcome.kind === 'starred') return { kind: 'starred' as const }
+        if (outcome.kind === 'no-gh') return { kind: 'no-gh' as const, url }
+        if (outcome.kind === 'not-authed') return { kind: 'not-authed' as const, url }
+        return { kind: 'failed' as const, detail: outcome.detail, url }
+      })
+      void run.then(afterAttempt)
+      return run
+    },
+    onOpen: () => {
+      setStarModal(null)
+      openStarPage()
+    },
+  }), [starPrompt, openStarPage])
+  /** 弹窗关闭回调：稳定引用（见渲染处的注释）。 */
+  const closeStarModal = React.useCallback((): void => { setStarModal(null) }, [])
   const [workspaceTargets, setWorkspaceTargets] = React.useState<readonly TuiWorkspaceTarget[]>([])
   /** `/preset` agent-preset roster (issue #8): loads async, persists. */
   const [presetOptions, setPresetOptions] = React.useState<readonly PresetOption[]>([])
@@ -566,14 +747,14 @@ export function Chat({
    * renders with stale folds/expansion/selection — the "entered a freshly
    * dispatched session and it renders wrong" bug. Reset the same set `/new`
    * resets, plus the search overlay and the side question, and repaint the
-   * transcript from the top.
+   * transcript pinned to the bottom so rewinds and model switches can continue.
    */
   const repaintTranscript = (): void => {
     const ink = instances.get(process.stdout) ?? instances.values().next().value
     // Wait one task so React commits the new session's tree before the
     // scrollback clear repaints (same pattern as `/new`).
     setTimeout(() => {
-      handle?.scrollTo(0)
+      handle?.scrollToBottom()
       ink?.clearScrollbackAndRedraw()
     }, 0)
   }
@@ -610,9 +791,16 @@ export function Chat({
   /** Subagent dashboard (Ctrl+A): displays active/completed subagents. */
   const [subagentDashboardOpen, setSubagentDashboardOpen] = React.useState(false)
   const [jobsPanelOpen, setJobsPanelOpen] = React.useState(false)
+  /** Job id the panel should focus on open: set by a transcript card click
+   *  (open the panel AT that job), cleared on close so the keyboard/command
+   *  path reopens at the top. */
+  const [jobsPanelFocusId, setJobsPanelFocusId] = React.useState<string | null>(null)
   // MessageList forwards these open handlers to every memoized row. Their
   // identities must survive token/metrics updates, including for tool rows.
-  const openJobsPanel = React.useCallback(() => setJobsPanelOpen(true), [])
+  const openJobsPanel = React.useCallback((focusId?: string) => {
+    if (typeof focusId === 'string' && focusId !== '') setJobsPanelFocusId(focusId)
+    setJobsPanelOpen(true)
+  }, [])
   // Stable identity for the StatusLine subagents chip's click target.
   const openSubagentDashboard = React.useCallback(() => setSubagentDashboardOpen(true), [])
   // The strip and the status chips open the unified task center (Ctrl+G).
@@ -740,6 +928,9 @@ export function Chat({
     else void setClipboard(path)
   }, [])
 
+  // A questionnaire/approval/plugin dialog owns the keyboard while pending
+  // (their guard runs BEFORE the overlay key chain), so a preview left open
+  // underneath would be visually on top yet key-dead. Close it instead.
   const previewBlocked = questionSnapshot !== null || approvalSnapshot !== null || dialogSnapshot !== null
   React.useEffect(() => {
     if (
@@ -957,6 +1148,37 @@ export function Chat({
   // fullscreen (<AlternateScreen> supplies mouse tracking); a no-op
   // subscription in inline mode, where selection belongs to the terminal.
   // The copy clears the highlight and posts a transient notification.
+  // Smart migration hint (product ask): ~12s after mount, one background
+  // pass over the foreign-agent stores; when a source was active inside the
+  // 20-minute window, surface the user's own wording once per session. The
+  // file-level mtime scan is the counter's walk shape (sub-second) and runs
+  // off the render path; failures read as "no data" and stay silent.
+  const migrateHintShownRef = React.useRef(false)
+  React.useEffect(() => {
+    if (migrateHintShownRef.current) return
+    const timer = setTimeout(() => {
+      migrateHintShownRef.current = true
+      void (async () => {
+        const newest = await new Promise<readonly ActivitySample[]>(resolve => {
+          setImmediate(() => resolve(collectActivitySamples(
+            MIGRATION_ADAPTERS,
+            adapter => MIGRATE_SCAN_SPECS[adapter.id],
+          )))
+        })
+        const top = recentAgentsFrom(newest, Date.now())[0]
+        if (top !== undefined) {
+          channel.notify(t('migrate-hint-notify', { agent: top.label }), { timeoutMs: 10000 })
+          // PRD #4: while the hint is up, a bare Enter (empty prompt, no
+          // overlay) jumps into the picker with this source pre-checked;
+          // the global key layer below consumes it, anything else disarms.
+          setMigrateHintAgent(top.agentId)
+          setTimeout(() => setMigrateHintAgent(current => current === top.agentId ? null : current), 10_000)
+        }
+      })()
+    }, 12_000)
+    return () => clearTimeout(timer)
+  }, [channel])
+
   useCopyOnSelect(
     text => channel.notify(t('copied-chars', { n: text.length }), { timeoutMs: 1500 }),
     // Stale-selection refusal: the highlighted rows were replaced in place
@@ -1061,10 +1283,12 @@ ing registered by a DSH
     const ok = writeLangPref(lang)
     setLang(lang)
     const settingsHost = channel.settingsHost()
-    const tuiView = settingsHost?.listNamespaces().find(entry => entry.ns === 'dsh-tui')
+    // This mount's own namespace (custom Loader ids exist): looking up the
+    // literal 'dsh-tui' skipped the mirror entirely on such mounts.
+    const tuiView = settingsHost?.listNamespaces().find(entry => entry.ns === channel.settingsNamespace)
     if (settingsHost !== undefined && tuiView !== undefined) {
       void settingsHost
-        .write('dsh-tui', [{ op: 'set', path: ['lang'], value: lang }], tuiView.revision)
+        .write(channel.settingsNamespace, [{ op: 'set', path: ['lang'], value: lang }], tuiView.revision)
         .catch(() => {})
     }
     channel.notify(
@@ -1120,6 +1344,90 @@ ing registered by a DSH
     onRewound: () => { setSelectedId(null); setSelectionActive(false) },
   })
   const { forceMountRowId, seekRow, seekRowIntoView, revealAndSeekRow } = useSeek(handle, rowRefsRef, showAllMessages, setShowAllMessages)
+  const collectMigrateRows = (): Promise<MigratePickerRow[]> => new Promise(resolve => {
+    setImmediate(() => resolve(collectMigratePickerRows(Date.now())))
+  })
+
+  /** Run `dsh-tui migrate <args>` in a child process through the package
+   *  bin; resolves with the exit code and the combined output. Uses the
+   *  shared no-throw runner (bounded capture, timeout, windowsHide): a wedged
+   *  child would otherwise hang the sequential per-source loop forever. */
+  const runMigrateChild = async (parts: readonly string[]): Promise<{ code: number | null, out: string }> => {
+    const { dirname } = await import('node:path')
+    const { fileURLToPath } = await import('node:url')
+    const { resolveOwnBin } = await import('../dsh-adapter/migrate/bin-path.js')
+    // This file sits at a different depth per layout (src/screens vs
+    // lib/types/screens), so the bin resolves by upward probe — see
+    // bin-path.ts; a fixed dirname count fails on real installs.
+    const bin = resolveOwnBin(dirname(fileURLToPath(import.meta.url)))
+    if (bin === undefined) {
+      channel.notify(t('migrate-spawn-failed'), { color: 'error', timeoutMs: 8000 })
+      return { code: -1, out: '' }
+    }
+    const result = await execFileNoThrow(process.execPath, [bin, 'migrate', ...parts], {
+      timeout: MIGRATE_CHILD_TIMEOUT_MS,
+    })
+    // A killed child reports `code: null` and whatever it managed to print; put
+    // the reason on the record so the transcript does not read as a silent
+    // failure. Nothing at all (no code, no output) means it never really ran.
+    if (result.code === null) {
+      return {
+        code: null,
+        out: `${result.stdout}${result.stderr}${t('migrate-child-timeout', { minutes: MIGRATE_CHILD_TIMEOUT_MS / 60_000 })}\n`,
+      }
+    }
+    if (result.code === 1 && result.stdout === '' && result.stderr === '') {
+      channel.notify(t('migrate-spawn-failed'), { color: 'error', timeoutMs: 8000 })
+    }
+    // stdout carries the per-source report, stderr the usage/error lines;
+    // both belong in the /migrate transcript row.
+    return { code: result.code, out: `${result.stdout}${result.stderr}` }
+  }
+
+  /** Orchestrate the confirmation layer's confirmed rows (PRD #3): one child
+   *  per source, sequential; per-source progress notifications (throttled by
+   *  the source boundary — no intra-source spam), real per-source counters
+   *  parsed from each child's report, and a final summary that NEVER claims
+   *  success for a source that did not run (the P2 fix). */
+  const spawnMigrateSources = (rows: readonly MigratePickerRow[], dryRun: boolean): void => {
+    const allOut: string[] = []
+    let failures = 0
+    void (async () => {
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]!
+        channel.notify(
+          t(dryRun ? 'migrate-previewing-source' : 'migrate-importing-source', { label: row.label, i: i + 1, n: rows.length }),
+          { timeoutMs: 4000 },
+        )
+        const { code, out } = await runMigrateChild(dryRun ? [row.agentId, '--dry-run'] : [row.agentId])
+        allOut.push(...out.split('\n').map(line => cleanRenderText(line, 400)).filter(Boolean))
+        if (code !== 0) failures += 1
+        // Per-source real counters straight from the child's report line.
+        const summary = parseImportSummary(out).find(entry => entry.agentId === row.agentId)
+        if (!dryRun && summary !== undefined) {
+          channel.notify(
+            t('migrate-source-done', { label: row.label, imported: summary.imported, existing: summary.existing }),
+            { timeoutMs: 6000 },
+          )
+        }
+      }
+      // The transcript row is this run's record. When a source failed AND no
+      // child output was captured at all (killed by the timeout, or never
+      // spawned), the success wording would contradict the notification right
+      // above it — report the failure here too.
+      const fallbackLine = failures > 0
+        ? t('migrate-failed', { n: failures })
+        : t(dryRun ? 'migrate-all-previewed' : 'migrate-all-done', { n: rows.length })
+      channel.pushLocal('/migrate', allOut.length > 0 ? allOut : [fallbackLine])
+      channel.notify(
+        failures === 0
+          ? t(dryRun ? 'migrate-all-previewed' : 'migrate-all-done', { n: rows.length })
+          : t('migrate-failed', { n: failures }),
+        failures === 0 ? { timeoutMs: 6000 } : { color: 'error', timeoutMs: 10000 },
+      )
+    })()
+  }
+
   const runCommand = createRunCommand({
     channel, t, dispatchOverlay, handle, expanded, models,
     applyLang, backgroundToAgentView, btwAbortRef, handleWorkspaceResult, questionStore,
@@ -1136,6 +1444,8 @@ ing registered by a DSH
     setPresetOptions, setEffortOptions, presetOptions,
     setLogoNonce, suppressLogoIntroRef, recapAbortRef, agentViewOpenSessionRef,
     runPermissionCommand, openRewind,
+    collectMigrateRows, migrateRows, setMigrateRows,
+    setMigratePending, setMigrateChecked, spawnMigrateSources,
   })
 
   // `/` transcript search: rows whose searchable text contains the query.
@@ -1245,6 +1555,23 @@ ing registered by a DSH
   }, [])
   /** Deduplicate terminals that report one Enter as parsed Return then raw CR/LF. */
   const lastModalEnterAtRef = React.useRef(0)
+  const couponVisible = coupon !== null && starModal === null
+    && approvalSnapshot === null && dialogSnapshot === null && questionSnapshot === null
+    && overlay.kind === 'none' && btw === null && recap === null
+    && !supervisorOpen && !treeOpen && !settingsOpen && !jobsPanelOpen
+    && !sceneOpen && !subagentDashboardOpen && subagentDetailId === null
+  // Upload tokens of the last request, for the working line's token suffix;
+  // mirrored into the spinner's ref for its own suffix rendering.
+  const lastUploadTokens = channel.lastUsage === undefined
+    ? 0
+    : channel.lastUsage.input + channel.lastUsage.cacheWrite
+  uploadTokensRef.current = lastUploadTokens
+  const markCouponShown = React.useCallback((orderId: Parameters<WhaleCouponStore['shown']>[0]) => {
+    bonusNotices?.shown(orderId)
+  }, [bonusNotices])
+  const closeCoupon = React.useCallback(() => {
+    if (coupon !== null) bonusNotices?.dismiss(coupon.orderId)
+  }, [bonusNotices, coupon])
 
   // ── Overlay keyboard routing ─────────────────────────────────────────
   // Table-driven dispatch (src/screens/chat/overlay-keys.tsx): per-kind
@@ -1265,6 +1592,8 @@ ing registered by a DSH
     runExternalCommand, applyLang, themeHost, setTheme,
     historyMatches, rewindRequestRef, performRewind, rewindRows,
     requestRewindConfirm, runFileAction, imagePreviewZoomRef,
+    migrateRows, migratePendingRows: migratePending, migrateChecked,
+    setMigrateChecked, setMigratePending, spawnMigrateSources,
   })
   const runOverlayKeys = (kind: ChatOverlay['kind'], input: string, key: Key, plainReturn: boolean, event: { stopImmediatePropagation(): void }): boolean => {
     if (overlay.kind !== kind) return false
@@ -1306,6 +1635,9 @@ ing registered by a DSH
       // dual-track tolerance the row-detail card has): the pager keys are
       // terminal-level and muscle memory from less/readers.
       page: key.pageUp || (key.ctrl && input === 'b') ? 'up' : key.pageDown || (key.ctrl && input === 'f') ? 'down' : null,
+      // The splash star modal / coupon celebration owns the keyboard and the
+      // wheel while up (remote #1194/#1197 surfaces).
+      starModalOpen: starModal !== null || couponVisible,
     })
     if (guard.type === 'yield') return
     if (guard.type === 'scroll') {
@@ -1515,6 +1847,18 @@ ing registered by a DSH
         channel.cancel()
       }
       event.stopImmediatePropagation()
+    } else if (
+      key.escape
+      && !helpOpen
+      && !channel.working
+      && channel.compaction?.cancellable === true
+      && !promptControllerRef.current?.vimActive()
+    ) {
+      // Idle Esc otherwise falls through to the prompt's double-tap-clear;
+      // while a manual compaction runs, stopping it is what the status row
+      // promises (and the host closes the bracket cleanly on abort).
+      channel.cancelCompact()
+      event.stopImmediatePropagation()
     } else if (actionMatches('transcript', input, key) && !helpOpen) {
       // Leaving transcript mode (default Ctrl+O) — search was already
       // handled above. Help is modal: toggling this state behind the
@@ -1536,7 +1880,15 @@ ing registered by a DSH
       // CLEARS a non-empty prompt (single press) and only arms the
       // double-press exit when the input is empty; ctrl+d keeps the
       // time-based double-press exit regardless.
-      if (channel.working) {
+      if (input === 'c' && !channel.working && channel.compaction?.cancellable === true) {
+        // Ctrl+C during a manual compaction stops the compaction instead of
+        // arming the double-press exit: exiting the process mid-bracket is how
+        // a session log ends up with an unmatched `compaction/start`. Ctrl+D
+        // keeps its exit meaning, and the next Ctrl+C behaves normally again.
+        channel.cancelCompact()
+        exitPendingRef.current = false
+        if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
+      } else if (channel.working) {
         interruptRunningTurn()
       } else if (input === 'c' && promptControllerRef.current?.consumeSelectionCopy()) {
         // A mouse selection is active: Ctrl+C copies it to the clipboard
@@ -1570,6 +1922,11 @@ ing registered by a DSH
       setTodoCollapsed(previous => !previous)
       // Consume: same readline-shadowing rule as dashboard/showAll above.
       event.stopImmediatePropagation()
+    } else if (actionMatches('star', input, key)) {
+      // 一键 star（默认 Alt+S）——与 `/star`、开屏标语点击同一个动作。
+      // 消费事件：alt 组合不该再落进输入框当普通字符。
+      runStarAction()
+      event.stopImmediatePropagation()
     } else if (plainReturn && !isSticky) {
       // Enter while scrolled up returns to the bottom: the
       // affordance now exists whenever the view is off the bottom, not
@@ -1599,6 +1956,16 @@ ing registered by a DSH
   // StatusLine thresholds (amber ≥ 80, red ≥ 95).
   const activityWarnPct = contextPressurePct(channel.lastUsage, channel.contextWindow)
 
+  // Who owns the spinner slot: with the working-activity line on, that slot
+  // draws the user's `/activity` preset, so the compaction row borrows the same
+  // indicator instead of answering with the classic dot.
+  const activitySlot = channel.activityEnabled && !channel.minimalUi
+
+  // An automatic compaction runs INSIDE the turn, so it rides whichever spinner
+  // the slot shows as a badge instead of a second row (the spinner's timer is
+  // the turn's, not the compaction's).
+  const compactionBadge = channel.compaction === undefined ? undefined : t('compact-badge')
+
   // ── Interrupt lane ─────────────────────────────────────────────────────
   // The approval and ask_user_question panels park the agent until the user
   // answers, but they render inside the conversation layout — every screen
@@ -1627,10 +1994,41 @@ ing registered by a DSH
       total={questionSnapshot.total}
       answered={questionSnapshot.answered}
       initialDraft={questionSnapshot.draft}
-      onAnswer={selection => questionStore.answerCurrent(selection)}
+      onAnswer={selection => {
+        if (!questionStore.stillCurrent(questionSnapshot.key)) return
+        questionStore.answerCurrent(selection)
+      }}
       onCancel={() => questionStore.cancelCurrent()}
+      onEscape={draft => {
+        // Esc means "back" once a later question is showing, including when
+        // → and Esc share one stdin batch and this panel was mounted for
+        // question 1 (no onBack). Ctrl+C stays on onCancel: it cancels the
+        // whole ask from any question, so a same-batch → must not swallow it.
+        const live = questionStore.getSnapshot()
+        if (live?.canGoBack) {
+          // A same-batch → already saved this panel's draft on the question
+          // it left. Passing that draft into backCurrent would write it onto
+          // the question → just opened.
+          questionStore.backCurrent(
+            questionStore.stillCurrent(questionSnapshot.key) ? draft : undefined,
+          )
+          return
+        }
+        if (live !== null && questionStore.stillCurrent(questionSnapshot.key)) {
+          questionStore.cancelCurrent()
+        }
+      }}
       onBack={questionSnapshot.canGoBack
-        ? draft => questionStore.backCurrent(draft)
+        ? draft => {
+            if (!questionStore.stillCurrent(questionSnapshot.key)) return
+            questionStore.backCurrent(draft)
+          }
+        : undefined}
+      onForward={questionSnapshot.canGoForward
+        ? draft => {
+            if (!questionStore.stillCurrent(questionSnapshot.key)) return
+            questionStore.forwardCurrent(draft)
+          }
         : undefined}
       collapsed={questionMinimized}
       onExpand={() => setMinimizedQuestionKey(null)}
@@ -1713,18 +2111,16 @@ ing registered by a DSH
         approval={approvalSnapshot}
         onApprove={outcome => approvals.decide(outcome)}
         onOpenSession={async (sessionId) => {
+          // A refusal is reported by the screen itself (see `openSession`):
+          // the composer that draws channel notifications is not mounted here.
           const result = await channel.resumeTo(sessionId)
-          if (!result.ok) {
-            const text = resumeFailureText(result)
-            if (text !== undefined) channel.notify(text, { color: 'error', timeoutMs: 8000 })
-            return false
-          }
+          if (!result.ok) return result
           channel.notify(t('resume-resumed'))
           suppressLogoIntroRef.current = true
           setAgentViewReturnId(undefined)
           setSupervisorOpen(false)
           repaintTranscript()
-          return true
+          return result
         }}
         onNewSession={async (target) => {
           const ok = await channel.switchWorkspace(target)
@@ -1812,7 +2208,8 @@ ing registered by a DSH
     const panel = (
       <JobsPanel
         jobs={channel.backgroundJobs ?? []}
-        onClose={() => setJobsPanelOpen(false)}
+        initialFocusId={jobsPanelFocusId ?? undefined}
+        onClose={() => { setJobsPanelOpen(false); setJobsPanelFocusId(null) }}
         onKill={(id) => {
           // Stub channels (verify harnesses) have no jobControl — surface
           // the same failure toast as a refused kill instead of throwing.
@@ -1922,6 +2319,8 @@ ing registered by a DSH
     || (recap !== null && (!recap.auto || recap.expanded))
     || btw !== null
     || questionPanelNode !== null
+    || starModal !== null
+    || couponVisible
 
   // The trajectory scene replaces the conversation for as long as it is open.
   // Rendering it INSTEAD of (not above) the transcript is what makes it a
@@ -1949,11 +2348,13 @@ ing registered by a DSH
   }) && !(overlay.kind === 'permission'
     && (approvalSnapshot !== null || questionSnapshot !== null || dialogSnapshot !== null))
 
-  // The sticky header pins the turn owning the viewport top row
-  // (timeline.activeId, reported by MessageList) — scrolled up to an old
-  // turn, it carries THAT turn's prompt, not the latest one.
+  // The sticky header pins the turn owning the viewport top row once its
+  // prompt has scrolled out above it (timeline.pinnedId, reported by
+  // MessageList) — scrolled up to an old turn, it carries THAT turn's
+  // prompt, not the latest one. The row stays while scrolled up and goes
+  // blank when nothing is pinned, so the viewport never shifts under it.
   // channel.rows is a live in-place array, so the lookup is per-render.
-  const anchorUserRowId = timeline.activeId
+  const anchorUserRowId = timeline.pinnedId
   const anchorUserText =
     anchorUserRowId === null
       ? null
@@ -1991,9 +2392,9 @@ ing registered by a DSH
 
   return (
     <Box ref={wakeTickRef} flexDirection="column" flexGrow={1} width="100%">
-      {!isSticky && anchorUserText && (
+      {!isSticky && timeline.activeId !== null && (
         <PinnedTurnHeader
-          text={anchorUserText}
+          text={anchorUserText || null}
           onClick={() => {
             // Click snaps the pinned prompt to the viewport top. Jump by the
             // SAME content coordinate the
@@ -2023,8 +2424,14 @@ ing registered by a DSH
           model={channel.model}
           effort={channel.reasoningEffort}
           cwd={channel.displayCwd}
+          // 大字字面（设置项 `dsh-tui.splashFont`）：`daily` 交回按天轮换
+          // （`undefined`），其余 pin 住一款。
+          fontId={splashFontIdOf(channel.splashFont)}
           whale={channel.whale}
           whaleIdle={channel.whaleIdle && whaleArtVisible}
+          whaleGirl={channel.whaleGirl}
+          starred={starred}
+          onStarClick={runStarAction}
           working={channel.working}
           // Resuming a long session skips the ~3.4s opening animation: it
           // keeps firing low-frequency React commits that compete with the
@@ -2050,7 +2457,7 @@ ing registered by a DSH
         <MessageList
           rows={channel.rows}
           failureHintRowId={failureHintRowId}
-          failureHint={t('traj-hint-failure', { key: `${modLabel}t` })}
+          failureHint={t('traj-hint-failure', { key: primaryComboString('trajectory') })}
           expanded={expanded}
           expandedRows={expandedRows}
           selectedId={selectionActive ? selectedId : null}
@@ -2061,6 +2468,7 @@ ing registered by a DSH
           diffLayout={channel.diffLayout}
           thinkingFold={channel.thinkingFold}
           toolBodyLines={channel.toolBodyLines}
+          jobGroupFold={channel.jobGroupFold}
           toolBackground={channel.toolBackground}
           foldTerminalCommand={channel.foldTerminalCommand}
           smoothStreaming={channel.smoothStreaming}
@@ -2132,8 +2540,7 @@ ing registered by a DSH
           />
         )}
         {channel.working &&
-          (channel.activityEnabled &&
-          !channel.minimal &&
+          (activitySlot &&
           workingActivity !== undefined &&
           workingActivity.line !== '' &&
           workingActivity.phase !== 'idle' ? (
@@ -2156,6 +2563,13 @@ ing registered by a DSH
                   activityFrames={channel.activityFrames}
                   warnPct={activityWarnPct}
                   warnDanger={activityWarnPct !== undefined && activityWarnPct >= 95}
+                  // Upload = real tokens of the last request; download =
+                  // the animated chars/4 estimate, matching the classic
+                  // spinner's counter (the suffix used raw chars before,
+                  // inflating the reading next to a real upload number). An
+                  // automatic compaction mid-turn badges THIS line too — it is
+                  // the spinner slot whenever real activity data exists.
+                  suffix={`${lastUploadTokens > 0 ? ` · ↑ ${formatTokens(lastUploadTokens)}` : ''} · ↓ ${formatTokens(Math.round(channel.responseChars / 4))} tokens${compactionBadge === undefined ? '' : ` · ${compactionBadge}`}`}
                 />
               </Box>
             ) : (
@@ -2168,8 +2582,17 @@ ing registered by a DSH
                 totalPausedMsRef={totalPausedMsRef}
                 pauseStartTimeRef={pauseStartTimeRef}
                 thinkingStatus={thinkingStatus}
+                suffix={compactionBadge}
               />
             ))}
+        {!channel.working && channel.compaction !== undefined && (
+          // Manual `/compact` runs while the session is idle: the row takes the
+          // spinner slot so the screen never looks frozen for its ~25-70s.
+          <CompactionStatusRow
+            compaction={channel.compaction}
+            activityPreset={activitySlot ? channel.activityFrames : undefined}
+          />
+        )}
         <GoalTodoPanel
           channel={channel}
           collapsed={todoCollapsed}
@@ -2189,6 +2612,9 @@ ing registered by a DSH
             refreshing={balance.refreshing}
             tokens={channel.tokens}
             model={channel.model}
+            provider={channel.provider}
+            mainCost={channel.mainCost}
+            subagentCost={channel.subagentCost}
             onRefresh={runBalance}
             onDismiss={() => setBalance(null)}
           />
@@ -2275,7 +2701,8 @@ ing registered by a DSH
           wakeBand={wakeBand}
           wakeTime={wakeTime}
           trajectorySeen={trajectorySeen}
-          modLabel={modLabel}
+          openScene={openScene}
+          trajectoryCombo={primaryComboString('trajectory')}
         />
         {/* 瞬态面板浮层：absolute + bottom:'100%' 钉在输入簇 Box 顶边（=
             输入行顶边），紧贴输入框向上覆盖其上 todo/spinner/转录尾部行，
@@ -2390,6 +2817,31 @@ ing registered by a DSH
                   }}
                 />
               )}
+            </Box>
+          )}
+          {overlay.kind === 'migrate' && (
+            <Box flexDirection="column" marginTop={1}>
+              <MigratePicker
+                rows={migrateRows ?? []}
+                focusIndex={overlay.index}
+                checked={migrateChecked}
+                loading={migrateRows === null}
+                onPick={(index) => {
+                  const row = (migrateRows ?? [])[index]
+                  if (!row) return
+                  setMigrateChecked(current => {
+                    const next = new Set(current)
+                    if (next.has(row.agentId)) next.delete(row.agentId)
+                    else next.add(row.agentId)
+                    return next
+                  })
+                }}
+              />
+            </Box>
+          )}
+          {overlay.kind === 'migrate-confirm' && (
+            <Box flexDirection="column" marginTop={1}>
+              <MigrateConfirm rows={migratePending} />
             </Box>
           )}
           {overlay.kind === 'skills' && (
@@ -2618,6 +3070,23 @@ ing registered by a DSH
           transcript 行，预览必须作为根的最后一个孩子才压得过它）；平时
           预览挂在上面的 transcript 行内，见 imagePreviewNode。 */}
       {promptEditorOpen && imagePreviewNode}
+      {/* 开屏"求 star"弹窗（99h / 999 次）：最后一个孩子，压过包括全屏
+          草稿编辑器在内的全部后绘兄弟；关闭即整树卸载——键盘自然交还，
+          没有残留的监听会再抢键。onClose 用 useCallback 钉死引用：弹窗
+          开着的每一帧 Chat 重渲染都不弄脏它的绝对定位捕获层。 */}
+      {starModal !== null && STAR_MILESTONES[starModal.index] !== undefined && (
+        <StarPrompt
+          milestone={STAR_MILESTONES[starModal.index]}
+          actions={starModalActions}
+          onClose={closeStarModal}
+          initialPhase={starModal.phase}
+        />
+      )}
+      {couponVisible && coupon !== null && (
+        <WhaleCouponPrompt notice={coupon} onShown={markCouponShown} onClose={closeCoupon} />
+      )}
     </Box>
   )
 }
+
+

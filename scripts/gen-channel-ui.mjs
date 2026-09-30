@@ -36,12 +36,33 @@ const NON_CHANNEL_UI_KEYS = new Set([
   'sessionId', 'provider', 'model', 'cwd', 'workspace', 'effort', 'effortDefault',
   'preset', 'modes', 'lang', 'fullscreen', 'terminalImages', 'mermaidDiagrams',
   'shortcuts',
+  // Rendering-pipeline switches owned by module stores (applyMathRendering
+  // & friends in plugin.ts), not by the channel view.
+  'mathRendering', 'mathImageScale', 'mathImageBacking', 'imageBacking', 'latexMath',
+  'recapOnOpen',
 ])
 
 /** Config key -> ChannelState/ChannelUi property name when they differ. */
 const PROPERTY_RENAMES = {
   activity: 'activityEnabled',
   contextBar: 'contextBarEnabled',
+  // Schema key kept the pre-rename id; state + view store the canonical name.
+  minimal: 'minimalUi',
+}
+
+/** Config key -> extra live setter names beyond the derived one. The kernel
+ * renamed `setMinimal` to `setMinimalUi` and kept the old name as a
+ * deprecated alias; both stay in ChannelPreferences. */
+const SETTER_ALIASES = {
+  minimal: ['setMinimalUi'],
+}
+
+
+/** Config key -> extra property names beyond the derived one. View-layer
+ * aliases only: they widen ui-policy's CHANNEL_UI_PROPERTIES, never the
+ * ChannelState pick (state stores one canonical field). */
+const PROPERTY_ALIASES = {
+  minimal: ['minimal'],
 }
 
 /** Channel-UI keys without a ChannelPreferences live setter (static config
@@ -99,10 +120,13 @@ async function loadChannelUiFields() {
   return keys.filter(key => !NON_CHANNEL_UI_KEYS.has(key)).map(key => {
     const field = dict[key]
     const meta = field?.meta ?? {}
+    const derivedSetter = NO_SETTER_KEYS.has(key) ? undefined : `set${key[0].toUpperCase()}${key.slice(1)}`
     return {
       key,
       property: PROPERTY_RENAMES[key] ?? key,
-      setter: NO_SETTER_KEYS.has(key) ? undefined : `set${key[0].toUpperCase()}${key.slice(1)}`,
+      properties: [PROPERTY_RENAMES[key] ?? key, ...(PROPERTY_ALIASES[key] ?? [])],
+      setter: derivedSetter,
+      setters: derivedSetter === undefined ? [] : [derivedSetter, ...(SETTER_ALIASES[key] ?? [])],
       type: field?.type ?? 'unknown',
       hasDefault: meta.default !== undefined,
     }
@@ -161,11 +185,11 @@ const stateSource = readFileSync(STATE_PATH, 'utf8')
 const stateUpdated = updateFile('src/dsh-adapter/channel/state.ts', STATE_PATH,
   fillBlock(stateSource, 'channelUiStatePick', packUnionLines(fields.map(field => field.property))))
 
-const setters = fields.filter(field => field.setter !== undefined).map(field => field.setter)
+const setters = fields.flatMap(field => field.setters)
 const policySource = readFileSync(UI_POLICY_PATH, 'utf8')
 const policyNext = fillBlock(
   fillBlock(policySource, 'channelUiSetters', packUnionLines(setters, { leadingPipe: true })),
-  'channelUiProperties', fields.map(field => `  '${field.property}',`),
+  'channelUiProperties', fields.flatMap(field => field.properties.map(property => `  '${property}',`)),
 )
 const policyUpdated = updateFile('src/adapter/channel/ui-policy.ts', UI_POLICY_PATH, policyNext)
 

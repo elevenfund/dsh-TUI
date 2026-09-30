@@ -9,9 +9,11 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import type { SessionModeSpec } from '../sessionModes.js'
-import { DEFAULT_STATUS_BAR, normalizePageMargin, type PageMarginSetting, type ScrollGutterMode, type StatusBarConfig, type ToolBackground } from '../tuiDisplayPrefs.js'
+import { DEFAULT_STATUS_BAR, normalizePageMargin, type ImageBacking, type MathImageBacking, type MathImageScale, type MathRendering, type PageMarginSetting, type ScrollGutterMode, type StatusBarConfig, type ToolBackground } from '../tuiDisplayPrefs.js'
 import { SHORTCUT_ACTIONS, type ShortcutActionId } from '../utils/keymap.js'
+import { normalizeSplashFont, type SplashFontSetting } from '../components/splashFonts.js'
 import { editableConfig, type RuntimeConfig } from './compat/settings.js'
+import { EDITABLE_CONFIG_KEYS } from '../settings/definitions.js'
 
 export const name = 'dsh-tui'
 // `tuiWorkspaces` must stay OUT of this code-level inject (issue #183): the
@@ -60,6 +62,13 @@ export interface Config {
   /** Show the header whale and its idle animation. */
   whale?: boolean
   whaleIdle?: boolean
+  /** Big-text face on the header splash (settings `dsh-tui.splashFont`):
+   *  `daily` (the default) rotates by local date, any other value is a font
+   *  id from `components/splashFonts.ts` (`bold`/`square`/…) pinning that one
+   *  face. An unknown value falls back to `daily`. */
+  splashFont?: SplashFontSetting
+  /** Swap the header's pixel whale for the static maid portrait. */
+  whaleGirl?: boolean
   /** Reduce decorative header content and colors. */
   minimal?: boolean
   /** Show the live working line derived in-process from base session events. */
@@ -103,6 +112,12 @@ export interface Config {
   /** Collapsed tool-card body line budget; 0 (default) keeps the card to
    *  its header row only (grok-style one-line steps). */
   toolBodyLines?: number
+  /** Grouping/folding of consecutive background-job cards: `auto` (default)
+   *  groups any run of ≥2 adjacent job cards and folds a run of 3+ into its
+   *  summary line once every member settled; `always` folds any run of 2+
+   *  immediately; `never` never folds on its own (a click on the group
+   *  header still folds one run). Editable live from `/settings`. */
+  jobGroupFold?: 'auto' | 'always' | 'never'
   /** Tool-card background strength; defaults to no added background. */
   toolBackground?: ToolBackground
   /** What the fullscreen transcript's right gutter shows (settings
@@ -140,6 +155,33 @@ export interface Config {
    *  than the viewport or of an unsupported type keeps the fenced source.
    *  On by default; off always shows the source. */
   mermaidDiagrams?: boolean
+  /** LaTeX math (settings `dsh-tui.mathRendering`): `$…$` / `\(…\)` inline
+   *  and `$$…$$` / `\[…\]` blocks in replies. `auto` (default) uses the best
+   *  available renderer — today Unicode text: Greek and operator symbols,
+   *  scripts, fractions and operator limits stacked in display blocks,
+   *  matrices, cases; `unicode` pins it; `source` always shows the TeX.
+   *  Unsupported, still-streaming, or too-wide formulas keep their source. */
+  mathRendering?: MathRendering
+  /** Display-formula image size (settings `dsh-tui.mathImageScale`), used
+   *  with `mathRendering: image`: `auto` matches the body text, `large` and
+   *  `xlarge` set display math bigger — which also hands the terminal more
+   *  device pixels per stroke, the only sharpness lever a terminal image has.
+   *  Inline formulas keep the base scale. */
+  mathImageScale?: MathImageScale
+  /** Formula-image backing (settings `dsh-tui.mathImageBacking`): `transparent`
+   *  paints only the formula and lets the terminal background show through;
+   *  `terminal` composites it onto the terminal's background colour. */
+  mathImageBacking?: MathImageBacking
+  /** Transcript-image backing (settings `dsh-tui.imageBacking`): `transparent`
+   *  floats photos and illustrations on whatever the terminal shows;
+   *  `terminal` composites them onto the terminal's background colour. */
+  imageBacking?: ImageBacking
+  /** @deprecated Use `mathRendering`; `false` still means `source`. */
+  latexMath?: boolean
+  /** Auto recap on open (settings `dsh-tui.recapOnOpen`): opening or resuming a
+   *  session summarizes its recent activity into a dim line at the bottom of
+   *  the transcript. On by default; off leaves `/recap` as the manual path. */
+  recapOnOpen?: boolean
   /** Status-footer field visibility and compact presentation preferences. */
   statusBar?: Partial<StatusBarConfig>
   /** Built-in action-shortcut overrides (`paste: 'alt+v'`), keyed by action
@@ -169,6 +211,18 @@ export const Config: Schema<Config, RuntimeConfig<Config>> = editableConfig<Conf
   effortDefault: Schema.string().required(false),
   whale: Schema.boolean().default(true),
   whaleIdle: Schema.boolean().default(true),
+  // The face registry grows with new releases, so this is a transform rather
+  // than a union: any string parses and junk lands on `daily` at parse time
+  // (a union would fail the whole boot on a stale id). The `/settings` field
+  // offers exactly the registry's ids. The default is deliberately NOT a
+  // `.default()` here — the volatile wrapper swallows it (same shape as
+  // pageMargin, whose unset value also reads `undefined`), so `daily` comes
+  // from `normalizeSplashFont` at every read site.
+  splashFont: Schema.transform(
+    Schema.string(),
+    value => normalizeSplashFont(value),
+  ),
+  whaleGirl: Schema.boolean().default(false),
   minimal: Schema.boolean().default(false),
   activity: Schema.boolean().default(true),
   activityFrames: Schema.string().required(false),
@@ -180,6 +234,7 @@ export const Config: Schema<Config, RuntimeConfig<Config>> = editableConfig<Conf
   diffLayout: Schema.union(['auto', 'split', 'unified']).default('auto'),
   thinkingFold: Schema.union(['fold', 'preview', 'full']).default('fold'),
   toolBodyLines: Schema.number().min(0).max(50).default(0),
+  jobGroupFold: Schema.union(['auto', 'always', 'never']).default('auto'),
   toolBackground: Schema.union(['none', 'subtle', 'strong']).default('none'),
   scrollGutter: Schema.union(['timeline', 'scrollbar', 'hidden']).default('timeline'),
   // Preset names AND custom `NxM` specs must survive validation (a custom
@@ -194,6 +249,16 @@ export const Config: Schema<Config, RuntimeConfig<Config>> = editableConfig<Conf
   expandEditor: Schema.boolean().default(true),
   smoothStreaming: Schema.boolean().default(true),
   mermaidDiagrams: Schema.boolean().default(true),
+  mathRendering: Schema.union(['auto', 'image', 'unicode', 'source']),
+  mathImageScale: Schema.union(['auto', 'large', 'xlarge']),
+  mathImageBacking: Schema.union(['transparent', 'terminal']),
+  imageBacking: Schema.union(['transparent', 'terminal']),
+  latexMath: Schema.boolean(),
+  // No `.default()` on purpose (the volatile wrapper swallows it; same rule as
+  // splashFont): an unset key must stay distinguishable from an explicit
+  // `false`, and the read site already treats undefined as on
+  // (`describe().value.recapOnOpen !== false`, see channel.ts).
+  recapOnOpen: Schema.boolean(),
   statusBar: Schema.object({
     compact: Schema.boolean().default(DEFAULT_STATUS_BAR.compact),
     model: Schema.boolean().default(DEFAULT_STATUS_BAR.model),
@@ -228,12 +293,7 @@ export const Config: Schema<Config, RuntimeConfig<Config>> = editableConfig<Conf
       permission: Schema.string().required(false),
     }),
   ).required(false),
-}), [
-  'diffLayout', 'thinkingFold', 'toolBackground', 'scrollGutter', 'pageMargin',
-  'foldTerminalCommand', 'promptSessionLabel', 'expandEditor', 'smoothStreaming',
-  'mermaidDiagrams', 'effortDefault', 'statusBar', 'whale', 'whaleIdle', 'minimal',
-  'lang', 'fullscreen', 'terminalImages', 'shortcuts',
-])
+}), EDITABLE_CONFIG_KEYS as readonly (keyof Config)[])
 
 /**
  * Start the interactive TUI front door, delegating to the JSX implementation

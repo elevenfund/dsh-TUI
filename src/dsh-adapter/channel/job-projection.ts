@@ -1,7 +1,7 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { markChannelReadDirty } from '../../adapter/channel/read-view.js'
 import { t } from '../../i18n.js'
-import { BackgroundJobStore, formatJobDuration, type JobsRuntime, type JobsRuntimeService, type JobsRuntimeLegacy } from '../jobs.js'
+import { BackgroundJobStore, formatJobDuration, type JobsRuntime } from '../jobs.js'
 import type { ChannelOwner } from './owner.js'
 import type { ChannelState, ChatRow, JobControl } from './types.js'
 
@@ -22,6 +22,8 @@ export function createJobProjection(
 ) {
   const jobRowsByJobId = new Map<string, ChatRow>()
   let jobsRuntime: JobsRuntime | undefined
+  /** The live attachment's conditional roster re-read (see `reanchor`). */
+  let reanchorActive: (() => void) | undefined
   let detachActive: (() => void) | undefined
   let attachmentToken: symbol | undefined
   let attachmentCurrent = (): boolean => false
@@ -49,6 +51,7 @@ export function createJobProjection(
         label: job.label,
         status: job.status,
         ...(job.detail === undefined ? {} : { detail: job.detail }),
+        ...(job.progress === undefined ? {} : { progress: job.progress }),
         startedAt: job.startedAt,
         ...(job.finishedAt === undefined ? {} : { finishedAt: job.finishedAt }),
         outputLines: job.outputLines,
@@ -91,7 +94,10 @@ export function createJobProjection(
       if (!jobs?.kill) return false
       const job = store.get(id)
       try {
-        bridgeOf(jobs).kill(id, 'dsh-tui /jobs panel')
+        // The kernel fence compares job.owner.id === caller, so the caller
+        // MUST be the session id string — the Agent object matches nothing
+        // and every owned-job kill would throw "another session".
+        jobs.kill(id, sessionCaller(), 'dsh-tui /jobs panel')
       } catch {
         return false
       }
@@ -103,57 +109,13 @@ export function createJobProjection(
   }
 
   /**
-   * The host exposes the registry service shape (@deepseek-ai/dsh-jobs):
-   * `list/kill(caller?: SessionId)` keyed by session id, plus
-   * `events.subscribe(filter, listener)` for change delivery. The legacy
-   * duck-typed shape (Agent-instance caller + onJobsChanged/onJobDone) is
-   * still served — the bridge picks per call so a mixed embedder works.
-   * Passing the Agent instance where the registry expects a SessionId
-   * filtered every owned job out of `list()` (empty Task Center panel).
+   * Caller identity for the kernel fence: the owning session id string
+   * (`Agent.id`). The registry compares `job.owner.id === caller`, so the
+   * Agent object the channel holds is only good for extracting the id.
    */
-  function bridgeOf(jobs: JobsRuntime): {
-    list(): unknown[]
-    kill(id: string, reason?: string): unknown
-    subscribe(onChange: () => void): (() => void) | undefined
-  } {
-    // Union members, not double casts: the embedder serves either shape and
-    // the bridge picks per call.
-    const service = jobs as JobsRuntimeService
-    const legacy = jobs as JobsRuntimeLegacy
-    const sessionId = (): string | undefined => {
-      const id = (deps.agent() as { id?: unknown } | undefined)?.id
-      return typeof id === 'string' ? id : undefined
-    }
-    return {
-      list() {
-        if (typeof service.list === 'function') return service.list(sessionId()) ?? []
-        return legacy.list?.(deps.agent()) ?? []
-      },
-      kill(id, reason) {
-        if (typeof service.kill === 'function') return service.kill(id, sessionId(), reason)
-        return legacy.kill?.(id, deps.agent(), reason)
-      },
-      subscribe(onChange) {
-        const subscribe = service.events?.subscribe
-        if (typeof subscribe === 'function') return subscribe.call(service.events, { owners: 'all' }, onChange)
-        // Legacy duck-type serves two mouths — onJobsChanged for mutations,
-        // onJobDone for settlements — and embedders may provide either or
-        // both, so register each optional mouth and combine their disposers.
-        // A single exclusive branch here would silently drop the other
-        // mouth's deliveries (and the settlement toast with it). The pair is
-        // transactional: a throwing second registration unwinds the first.
-        const disposers: Array<(() => void) | undefined> = []
-        try {
-          if (typeof legacy.onJobsChanged === 'function') disposers.push(legacy.onJobsChanged(onChange))
-          if (typeof legacy.onJobDone === 'function') disposers.push(legacy.onJobDone(onChange))
-        } catch (error) {
-          for (const dispose of disposers.splice(0)) dispose?.()
-          throw error
-        }
-        if (disposers.length === 0) return undefined
-        return () => { for (const dispose of disposers.splice(0)) dispose?.() }
-      },
-    }
+  const sessionCaller = (): string | undefined => {
+    const agent = deps.agent() as { id?: string } | undefined
+    return agent?.id
   }
 
   /**
@@ -187,15 +149,43 @@ export function createJobProjection(
     let detached = false
     let detach: () => void
     const current = (): boolean => !detached && attachmentToken === token && detachActive === detach && jobsRuntime === jobs && deps.owner.current()
+    // The caller the roster was last read with. `reanchor` compares against it
+    // so a bind that did NOT change the session stays a no-op — mounting binds
+    // the channel's own agent immediately after the service attaches, and
+    // re-reading there would be a second, redundant list().
+    let lastCaller: string | undefined
+    let callerKnown = false
     const refresh = (): void => {
       // Check before list(): retained callbacks must not touch a revoked or
       // replaced service, nor invoke any store/row work after owner disposal.
       if (!current()) return
       try {
-        const snapshot = bridgeOf(jobs).list() as ReturnType<BackgroundJobStore['snapshot']>
+        const caller = sessionCaller()
+        lastCaller = caller
+        callerKnown = true
+        const snapshot = jobs.list(caller)
         if (!current()) return
         store.replace(snapshot)
       } catch { /* optional service is disposing */ }
+    }
+    /** Re-read only when the bound session actually changed. */
+    const reanchorThis = (): void => {
+      if (callerKnown && sessionCaller() === lastCaller) return
+      dropRows()
+      store.reset()
+      refresh()
+    }
+    /** One kernel `output` event: pull the ring increment past our cursor. */
+    const pullOutput = (id: string): void => {
+      if (!current()) return
+      if (jobs.readAt === undefined) return
+      const cursor = store.kernelCursorOf(id)
+      if (cursor === undefined) return
+      try {
+        const read = jobs.readAt(id, cursor, sessionCaller())
+        if (!current()) return
+        store.onKernelOutput(id, read)
+      } catch { /* job gone or fenced mid-pull; roster refresh follows */ }
     }
     // Publish the attachment identity before subscription: registries are
     // allowed to synchronously deliver their current snapshot from on*().
@@ -212,6 +202,7 @@ export function createJobProjection(
         attachmentCurrent = () => false
       }
       if (jobsRuntime === jobs) jobsRuntime = undefined
+      if (reanchorActive === reanchorThis) reanchorActive = undefined
       for (const dispose of disposers.splice(0)) dispose?.()
       // A service-context detach happens before channel teardown on remount;
       // release its Channel owner entry now rather than retaining one cleanup
@@ -223,9 +214,32 @@ export function createJobProjection(
     detachActive = detach
     attachmentToken = token
     attachmentCurrent = current
+    reanchorActive = reanchorThis
     try {
-      const subscription = bridgeOf(jobs).subscribe(refresh)
-      if (subscription !== undefined) disposers.push(subscription)
+      const bus = jobs.events
+      if (bus !== undefined && typeof bus.subscribe === 'function') {
+        // Kernel bus: lifecycle commits re-read the roster; output events
+        // pull non-consuming readAt increments with the store's own cursor.
+        // Subscribe to EVERY owner on purpose: this filter is captured at
+        // attach, but the channel still rebinds afterwards (dsh-tui opens a
+        // fresh session at boot and only then resumes the user's), and a filter
+        // frozen to the boot session starves the panel for good — the kernel
+        // drops every foreign-owner event, refresh() never runs again and the
+        // roster stays at the empty list read during attach. Nothing extra is
+        // exposed by widening it: the roster read is list(caller) and the ring
+        // pull is readAt(id, cursor, caller), both fenced with the caller AT
+        // CALL TIME, so another session's jobs fall out (and a foreign ring
+        // read throws into the contained catch).
+        disposers.push(bus.subscribe({ owners: 'all' }, event => {
+          if (!current()) return
+          try {
+            if (event.type === 'output') pullOutput(event.id)
+            else refresh()
+          } catch { /* contained per-event; the next event re-syncs */ }
+        }))
+      }
+      if (typeof jobs.onJobsChanged === 'function') disposers.push(jobs.onJobsChanged(refresh))
+      if (typeof jobs.onJobDone === 'function') disposers.push(jobs.onJobDone(refresh))
       releaseOwner = deps.owner.own(detach)
       ownService?.(detach)
       refresh()
@@ -238,5 +252,13 @@ export function createJobProjection(
   const dropRows = (): void => { jobRowsByJobId.clear() }
   const reset = (): void => { dropRows(); store.reset() }
 
-  return { store, control, attach, dropRows, reset }
+  /**
+   * Re-anchor after the live agent changed. `reset()` runs while the OLD
+   * binding is still installed (resetSessionProjection precedes bindAgent), so
+   * it can only clear; the re-read has to happen here, once the new agent is
+   * bound, or the next session's jobs would only appear on its first event.
+   */
+  const reanchor = (): void => { reanchorActive?.() }
+
+  return { store, control, attach, dropRows, reset, reanchor }
 }

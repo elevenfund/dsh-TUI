@@ -114,6 +114,32 @@ function makeChannel() {
       peak: { input: 400, output: 2000, cacheRead: 300, cacheWrite: 40 },
       idle: { input: 834, output: 3678, cacheRead: 600, cacheWrite: 60 },
     },
+    // 多模型/子代理快照（#1089）：主会话与 tokens 同桶，子代理一条官方计价 +
+    // 一条第三方未计价，hover 应给出拆分与 unpriced 标注。
+    mainCost: {
+      'deepseek-v4-flash': {
+        peak: { input: 400, output: 2000, cacheRead: 300, cacheWrite: 40 },
+        idle: { input: 834, output: 3678, cacheRead: 600, cacheWrite: 60 },
+      },
+    },
+    subagentCost: [
+      {
+        provider: 'deepseek-official',
+        model: 'deepseek-v4-flash',
+        buckets: {
+          peak: { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 },
+          idle: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      },
+      {
+        provider: 'kimi-coding',
+        model: 'kimi-k2',
+        buckets: {
+          peak: { input: 500, output: 100, cacheRead: 0, cacheWrite: 0 },
+          idle: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      },
+    ],
     cwd: '/tmp',
     displayCwd: '/tmp',
     gitBranch: 'main',
@@ -241,6 +267,8 @@ if (summaryPos !== null) {
 await settle(() => screenHas(term, '总额 ¥110.00'))
 check('hover 显示币种拆分', screenHas(term, '总额 ¥110.00') && screenHas(term, '赠送 ¥10.00') && screenHas(term, '充值 ¥100.00'))
 check('hover 显示 token 与花费估算', screenHas(term, '本会话 tokens 1.2k in → 5.7k out · ≈¥'))
+check('hover 显示主会话/子代理拆解', screenHas(term, '主会话 ¥') && screenHas(term, '子代理 ¥'))
+check('hover 标注未计价 token', screenHas(term, '未计价 600 tok'))
 check('hover 显示刷新 chip', screenHas(term, '点击刷新'))
 check('hover 显示关闭 chip', screenHas(term, '×'))
 check('hover 显示口径说明', screenHas(term, '余额查询免费'))

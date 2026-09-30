@@ -398,8 +398,18 @@ function family() {
     }
 
     const located: string[] = []
+    // Channel construction fires the agent-view background refresh, which
+    // legitimately locates EVERY stored session — including U — and settles
+    // inside the same await window as the tree build (remote #1140 note 4).
+    // Hold exactly that first listing back (fire-and-forget, so a pending
+    // promise is harmless) so the recording below reflects only the tree's
+    // own reads; later enumerations answer normally.
+    let listCalls = 0
     const fileChannel = makeTreeChannel({
-      list: () => Promise.resolve(logicalHeaders),
+      list: () => {
+        listCalls += 1
+        return listCalls === 1 ? new Promise<readonly unknown[]>(() => {}) : Promise.resolve(logicalHeaders)
+      },
       locate(raw: unknown) {
         const id = String((raw as { id?: unknown }).id ?? '')
         located.push(id)

@@ -1,4 +1,6 @@
 import React from 'react'
+import { constants as fsConstants } from 'node:fs'
+import { basename } from 'node:path'
 import { open } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { t } from '../i18n.js'
@@ -46,6 +48,7 @@ import {
   nextGraphemeBoundary,
   normalizeCursorOffset,
   sanitizeEditableText,
+  sanitizePastedText,
   snapOffImageToken,
   type ImageTokenSpan,
 } from './prompt-input/text-motion.js'
@@ -108,6 +111,125 @@ const FOLD_MIN_LINES = 6
 const FOLD_MIN_CHARS = 600
 const isBigInput = (text: string): boolean =>
   text.split('\n').length >= FOLD_MIN_LINES || text.length >= FOLD_MIN_CHARS
+
+/**
+ * Editable prompt text must have one stable source-to-screen geometry. The
+ * renderer interprets ANSI as zero-width styling and expands tabs relative to
+ * global tab stops; keeping either in `value` would let wrapping/click mapping
+ * count different cells and could split an escape sequence during selection.
+ * Strip terminal controls and expand tabs at ingress while preserving newlines.
+ */
+const EDITABLE_CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f]/u
+
+/** Format label for one image media type, matching the image preview card's
+ *  title (`JPEG`, `PNG`, `WEBP`, `GIF`). */
+const mediaTypeLabel = (mediaType: string): string =>
+  mediaType.replace(/^image\//u, '').replace(/\+xml$/u, '').toUpperCase()
+
+/** Read one regular file through one descriptor, bounded to `maxBytes + 1`.
+ * The extra byte detects a file that grows after fstat; a short read detects
+ * shrinkage. This avoids stat(path) → readFile(path)'s path-swap TOCTOU and
+ * never allocates from an untrusted size before the profile limit is checked. */
+async function readBoundedRegularFile(path: string, maxBytes: number): Promise<Uint8Array> {
+  // O_NONBLOCK keeps a pasted FIFO/device path from parking the UI before
+  // fstat can reject it; regular-file reads are unchanged.
+  const file = await open(path, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK)
+  try {
+    const info = await file.stat()
+    if (!info.isFile()) throw new Error(`${basename(path)} is not a regular file`)
+    if (info.size > maxBytes) throw new Error(`image exceeds this profile's per-image size limit`)
+    const data = Buffer.allocUnsafe(info.size + 1)
+    let offset = 0
+    while (offset < data.byteLength) {
+      const { bytesRead } = await file.read(data, offset, data.byteLength - offset, offset)
+      if (bytesRead === 0) break
+      offset += bytesRead
+    }
+    if (offset !== info.size) throw new Error(`${basename(path)} changed while it was being read`)
+    return data.subarray(0, offset)
+  } finally {
+    await file.close()
+  }
+}
+
+/** Index of the word boundary at or before `cursor` (readline alt+b). */
+function wordBoundaryLeft(text: string, cursor: number): number {
+  let index = cursor
+  while (index > 0 && /\s/.test(text[index - 1]!)) index--
+  while (index > 0 && !/\s/.test(text[index - 1]!)) index--
+  return index
+}
+
+/** Index of the word boundary after `cursor` (readline alt+f). */
+function wordBoundaryRight(text: string, cursor: number): number {
+  const length = text.length
+  let index = cursor
+  while (index < length && !/\s/.test(text[index]!)) index++
+  while (index < length && /\s/.test(text[index]!)) index++
+  return index
+}
+
+// --- vim normal-mode helpers -----------------------------------------------
+// `/vim` 编辑模式的 normal 键位几何：行/词移动与删除目标。空白分词
+// （不区分 vim 的 word/WORD），对输入框场景足够且行为直观。
+
+/** Offset of the current line's first character. */
+function vimLineStart(text: string, cursor: number): number {
+  return text.lastIndexOf('\n', cursor - 1) + 1
+}
+
+/** Offset of the current line's last character (exclusive, no '\n'). */
+function vimLineEnd(text: string, cursor: number): number {
+  const next = text.indexOf('\n', cursor)
+  return next === -1 ? text.length : next
+}
+
+/** Offset of the line's first non-whitespace character (`^`). */
+function vimLineFirstNonBlank(text: string, cursor: number): number {
+  const start = vimLineStart(text, cursor)
+  const end = vimLineEnd(text, cursor)
+  let i = start
+  while (i < end && /\s/.test(text[i]!)) i++
+  return i
+}
+
+/** Next word start (`w`): skip the rest of the current word, then leading
+ *  whitespace. Whitespace-delimited, vim-style. */
+function vimWordForward(text: string, cursor: number): number {
+  const len = text.length
+  let i = cursor
+  if (i < len && !/\s/.test(text[i]!)) {
+    while (i < len && !/\s/.test(text[i]!)) i++
+  }
+  while (i < len && /\s/.test(text[i]!)) i++
+  return i
+}
+
+/** Previous word start (`b`): from inside a word, its own start; from
+ *  whitespace, the preceding word's start. */
+function vimWordBackward(text: string, cursor: number): number {
+  let i = cursor
+  while (i > 0 && /\s/.test(text[i - 1]!)) i--
+  while (i > 0 && !/\s/.test(text[i - 1]!)) i--
+  return i
+}
+
+/** End of the current word (`dw`): the whitespace boundary after `cursor`. */
+function vimWordEnd(text: string, cursor: number): number {
+  const len = text.length
+  let i = cursor
+  while (i < len && !/\s/.test(text[i]!)) i++
+  return i
+}
+
+// --- grapheme-cluster geometry ---------------------------------------------
+// The caret, editing keys, and wrapping MUST agree on one text unit. Mixing
+// UTF-16 code units (arrows/backspace), code points (wrap), and display
+// cells (stringWidth) lets the caret land inside a surrogate pair or a ZWJ
+// emoji — the inverted caret then shows half a glyph, Backspace deletes
+// half a character, and `line.slice()` splits clusters. All offsets below
+// are UTF-16 indices snapped to grapheme boundaries via the shared
+// Intl.Segmenter (utils/intl.ts).
 
 /**
  * The empty input deliberately shows NO placeholder text: terminal emulators

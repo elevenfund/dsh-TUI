@@ -16,6 +16,7 @@ import type { TuiThemeHost } from '../../dsh-adapter/themes.js'
 import type { LlmModelInfo } from '../../adapter/ports/channel-view.js'
 import type { ModelGroupRow } from '../../modelGroups.js'
 import type { ChatRow, ComposerImageRef } from '../../dsh-adapter/channel.js'
+import type { MigratePickerRow } from '../../dsh-adapter/migrate/picker.js'
 import type { ScrollBoxHandle } from '../../ui.js'
 
 /**
@@ -102,6 +103,14 @@ export interface OverlayKeyDeps {
   requestRewindConfirm: (row: ChatRow) => Promise<void>
   runFileAction: (index: number, path: string) => void
   imagePreviewZoomRef: React.RefObject<{ zoomIn(): void; zoomOut(): void } | null>
+  /** /migrate picker state (rows land async; null = still scanning). */
+  migrateRows: readonly MigratePickerRow[] | null
+  /** Rows the confirmation layer is deciding on (set on open). */
+  migratePendingRows: readonly MigratePickerRow[]
+  migrateChecked: ReadonlySet<string>
+  setMigrateChecked: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>
+  setMigratePending: React.Dispatch<React.SetStateAction<readonly MigratePickerRow[]>>
+  spawnMigrateSources: (rows: readonly MigratePickerRow[], dryRun: boolean) => void
 }
 
 export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<ChatOverlay['kind'], OverlayKeyHandler>> {
@@ -118,6 +127,7 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
     runExternalCommand, applyLang, themeHost, setTheme,
     historyMatches, rewindRequestRef, performRewind, rewindRows,
     requestRewindConfirm, runFileAction, imagePreviewZoomRef,
+    migrateRows, migratePendingRows, migrateChecked, setMigrateChecked, setMigratePending, spawnMigrateSources,
   } = deps
   const onImagePreviewKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
     // Modal gallery owns plain left/right. Caret peeks below still leave
@@ -616,6 +626,59 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
     }
   }
 
+  const onMigrateKeys: OverlayKeyHandler = (input, key, plainReturn, event) => {
+    // Multi-select source picker: ↑/↓/j/k move, g/G jump, space toggles the
+    // focused source, `a` toggles all/none, Enter opens the confirmation
+    // layer for the checked set (focused row when nothing is checked), Esc
+    // closes.
+    const rows = migrateRows ?? []
+    if (pickerNav(dispatchOverlay, event, input, key, rows.length)) {
+      // arrows / vim j/k / g-G jumps
+    } else if (key.escape) {
+      dispatchOverlay({ type: 'close' })
+    } else if (rows.length > 0) {
+      const row = rows[(overlay as Extract<ChatOverlay, { kind: 'migrate' }>).index]
+      if (input === ' ' && row !== undefined) {
+        setMigrateChecked(current => {
+          const next = new Set(current)
+          if (next.has(row.agentId)) next.delete(row.agentId)
+          else next.add(row.agentId)
+          return next
+        })
+      } else if (input === 'a' && !key.ctrl && !key.meta) {
+        // All/none toggle: a checked-everything state collapses to none.
+        setMigrateChecked(current =>
+          current.size >= rows.length ? new Set() : new Set(rows.map(candidate => candidate.agentId)))
+      } else if (plainReturn) {
+        // Checked set wins; the focused row acts as a single selection
+        // when nothing is checked (PRD #1).
+        const chosen = migrateChecked.size > 0
+          ? rows.filter(candidate => migrateChecked.has(candidate.agentId))
+          : row !== undefined ? [row] : []
+        if (chosen.length > 0) {
+          setMigratePending(chosen)
+          dispatchOverlay({ type: 'close' })
+          dispatchOverlay({ type: 'open', overlay: { kind: 'migrate-confirm' } })
+        }
+      }
+    }
+  }
+
+  const onMigrateConfirmKeys: OverlayKeyHandler = (input, key, plainReturn, _event) => {
+    if (key.escape) {
+      // Back to the picker with the checked set preserved (PRD #2's
+      // "cancel" reads cheapest as "let me change the selection").
+      dispatchOverlay({ type: 'close' })
+      dispatchOverlay({ type: 'open', overlay: { kind: 'migrate', index: 0 } })
+    } else if (plainReturn) {
+      dispatchOverlay({ type: 'close' })
+      spawnMigrateSources(migratePendingRows, false)
+    } else if (input === 'd' && !key.ctrl && !key.meta) {
+      dispatchOverlay({ type: 'close' })
+      spawnMigrateSources(migratePendingRows, true)
+    }
+  }
+
   return {
     'image-preview': onImagePreviewKeys,
     'row-detail': onRowDetailKeys,
@@ -624,6 +687,8 @@ export function createOverlayKeyHandlers(deps: OverlayKeyDeps): Partial<Record<C
     'workspace-flow': onWorkspaceFlowKeys,
     'workspace-picker': onWorkspacePickerKeys,
     'workspace-menu': onWorkspaceMenuKeys,
+    migrate: onMigrateKeys,
+    'migrate-confirm': onMigrateConfirmKeys,
     model: onModelKeys,
     skills: onSkillsKeys,
     activity: onActivityKeys,

@@ -17,6 +17,9 @@ import { FRAME_PRESETS, PRESET_NAMES } from '../../components/activityFrames.js'
 import { isValidSessionColor, SESSION_COLOR_NAMES } from '../../terminal-utils/sessionColors.js'
 import instances from '../../ink/instances.js'
 import { planReload, type ReloadKind } from '../../reload.js'
+import { MIGRATION_ADAPTERS } from '../../dsh-adapter/migrate/index.js'
+import { resolveMigrateCommand, type MigratePickerRow } from '../../dsh-adapter/migrate/picker.js'
+import { estimateSessionCostSnapshotCny } from '../../deepseekPricing.js'
 import type { ChannelUi } from '../../adapter/channel/ui-policy.js'
 import type { ChatOverlayAction } from '../chatOverlay.js'
 import type { SkillInfo, ComposerImageRef, PermissionPresetSnapshot, PresetOption, EffortOption } from '../../dsh-adapter/channel.js'
@@ -105,6 +108,14 @@ export interface RunCommandDeps {
   agentViewOpenSessionRef: React.RefObject<string | undefined>
   runPermissionCommand: (rawInput: string, images?: readonly ComposerImageRef[]) => Promise<boolean>
   openRewind: () => void
+  /** /migrate orchestration (kept in Chat — the child runner closes over the
+   *  channel's notify/pushLocal seams); the dispatcher only drives the flow. */
+  collectMigrateRows: () => Promise<MigratePickerRow[]>
+  migrateRows: readonly MigratePickerRow[] | null
+  setMigrateRows: React.Dispatch<React.SetStateAction<MigratePickerRow[] | null>>
+  setMigratePending: React.Dispatch<React.SetStateAction<readonly MigratePickerRow[]>>
+  setMigrateChecked: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>
+  spawnMigrateSources: (rows: readonly MigratePickerRow[], dryRun: boolean) => void
 }
 
 /**
@@ -137,6 +148,8 @@ export function createRunCommand(deps: RunCommandDeps) {
     setPresetOptions, setEffortOptions, presetOptions,
     setLogoNonce, suppressLogoIntroRef, recapAbortRef, agentViewOpenSessionRef,
     runPermissionCommand, openRewind,
+    collectMigrateRows, migrateRows, setMigrateRows, setMigratePending, setMigrateChecked,
+    spawnMigrateSources,
   } = deps
   /** Localized label of one /reload surface, for the change report. */
   const reloadKindLabel = (kind: ReloadKind): string => {
@@ -749,7 +762,28 @@ export function createRunCommand(deps: RunCommandDeps) {
           const rate = total > 0 ? ((usage.cacheRead / total) * 100).toFixed(1) : '0.0'
           lines.push(t('cost-cache-hit-rate', { rate, read: formatTokens(usage.cacheRead), write: formatTokens(usage.cacheWrite) }))
         }
-        lines.push(t('cost-note'))
+        // 金额与拆解：主会话按模型分桶 + 子代理按各自 (provider, model) 分桶；
+        // 全部未计价时只报 token 并标注未计价，不显示 ¥0.00 金额行（DESIGN D4/D6）。
+        const estimate = estimateSessionCostSnapshotCny({
+          provider: channel.provider,
+          main: channel.mainCost,
+          subagents: channel.subagentCost,
+          fallbackTokens: channel.tokens,
+          fallbackModel: channel.model,
+        })
+        // 金额行与末尾口径共用同一判定：有已计价金额才显示金额行与"估算非账单"
+        // 文案；无金额（无用量 / 全部未计价）只解释 token（#1089）。
+        const hasAmount = estimate !== undefined && estimate.total > 0
+        if (estimate !== undefined) {
+          if (hasAmount) {
+            lines.push(t('cost-session-estimate', { cost: estimate.total.toFixed(2) }))
+            lines.push(`${t('cost-split-main', { cost: estimate.main.toFixed(2) })} · ${t('cost-split-subagent', { cost: estimate.subagent.toFixed(2) })}`)
+          }
+          if (estimate.unpricedTokens > 0) {
+            lines.push(t('cost-unpriced', { tokens: formatTokens(estimate.unpricedTokens) }))
+          }
+        }
+        lines.push(t(hasAmount ? 'cost-note' : 'cost-note-no-amount'))
         setHelpOpen(false)
         channel.pushLocal('/cost', lines)
         return true
@@ -853,7 +887,9 @@ export function createRunCommand(deps: RunCommandDeps) {
                     ...oauth.map(row => t('login-oauth-row', {
                       provider: row.provider,
                       state: row.signedIn
-                        ? t('login-oauth-in', { time: new Date(row.expiresAt ?? 0).toISOString() })
+                        ? row.expiresAt === undefined
+                          ? t('login-oauth-in-no-expiry')
+                          : t('login-oauth-in', { time: new Date(row.expiresAt).toISOString() })
                         : row.expired
                           ? t('login-oauth-expired')
                           : t('login-oauth-signed-out'),
@@ -972,6 +1008,60 @@ export function createRunCommand(deps: RunCommandDeps) {
         setHelpOpen(false)
         channel.pushLocal('/mcp', channel.mcpStatus())
         return true
+      case 'migrate': {
+        // Double entry points with the CLI. BARE `/migrate` opens the
+        // multi-select picker; `/migrate <agent>` opens the CONFIRMATION
+        // layer for that single source (PRD #2 — a bulk import is never one
+        // keystroke away). Validity is decided against the adapter REGISTRY,
+        // never the picker's row cache: on a fresh mount that cache is empty,
+        // and deriving the answer from it made every `/migrate <agent>` report
+        // an unknown source until the picker had been opened once.
+        setHelpOpen(false)
+        const command = resolveMigrateCommand(rawInput, MIGRATION_ADAPTERS.map(adapter => adapter.id))
+        if (command.kind === 'unknown') {
+          channel.notify(t('migrate-unknown-agent', { agent: command.agentId }), { color: 'error', timeoutMs: 8000 })
+          return true
+        }
+        if (command.kind === 'usage') {
+          channel.notify(t('migrate-usage'), { color: 'error', timeoutMs: 8000 })
+          return true
+        }
+        if (command.kind === 'dry-run-needs-source') {
+          channel.notify(t('migrate-dry-run-needs-source'), { color: 'error', timeoutMs: 8000 })
+          return true
+        }
+        if (command.kind === 'import') {
+          void (async () => {
+            // Rows carry the scannable count the confirmation line shows; a
+            // warm cache from an earlier picker visit is reused as is.
+            const rows = migrateRows ?? await collectMigrateRows()
+            const row = rows.find(candidate => candidate.agentId === command.agentId)
+            if (row === undefined) {
+              channel.notify(t('migrate-unknown-agent', { agent: command.agentId }), { color: 'error', timeoutMs: 8000 })
+              return
+            }
+            if (command.dryRun) {
+              spawnMigrateSources([row], true)
+              return
+            }
+            setMigratePending([row])
+            // Pin the checked set to the source this confirmation is about:
+            // Esc returns to the picker, and a stale set from an earlier visit
+            // would there contradict what the confirmation just showed.
+            setMigrateChecked(new Set([row.agentId]))
+            dispatchOverlay({ type: 'open', overlay: { kind: 'migrate-confirm' } })
+          })()
+          return true
+        }
+        // Bare `/migrate` starts a NEW flow: drop the previous run's checks
+        // (only Esc-out-of-confirm keeps them) and let the picker show its
+        // scanning state until the rows land.
+        setMigrateRows(null)
+        setMigrateChecked(new Set())
+        dispatchOverlay({ type: 'open', overlay: { kind: 'migrate', index: 0 } })
+        void collectMigrateRows().then(setMigrateRows)
+        return true
+      }
       case 'update':
         setHelpOpen(false)
         if (onUpdate === undefined) {
@@ -995,7 +1085,7 @@ export function createRunCommand(deps: RunCommandDeps) {
         setHelpOpen(false)
         const tuiNamespace = channel.settingsHost()
           ?.listNamespaces()
-          .find(entry => entry.ns === 'dsh-tui')
+          .find(entry => entry.ns === channel.settingsNamespace)
         const plan = planReload({
           envTheme: envThemeOverride(),
           envLang: isLang(process.env.DSH_TUI_LANG) ? process.env.DSH_TUI_LANG : undefined,

@@ -19,10 +19,11 @@ export function PinnedTurnHeader({
   text,
   onClick,
 }: {
-  text: string
+  text: string | null
   onClick: () => void
 }): React.ReactNode {
   const { columns } = useTerminalSize()
+  if (text === null) return <Box flexShrink={0} width="100%" height={1} />
   // A one-row Box does not clip its children. Flatten hard line breaks before
   // truncating, otherwise later prompt lines paint down the transcript gutter.
   const label = cleanRenderText(`${POINTER} ${text}`, Math.max(1, columns - 1))

@@ -5,7 +5,7 @@ import type { Theme } from '../../theme.js'
 import { t } from '../../i18n.js'
 import { toolNameColor } from '../messages/AssistantToolUseMessage.js'
 import { formatDuration } from '../../terminal-utils/format.js'
-import { isMinimalMode } from '../../minimalMode.js'
+import { isMinimalUiMode } from '../../minimalUiMode.js'
 import { MULTIPLICATION_X } from '../../terminal-utils/figures.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
 import { clipLineToWidth } from '../../ink/truncateToWidth.js'
@@ -20,14 +20,12 @@ function tokens(row: SubagentRow): string {
   return total > 0 ? `${total} tok` : '- tok'
 }
 function status(row: SubagentRow): { glyph: string; label: string; color: keyof Theme | undefined } {
-  const minimal = isMinimalMode()
-  if (row.status === 'completed') return { glyph: minimal ? '✓' : '🟢', label: t('subagent-status-completed'), color: minimal ? undefined : 'success' }
-  if (row.status === 'failed') return { glyph: minimal ? MULTIPLICATION_X : '🔴', label: t('subagent-status-failed'), color: minimal ? undefined : 'error' }
-  if (row.status === 'cancelled') return { glyph: minimal ? MULTIPLICATION_X : '🔴', label: t('subagent-status-cancelled'), color: minimal ? undefined : 'error' }
-  return { glyph: minimal ? '·' : '🟡', label: t('subagent-status-running'), color: minimal ? undefined : 'warning' }
+  const minimalUi = isMinimalUiMode()
+  if (row.status === 'completed') return { glyph: minimalUi ? '✓' : '🟢', label: t('subagent-status-completed'), color: minimalUi ? undefined : 'success' }
+  if (row.status === 'failed') return { glyph: minimalUi ? MULTIPLICATION_X : '🔴', label: t('subagent-status-failed'), color: minimalUi ? undefined : 'error' }
+  if (row.status === 'cancelled') return { glyph: minimalUi ? MULTIPLICATION_X : '🔴', label: t('subagent-status-cancelled'), color: minimalUi ? undefined : 'error' }
+  return { glyph: minimalUi ? '·' : '🟡', label: t('subagent-status-running'), color: minimalUi ? undefined : 'warning' }
 }
-/** Hard single-line clip by display width — a wrapped waterfall row would
- * break the constant-height window. */
 
 /**
  * Borderless, fixed-height activity card embedded directly in the transcript

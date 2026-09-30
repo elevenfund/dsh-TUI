@@ -43,9 +43,15 @@ export function formatTokens(count: number): string {
  * @param durationMs - Duration in milliseconds.
  * @returns The compact duration string.
  */
-export function formatDuration(durationMs: number): string {
+export function formatDuration(durationMs: number, options: { integerSeconds?: boolean } = {}): string {
   const clamped = Math.max(0, durationMs)
-  if (clamped < 60_000) return `${(Math.floor(clamped / 100) / 10).toFixed(1)}s`
+  if (clamped < 60_000) {
+    // Live stopwatches (compaction progress) take integer seconds: the
+    // 0.1s form costs two columns that break the one-line narrow-row
+    // layout contract and flickers at frame rate.
+    if (options.integerSeconds === true) return `${Math.floor(clamped / 1000)}s`
+    return `${(Math.floor(clamped / 100) / 10).toFixed(1)}s`
+  }
   const minutes = Math.floor(clamped / 60_000)
   if (minutes < 60) return `${minutes}m${String(Math.floor((clamped % 60_000) / 1000)).padStart(2, '0')}s`
   return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}m`

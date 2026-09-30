@@ -22,6 +22,7 @@ import {
   nextGraphemeBoundary,
   previousGraphemeBoundary,
   sanitizeEditableText,
+  sanitizePastedText,
   vimLineEnd,
   vimLineFirstNonBlank,
   vimLineStart,
@@ -575,7 +576,7 @@ export function createPromptKeyHandler(deps: PromptKeyDeps): (input: string, key
     // Newlines remain data — they are NOT Enter — so this branch runs before
     // the whole-line submit rule.
     if (event?.isPasted && input.length > 0) {
-      const text = sanitizeEditableText(input.replace(/\r\n/g, '\n').replace(/\r/g, '\n'))
+      const text = sanitizePastedText(input.replace(/\r\n/g, '\n').replace(/\r/g, '\n'))
       // Desktop drops reach the TUI as pasted text (Ghostty forwards
       // Shell.escape(path) through the PTY with no drop boundary). Only a
       // paste that IS one unambiguous existing local image path stages as
@@ -639,7 +640,7 @@ export function createPromptKeyHandler(deps: PromptKeyDeps): (input: string, key
               return
             }
             if (content.kind === 'unavailable') {
-              channel.notify(t('input-clipboard-unavailable'), { color: 'warning' })
+              channel.notify(t(content.wsl === true ? 'input-clipboard-unavailable-wsl' : 'input-clipboard-unavailable'), { color: 'warning' })
               return
             }
             if (content.kind === 'image') {
@@ -726,7 +727,7 @@ export function createPromptKeyHandler(deps: PromptKeyDeps): (input: string, key
             if (!draftImageLeaseIsCurrent(lease)) return
             // Insert against the LIVE input state: the read above resolved
             // asynchronously and the user may have typed while waiting.
-            const text = sanitizeEditableText(formatClipboardInsert(content))
+            const text = sanitizePastedText(formatClipboardInsert(content))
             const { at } = insertClipboardAtCaret(text)
             // Same fold as bracketed paste — but never inside the expanded
             // editor (plain text there, see the isPasted branch).
@@ -897,7 +898,12 @@ export function createPromptKeyHandler(deps: PromptKeyDeps): (input: string, key
     // indentation arm so the expanded editor participates in the cycle too —
     // the parser reports backtab as key.tab + key.shift.
     if (key.tab && key.shift) {
-      void channel.cycleMode()
+      channel.cycleMode().catch(error => {
+        channel.notify(t('mode-switch-failed', { err: error instanceof Error ? error.message : String(error) }), {
+          color: 'error',
+          timeoutMs: 8000,
+        })
+      })
       return
     }
     // Expanded editor: plain Tab inserts indentation; Shift+Tab was handled

@@ -24,6 +24,10 @@
  *      dashboard row;
  *   E. workflow members — `tool-workflow/agent-start|end` parent events drive
  *      member rows (they never emit subagent edges) and settle by outcome.
+ *   F. parked live session — restoring the same child run keeps its clock,
+ *      tools, clickable card and event link; a new run still resets them;
+ *   G. list labels — an in-flight child is not reported as archived when the
+ *      service activity lags, and an idle/unknown child is not mislabeled.
  *
  * Run: node --import tsx/esm scripts/verify-subagent-panel-sync.tsx
  */
@@ -39,9 +43,10 @@ process.env.HOME = isolatedHome
 process.env.USERPROFILE = isolatedHome
 mkdirSync(joinPath(isolatedHome, '.dsh-tui'), { recursive: true })
 
-const [{ Context }, { createChannel }, { settled, sleep }] = await Promise.all([
+const [{ Context }, { createChannel }, { createScope, scopeTarget }, { settled, sleep }] = await Promise.all([
   import('@deepseek-ai/cordis'),
   import('../src/dsh-adapter/channel.js'),
+  import('@deepseek-ai/dsh-scope'),
   import('./lib/term-test.mjs'),
 ])
 
@@ -51,7 +56,7 @@ function check(name: string, ok: boolean, extra = ''): void {
   if (!ok) failed += 1
 }
 
-interface FakeChild { session: { id: string; seq: number; events: unknown[]; header: Record<string, unknown> }; options?: { provider?: string; model?: string } }
+interface FakeChild { status?: string; session: { id: string; seq: number; events: unknown[]; header: Record<string, unknown> }; options?: { provider?: string; model?: string } }
 
 function makeHarness(seedEvents: unknown[] = [], warmRegistry?: (registry: Map<string, FakeChild>) => void) {
   const registry = new Map<string, FakeChild>()
@@ -73,12 +78,13 @@ function makeHarness(seedEvents: unknown[] = [], warmRegistry?: (registry: Map<s
     followup() {},
     steer() {},
     inbox: { remove() {} },
-  } as never
-  const channel = createChannel(ctx as never, parent, {
+  }
+  parent.ctx = createScope(ctx, parent).ctx
+  const channel = createChannel(ctx as never, parent as never, {
     model: 'model-00', cwd: '/tmp/demo', provider: 'fake-provider', activity: false,
   })
   const emit = (name: string, ...args: unknown[]) =>
-    (ctx as unknown as { emit(event: string, ...a: unknown[]): void }).emit(name, ...args)
+    (ctx as unknown as { emit(...args: unknown[]): void }).emit(scopeTarget({}, parent), name, ...args)
   return {
     registry, channel, ctx: ctx as unknown as { provide(name: string, value: unknown): () => void },
     emit,
@@ -91,6 +97,43 @@ function makeHarness(seedEvents: unknown[] = [], warmRegistry?: (registry: Map<s
 
 const catalog = (childId: string, label: string, at: number) =>
   ({ type: 'subagent/catalog', seq: 0, time: at, data: { version: 0, childId, childCreatedAt: at, mode: 'continuable', label } })
+
+// The list service's activity can lag the live agent registry. A value other
+// than `running` must not be presented as proof that a child was archived.
+{
+  const h = makeHarness([catalog('list-child', '列表任务', Date.now() - 60_000)], registry => {
+    registry.set('list-child', { status: 'running', session: { id: 'list-child', seq: 0, events: [], header: {} } })
+  })
+  ;(h.ctx as unknown as { provide(name: string, value: unknown): void }).provide('subagents', {
+    listChildren: async () => [{ id: 'list-child', mode: 'continuable', activity: 'archived' }],
+  })
+  const liveLine = (await h.channel.listSubagents())[0] ?? ''
+  check('G1 列表以当前运行投影为准，不把在跑的子代理写成已归档',
+    liveLine.includes('运行中') && !liveLine.includes('已归档'), liveLine)
+
+  const unknown = makeHarness([catalog('idle-child-list', '历史任务', Date.now() - 60_000)])
+  ;(unknown.ctx as unknown as { provide(name: string, value: unknown): void }).provide('subagents', {
+    listChildren: async () => [{ id: 'idle-child-list', mode: 'continuable', activity: 'idle' }],
+  })
+  const unknownLine = (await unknown.channel.listSubagents())[0] ?? ''
+  check('G2 未知或空闲状态不误报已归档', unknownLine.includes('状态未知'), unknownLine)
+
+  // G3 catalog 的 mode 落进 state 与卡行：continuable 徽章 + bus-first 补挂。
+  {
+    const modeHarness = makeHarness([catalog('mode-child', '模式任务', Date.now() - 30_000)])
+    const state = modeHarness.channel.subagents.find(sub => sub.agentId === 'mode-child')
+    check('G3 catalog mode 落进 state', state?.mode === 'continuable', String(state?.mode))
+    // 总线 start 先建行（无 mode），catalog 后到 → 补挂 mode。
+    const late = makeHarness([])
+    late.emit('subagent/start', { id: 'late-child', runId: 'run-late', provider: 'subagent' })
+    late.parentEvent({
+      type: 'subagent/catalog', seq: 1, time: Date.now(),
+      data: { version: 1, childId: 'late-child', childCreatedAt: Date.now(), mode: 'one-shot', label: '迟到目录' },
+    })
+    const lateState = late.channel.subagents.find(sub => sub.agentId === 'late-child')
+    check('G3 bus 先建行后 catalog 补挂 mode', lateState?.mode === 'one-shot', String(lateState?.mode))
+  }
+}
 
 // ── A + B: live lifecycle — catalog birth, epoch reset, late-end immunity ──
 {

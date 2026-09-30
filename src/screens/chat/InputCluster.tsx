@@ -76,7 +76,10 @@ export function InputCluster(props: {
   wakeBand: WaveBand | undefined
   wakeTime: number
   trajectorySeen: boolean
-  modLabel: string
+  /** Opens the trajectory scene — the wake strip's click target. */
+  openScene: () => void
+  /** Effective trajectory combo display (hover hint + first-run hint). */
+  trajectoryCombo: string
 }): React.ReactNode {
   const {
     agentViewOpenSessionRef, agentViewRows, approvalPanelNode,
@@ -92,7 +95,7 @@ export function InputCluster(props: {
     workingActivity, writeRaw,
     btw, closeBtw, recap, setRecap, closeRecap,
     dismissPeek, handleCaretImage, peekPreview, openRewind, historyMatches,
-    wakeBand, wakeTime, trajectorySeen, modLabel,
+    wakeBand, wakeTime, trajectorySeen, openScene, trajectoryCombo,
   } = props
   return (
 <Box flexDirection="column" flexShrink={0}>
@@ -219,8 +222,12 @@ export function InputCluster(props: {
               ? undefined
               : {
                   band: wakeBand,
-                  hint: trajectorySeen ? undefined : `${modLabel}t`,
+                  hint: trajectorySeen ? undefined : trajectoryCombo,
                   tick: Math.floor(wakeTime / 120),
+                  // Click target for the strip: opens the trajectory scene.
+                  onOpen: openScene,
+                  // Chord revealed while the pointer rests on the strip.
+                  hoverHint: trajectoryCombo,
                 }
           }
         />

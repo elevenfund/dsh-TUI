@@ -5,8 +5,9 @@ import { StreamingMarkdown } from '../StreamingMarkdown.js'
 import { formatDuration } from '../../terminal-utils/format.js'
 import { THINKING_SETTLED_MARKER } from '../../terminal-utils/figures.js'
 import { useBlink } from '../../hooks/useBlink.js'
-import { isMinimalMode } from '../../minimalMode.js'
+import { isMinimalUiMode } from '../../minimalUiMode.js'
 import type { ClickEvent } from '../../ink/events/click-event.js'
+import { primaryComboString } from '../../utils/keymap.js'
 
 /** Preview body rows — a FIXED row count (kimicode-style constant-height
  *  ticker). Ink's truncate slices the whole string across newlines as one
@@ -80,7 +81,7 @@ export function AssistantThinkingMessage({
   // grok-style header: bold verb ("Thinking…" while running), muted
   // "for Xs" suffix once settled, one line.
   const label = `${t('thinking-running-label')}…`
-  const minimal = isMinimalMode()
+  const minimal = isMinimalUiMode()
   // Hover 轻指示：可点击折叠时折叠头从 dim 提亮为正常色（不刷整行背景，
   // 转录视觉保持安静）。
   const [hovered, setHovered] = React.useState(false)
@@ -93,7 +94,7 @@ export function AssistantThinkingMessage({
         <Text
           color={minimal || !bulletBlinking ? undefined : 'success'}
           bold={bulletBlinking}
-        >{`${THINKING_SETTLED_MARKER} `}</Text>
+        >{`${minimal ? '*' : THINKING_SETTLED_MARKER} `}</Text>
         {/* 流式行同样可点击折叠；running 标签保持正常亮度，与工具行一致 */}
         <Text bold>{label}</Text>
       </Box>
@@ -101,7 +102,7 @@ export function AssistantThinkingMessage({
       <Text dimColor={!hovered && !isSelected} color={hovered || isSelected ? 'text' : undefined} italic>
         {`${minimal ? '*' : THINKING_SETTLED_MARKER} `}
         <Text bold>{t('thought-label')}</Text>
-        <Text>{duration}{streaming ? '…' : ` ${t('hint-expand-ctrl-o')}`}</Text>
+        <Text>{duration}{streaming ? '…' : ` ${t('hint-expand-ctrl-o', { key: primaryComboString('transcript') })}`}</Text>
       </Text>
     )
 

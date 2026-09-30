@@ -8,7 +8,7 @@ import { Divider } from './design-system/Divider.js'
 import { ExitButton } from './SubagentDashboard.js'
 import { isPlainReturnInput } from '../utils/modifiers.js'
 import { FollowUpLine, useFollowUpInput } from './SubagentFollowUpInput.js'
-import { isMinimalMode } from '../minimalMode.js'
+import { isMinimalUiMode } from '../minimalUiMode.js'
 import { MULTIPLICATION_X, BLACK_CIRCLE } from '../terminal-utils/figures.js'
 import { clipLineToWidth } from '../ink/truncateToWidth.js'
 
@@ -38,7 +38,7 @@ type Entry =
 function jobStatusInfo(status: BackgroundJobState['status']): { glyph: string; color: 'warning' | 'success' | 'error' | undefined; label: string } {
   // Minimal mode drops the color (JobsPanel symmetry): the glyphs alone
   // carry the state, so a monochrome terminal reads the same panel.
-  const minimal = isMinimalMode()
+  const minimal = isMinimalUiMode()
   if (status === 'completed') return { glyph: '✓', color: minimal ? undefined : 'success', label: t('jobs-status-completed') }
   if (status === 'failed') return { glyph: MULTIPLICATION_X, color: minimal ? undefined : 'error', label: t('jobs-status-failed') }
   if (status === 'killed') return { glyph: MULTIPLICATION_X, color: minimal ? undefined : 'error', label: t('jobs-status-killed') }
@@ -47,7 +47,7 @@ function jobStatusInfo(status: BackgroundJobState['status']): { glyph: string; c
 }
 
 function subagentStatusInfo(sub: SubagentState): { glyph: string; color: 'warning' | 'success' | 'error' | undefined; label: string } {
-  const minimal = isMinimalMode()
+  const minimal = isMinimalUiMode()
   const running = sub.status === 'running' || sub.status === 'starting'
   if (running) return { glyph: minimal ? '·' : BLACK_CIRCLE, color: minimal ? undefined : 'warning', label: t('subagent-status-running') }
   if (sub.status === 'unknown') return { glyph: '○', color: undefined, label: t('subagent-status-unknown') }
@@ -101,7 +101,7 @@ function TaskRow({ entry, focused, columns, onOpen }: { entry: Entry; focused: b
         <Text dimColor wrap="truncate">{`    ${t('jobs-panel-command')} ${clipLineToWidth(entry.job.command, labelWidth + 24)}`}</Text>
       )}
       {entry.job.outputLines.slice(-4).map((line, index) => (
-        <Text key={`${entry.job.id}-out-${index}`} dimColor wrap="truncate">{`    │ ${clipLineToWidth(line, labelWidth + 24)}`}</Text>
+        <Text key={`${entry.job.id}-out-${index}`} dimColor wrap="truncate">{`    │ ${clipLineToWidth(line.text, labelWidth + 24)}`}</Text>
       ))}
     </>
   ) : (() => {
@@ -269,7 +269,7 @@ export function TaskCenterPanel({
   const runningJobs = jobs.filter(job => job.status === 'running' || job.status === 'stopping').length
   const runningSubagents = subagents.filter(sub => subagentStatusInfo(sub).color === 'warning').length
   const doneCount = entries.length - runningJobs - runningSubagents
-  const minimal = isMinimalMode()
+  const minimal = isMinimalUiMode()
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1} ref={clockRef}>

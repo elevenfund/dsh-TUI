@@ -1,8 +1,19 @@
-import { setMinimalMode } from '../../minimalMode.js'
-import { normalizePageMargin, normalizeScrollGutter, normalizeStatusBar, normalizeToolBackground, type StatusBarConfig } from '../../tuiDisplayPrefs.js'
+import { setMinimalUiMode } from '../../minimalUiMode.js'
+import { normalizeSplashFont, type SplashFontSetting } from '../../components/splashFonts.js'
+import { normalizeJobGroupFold, normalizePageMargin, normalizeScrollGutter, normalizeStatusBar, normalizeToolBackground, type JobGroupFoldMode, type StatusBarConfig } from '../../tuiDisplayPrefs.js'
 import type { ChannelState } from '../channel/types.js'
 
-export function createPreferences(getState: () => Pick<ChannelState, 'diffLayout' | 'thinkingFold' | 'toolBodyLines' | 'toolBackground' | 'scrollGutter' | 'pageMargin' | 'foldTerminalCommand' | 'promptSessionLabel' | 'expandEditor' | 'smoothStreaming' | 'statusBar' | 'whale' | 'whaleIdle' | 'minimal' | 'emit'>): Pick<ChannelState, 'setDiffLayout' | 'setThinkingFold' | 'setToolBodyLines' | 'setToolBackground' | 'setScrollGutter' | 'setPageMargin' | 'setFoldTerminalCommand' | 'setPromptSessionLabel' | 'setExpandEditor' | 'setSmoothStreaming' | 'setStatusBar' | 'setWhale' | 'setWhaleIdle' | 'setMinimal'> {
+/** The single minimal-UI write path: module store + channel field + one
+ *  revision. `setMinimalUi` and its deprecated `setMinimal` alias share it. */
+function applyMinimalUi(getState: () => Pick<ChannelState, 'minimalUi' | 'emit'>, enabled: boolean): void {
+  const state = getState()
+  setMinimalUiMode(enabled)
+  if (enabled === state.minimalUi) return
+  state.minimalUi = enabled
+  state.emit()
+}
+
+export function createPreferences(getState: () => Pick<ChannelState, 'diffLayout' | 'thinkingFold' | 'toolBodyLines' | 'jobGroupFold' | 'toolBackground' | 'scrollGutter' | 'pageMargin' | 'foldTerminalCommand' | 'promptSessionLabel' | 'expandEditor' | 'smoothStreaming' | 'statusBar' | 'whale' | 'whaleIdle' | 'whaleGirl' | 'splashFont' | 'minimalUi' | 'emit'>): Pick<ChannelState, 'setDiffLayout' | 'setThinkingFold' | 'setToolBodyLines' | 'setJobGroupFold' | 'setToolBackground' | 'setScrollGutter' | 'setPageMargin' | 'setFoldTerminalCommand' | 'setPromptSessionLabel' | 'setExpandEditor' | 'setSmoothStreaming' | 'setStatusBar' | 'setWhale' | 'setWhaleIdle' | 'setWhaleGirl' | 'setSplashFont' | 'setMinimalUi' | 'setMinimal'> {
   return {
 
     setDiffLayout(layout) {
@@ -24,6 +35,14 @@ export function createPreferences(getState: () => Pick<ChannelState, 'diffLayout
       const clamped = Math.max(0, Math.min(50, Math.floor(lines)))
       if (clamped === state.toolBodyLines) return
       state.toolBodyLines = clamped
+      state.emit()
+    },
+
+    setJobGroupFold(mode) {
+      const state = getState()
+      const normalized = normalizeJobGroupFold(mode)
+      if (normalized === state.jobGroupFold) return
+      state.jobGroupFold = normalized
       state.emit()
     },
 
@@ -104,12 +123,29 @@ export function createPreferences(getState: () => Pick<ChannelState, 'diffLayout
       state.emit()
     },
 
-    setMinimal(enabled) {
+    setSplashFont(setting) {
       const state = getState()
-      setMinimalMode(enabled)
-      if (enabled === state.minimal) return
-      state.minimal = enabled
+      const normalized = normalizeSplashFont(setting)
+      if (normalized === state.splashFont) return
+      state.splashFont = normalized
       state.emit()
+    },
+
+    setWhaleGirl(enabled) {
+      const state = getState()
+      if (enabled === state.whaleGirl) return
+      state.whaleGirl = enabled
+      state.emit()
+    },
+
+    setMinimalUi(enabled) {
+      applyMinimalUi(getState, enabled)
+    },
+
+    /** @deprecated Pre-rename alias of setMinimalUi (kept for plugin scenes
+     *  and older embedders that call `channel.setMinimal()`). */
+    setMinimal(enabled) {
+      applyMinimalUi(getState, enabled)
     }
   }
 }

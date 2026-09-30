@@ -58,6 +58,12 @@ export interface ChatRow {
   subagent?: SubagentRow
   /** Present on `job` rows; the background-job state snapshot. */
   job?: JobRow
+  /** Present on `job` rows that share a run of ≥2 consecutive cards: the
+   *  group decoration (chain rail + fold summary). Render-derived state:
+   *  written only onto shallow copies in the transcript's row pre-pass
+   *  (rows may arrive frozen from the session projection), never by the
+   *  projection and never on the shared row objects. */
+  jobGroup?: JobGroupRow
   /** Event wall-clock time (transcript-mode metadata, assistant rows). */
   time?: number
   /** Present on `reasoning` rows once settled: thinking wall-clock duration. */
@@ -143,6 +149,9 @@ export interface SubagentRow {
   agentId: string
   runId?: string
   description: string
+  /** Durable creation mode from the kernel catalog event; absent before the
+   *  parent log's `subagent/catalog` fact arrives (bus-only discovery). */
+  mode?: 'one-shot' | 'continuable' | 'unknown'
   provider?: string
   model?: string
   effort?: string
@@ -162,6 +171,9 @@ export interface SubagentState {
   agentId: string
   runId?: string
   description: string
+  /** Durable creation mode from `subagent/catalog` (one-shot burns out;
+   *  continuable survives epochs and can take later prompts). */
+  mode?: 'one-shot' | 'continuable' | 'unknown'
   provider?: string
   model?: string
   effort?: string
@@ -214,6 +226,19 @@ export interface SubagentTokenUsage {
   context?: number
 }
 
+/** Output-stream label of one mirrored job line; absent = plain stdout. */
+export type BackgroundJobOutputChannel = 'stdout' | 'stderr' | 'log'
+
+/** One mirrored output line. `channel` rides the kernel chunk label
+ * (`stderr` renders red, `log` = producer narration the model never sees);
+ * `gapBefore` marks bytes lost before this line (ring eviction / producer
+ * gap) — the UI renders a dim `…dropped…` banner above it. */
+export interface BackgroundJobOutputLine {
+  text: string
+  channel?: BackgroundJobOutputChannel
+  gapBefore?: true
+}
+
 /** One background job as a live transcript card (see `kind: 'job'`). */
 export interface JobRow {
   id: string
@@ -221,10 +246,50 @@ export interface JobRow {
   label: string
   status: BackgroundJobStatus
   detail?: string
+  /** Live producer progress line (`3/10`, phase name); cleared at settle. */
+  progress?: string
   startedAt: number
   finishedAt?: number
-  /** Mirrored `job_output` tail feeding the card's three-line waterfall. */
-  outputLines: readonly string[]
+  /** Mirrored output tail feeding the card's three-line waterfall. */
+  outputLines: readonly BackgroundJobOutputLine[]
+}
+
+/**
+ * Group decoration for a run of consecutive background-job cards.
+ *
+ * A batch of `run_in_background` calls lands as N adjacent cards (the job
+ * projection pushes the whole roster in one sync) and each one pays a blank
+ * separator line — a pile of near-identical rows for work nobody reads card
+ * by card. The transcript therefore reads ≥2 adjacent job rows as ONE group:
+ * members drop the blank line between them, share a chain rail on the left,
+ * and the group header summarizes the run; once every member settled the
+ * whole group folds into that header line alone (click / Ctrl+O expands).
+ *
+ * Derived state: it rides a per-pass shallow COPY of the row (the shared
+ * rows may arrive frozen from the session projection) so BOTH the renderer
+ * and the height signature can read it, and it is recomputed from scratch
+ * whenever the visible-row window rebuilds.
+ */
+export interface JobGroupRow {
+  /** Group header row: the only member rendering the title/fold line. */
+  head: boolean
+  /** 0-based index inside the group. */
+  index: number
+  /** Members in the run (≥2 — a lone job card stays ungrouped). */
+  count: number
+  /** Last member: the rail closes with └ instead of continuing │. */
+  last: boolean
+  /** Whole group folded into the header line (meaningful on the head). */
+  folded: boolean
+  /** Members still live (running + stopping). */
+  running: number
+  completed: number
+  failed: number
+  killed: number
+  /** Earliest member start. */
+  startedAt: number
+  /** Latest member finish; absent while any member is still live. */
+  endedAt?: number
 }
 
 /**
@@ -241,10 +306,14 @@ export interface JobRow {
  *
  * - `read()` is CONSUMING (one cursor per job) and a terminal read marks the
  *   job reported, which would eat the owning agent's `job_output` delta and
- *   suppress its completion notice. The UI therefore NEVER reads: the
- *   three-line output waterfall on a card is mirrored from the agent's own
- *   `job_output` tool results as they stream through the session event log
- *   ({@link BackgroundJobStore.onOutputSeen}), not polled.
+ *   suppress its completion notice. The UI therefore never calls `read()`.
+ *   Output mirroring has two tiers: when the kernel event bus is reachable
+ *   (`events.subscribe`, present on the real registry) the UI keeps its own
+ *   byte cursor and pulls non-consuming `readAt` increments on every
+ *   `output` event — live output without the model polling; on kernels
+ *   without the bus it falls back to mirroring the agent's own `job_output`
+ *   tool results as they stream through the session event log
+ *   ({@link BackgroundJobStore.onOutputSeen}).
  * - Jobs are process-local and owner-fenced. `list(agent)` returns exactly
  *   the jobs the current conversation owns (plus unowned ones); a job that
  *   disappears while live was teardown-cancelled (owner disposal / session
@@ -280,6 +349,31 @@ export interface TokenBucket {
   cacheWrite: number
 }
 
+/** 一个模型的峰谷计价桶（与 {@link TokenUsage} 的 peak/idle 同构）。 */
+export interface CostTokenBuckets {
+  peak: TokenBucket
+  idle: TokenBucket
+}
+
+/**
+ * 本会话主会话用量按模型分桶（费用估算输入，见 estimateCostFromBucketsCny）。
+ * `channel.tokens` 的语义与既有显示不变；本字段只服务计价，会话中途换模型时
+ * 历史用量留在原模型桶，不会被新模型重估。
+ */
+export interface SessionCostByModel {
+  [model: string]: CostTokenBuckets
+}
+
+/**
+ * 子代理 durable 用量按 (provider, model) 分桶——子代理各自模型不同，价格
+ * 也就不同；未计价判定由计价纯函数按 provider/model 完成。
+ */
+export interface SubagentCostEntry {
+  provider: string
+  model: string
+  buckets: CostTokenBuckets
+}
+
 /** A transient status message shown above the prompt input. */
 export interface NotificationItem {
   id: number
@@ -289,6 +383,28 @@ export interface NotificationItem {
   /** Auto-dismiss after this many ms (default 4000); 0 = sticky, removed
    *  only through the early-dismiss handle. */
   timeoutMs: number
+}
+
+/**
+ * The session's in-flight compaction (`/compact`, or the automatic pressure
+ * compaction at a turn boundary), as the status row above the prompt renders
+ * it. The host exposes no proportional progress: a compaction is one model
+ * call between two durable session events, so this carries only what is
+ * observable — when the bracket opened, whether that call has started
+ * producing output, how much it has produced, and whether this process may
+ * abort it.
+ */
+export interface CompactionStatus {
+  /** Wall-clock ms when the compaction bracket opened. */
+  readonly startedAt: number
+  /** `prefill` until the summarizer's first output chunk: replaying the
+   *  conversation prefix is a long silent phase with nothing to count.
+   *  `summary` once output is streaming. */
+  readonly phase: 'prefill' | 'summary'
+  /** Output chars streamed by the compaction model call (see `phase`). */
+  readonly outputChars: number
+  /** True only for a compaction this process started, so only it may abort. */
+  readonly cancellable: boolean
 }
 
 /**
@@ -402,12 +518,23 @@ export interface BackgroundJobState {
   command?: string
   status: BackgroundJobStatus
   detail?: string
+  /** Live producer progress line (`3/10`, phase name); cleared at settle. */
+  progress?: string
   startedAt: number
   finishedAt?: number
-  /** Last-seen output tail (mirrored `job_output` text), newest last. */
-  outputLines: string[]
-  /** Epoch ms of the last mirrored `job_output` read (receipt time). */
+  /** Last-seen output tail, newest last. Mirrored from the kernel output
+   *  ring when its event bus is reachable (non-consuming `readAt` with the
+   *  UI's own byte cursor), falling back to `job_output` tool-result tails. */
+  outputLines: BackgroundJobOutputLine[]
+  /** Epoch ms of the last mirrored output read (receipt time). */
   lastOutputAt?: number
+  /** Total output bytes observed through the kernel ring (`output.total`). */
+  outputTotalBytes?: number
+  /** True when bytes were dropped before the retained tail (ring eviction
+   *  or producer gap) — the panel shows the loss banner. */
+  outputDropped?: boolean
+  /** Producer-retained spill files holding the complete output stream. */
+  spillPaths?: readonly string[]
 }
 
 /**

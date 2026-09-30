@@ -67,9 +67,15 @@ export interface InputGuardContext {
   wheel: 'up' | 'down' | null
   /** Page key direction, when the event is PgUp/PgDn. */
   page: 'up' | 'down' | null
+  /** Splash "ask for a star" modal or bonus-coupon celebration is up: it
+   *  owns the keyboard AND the wheel (nothing behind it may scroll). */
+  starModalOpen: boolean
 }
 
 export function inputGuardAction(ctx: InputGuardContext): InputGuardAction {
+  // The splash star modal / coupon celebration owns every key and the wheel;
+  // its own useInput handles ↑/↓/Enter/Esc.
+  if (ctx.starModalOpen) return { type: 'yield' }
   // Prompt-slot panels own the keyboard while visible: yielding still lets
   // the panel's own useInput receive them, and Ctrl+C must never clear the
   // hidden composer draft.
