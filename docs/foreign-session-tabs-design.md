@@ -353,7 +353,7 @@ session/title                          （仅显式标题，末尾写入）
 | `src/screens/SessionSupervisor.tsx` | 标题栏接入 tab，按 tab 切换双栏，调整 Tab 键路由 |
 | `src/i18n.ts` | 新增文案（中英） |
 | `docs/migrate.md` / `.en.md` | 契约变化：迁移工具调用、压缩检查点、Codex reasoning 摘要可读、注入过滤 |
-| `docs/interaction.md`、`docs/user-guide.md`（及 `.en`）、`README.md`、`README_ZH.md` | 标签页与快捷键 |
+| `docs/interaction.md`、`docs/user-guide.md`（及 `.en`）、`README.md`、`README_EN.md` | 标签页与快捷键 |
 | `scripts/verify-migrate-parse.mjs`、`scripts/run-ci-group.mjs` | 新增回归并登记 |
 
 `/migrate` 相关的 `Chat.tsx`、`MigratePicker.tsx`、`picker.ts` **不改**，`cli.ts` 只把 `turns.length` 换成 `messageCount()`。
