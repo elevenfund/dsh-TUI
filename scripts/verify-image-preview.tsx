@@ -514,6 +514,19 @@ type Screen = {
   readonly text: () => string
   readonly find: (needle: string) => { row: number; col: number } | null
 }
+/** Find a needle inside a settled window and capture it there: re-finding
+ * after an earlier settle races one repaint (the token row can shift a frame
+ * later), and clicking a stale coordinate silently misses. */
+async function settleFind(screen: Screen, needle: string): Promise<{ row: number; col: number }> {
+  let found: { row: number; col: number } | null = null
+  await settled(() => {
+    const hit = screen.find(needle)
+    if (hit === null) return false
+    found = hit
+    return true
+  })
+  return found!
+}
 function screenOf(terminal: InstanceType<typeof XTerm>, rows: number): Screen {
   const lines = (): string[] => viewportLines(terminal, rows)
   return {
@@ -914,7 +927,7 @@ function makeChannel() {
     await settled(() => screen.text().includes('model-00'))
     stdin.write(`\x1b[200~${imagePath}\x1b[201~`)
     check('unstable facade: the staged token is live', await settled(() => screen.text().includes('[Image #1]')), screen.text())
-    const token = screen.find('[Image #1]')!
+    const token = await settleFind(screen, '[Image #1]')
     stdin.write(`\x1b[<0;${token.col + 1};${token.row + 1}M\x1b[<0;${token.col + 1};${token.row + 1}m`)
     check('unstable facade: the token click opens the preview',
       await settled(() => screen.text().includes('unstable.png')), screen.text())
@@ -1021,7 +1034,7 @@ for (const columns of [32, 80]) {
   // Transcript thumbnail (text fallback body) → the shared overlay.
   check('chat: transcript thumbnail fallback renders',
     await settled(() => screen.find('Image · sent.png') !== null), screen.text())
-  const thumb = screen.find('Image · sent.png')!
+  const thumb = await settleFind(screen, 'Image · sent.png')
   click(thumb.col, thumb.row)
   check('chat: thumbnail click opens the preview overlay',
     await settled(() =>
@@ -1066,7 +1079,7 @@ for (const columns of [32, 80]) {
       && screen.find('Image · sent.png') !== null),
     screen.text())
 
-  const thumbAfterBinding = screen.find('Image · sent.png')!
+  const thumbAfterBinding = await settleFind(screen, 'Image · sent.png')
   click(thumbAfterBinding.col, thumbAfterBinding.row)
   await settled(() => screen.text().includes(OVERLAY_HINT))
   stdin.write('\x1b')
@@ -1082,7 +1095,7 @@ for (const columns of [32, 80]) {
 
   // Reopen, then a click OUTSIDE the centered card closes it.
   const readsAfterFirstOpen = readCounts.get('sha256:sent') ?? 0
-  const thumb2 = screen.find('Image · sent.png')!
+  const thumb2 = await settleFind(screen, 'Image · sent.png')
   click(thumb2.col, thumb2.row)
   await settled(() => screen.text().includes(OVERLAY_HINT))
   {
@@ -1115,7 +1128,7 @@ for (const columns of [32, 80]) {
   channel.version++
   app.rerender(chatTree())
   await settled(() => screen.find('Image · next.png') !== null)
-  const galleryLast = screen.find('Image · next.png')!
+  const galleryLast = await settleFind(screen, 'Image · next.png')
   click(galleryLast.col, galleryLast.row)
   check('gallery: opening a transcript image snapshots images across messages',
     await settled(() => screen.text().includes('2/2')), screen.text())
@@ -1128,11 +1141,11 @@ for (const columns of [32, 80]) {
   // 固定窗:pacing 方向键步间节奏
   await sleep(80)
   check('gallery: right at the end does not wrap', screen.text().includes('2/2'))
-  const previousImage = screen.find('‹')!
+  const previousImage = await settleFind(screen, '‹')
   click(previousImage.col, previousImage.row)
   check('gallery: previous mouse control returns to the first image',
     await settled(() => screen.text().includes('1/2') && screen.text().includes('— PNG · 20×16 · sent.png')), screen.text())
-  const nextImage = screen.find('›')!
+  const nextImage = await settleFind(screen, '›')
   click(nextImage.col, nextImage.row)
   check('gallery: next mouse control advances', await settled(() => screen.text().includes('2/2')))
   stdin.write('\x1b[D')
@@ -1150,7 +1163,7 @@ for (const columns of [32, 80]) {
   stdin.write('[Image #1]')
   check('chat: raw token text is visible but inert',
     await settled(() => screen.find('[Image #1]') !== null), screen.text())
-  const rawToken = screen.find('[Image #1]')!
+  const rawToken = await settleFind(screen, '[Image #1]')
   click(rawToken.col + 2, rawToken.row)
   // 固定窗:探针 断言无 sidecar 能力的 raw token 点击不打开预览
   await sleep(150)
@@ -1160,7 +1173,7 @@ for (const columns of [32, 80]) {
   stdin.write(`\x1b[200~${pastedImagePath}\x1b[201~`)
   check('chat: fresh paste skips the occupied raw number and mints #2',
     await settled(() => screen.find('[Image #2]') !== null), screen.text())
-  const token = screen.find('[Image #2]')!
+  const token = await settleFind(screen, '[Image #2]')
   click(token.col + 2, token.row)
   check('chat: composer token click opens the preview with the staged image',
     await settled(() =>
@@ -1222,7 +1235,7 @@ for (const columns of [32, 80]) {
   else process.env.VISUAL = savedVisual
   if (savedEditor === undefined) delete process.env.EDITOR
   else process.env.EDITOR = savedEditor
-  const editedToken = screen.find('[Image #2]')!
+  const editedToken = await settleFind(screen, '[Image #2]')
   click(editedToken.col + 2, editedToken.row)
   check('chat: external editor preserves the token capability binding',
     await settled(() =>
@@ -1361,7 +1374,7 @@ for (const columns of [32, 80]) {
     await settled(() => screen.text().includes('POST-DIALOG')),
     screen.text())
 
-  const chip = screen.find('[Image #1]')!
+  const chip = await settleFind(screen, '[Image #1]')
   stdin.write(`\x1b[<0;${chip.col + 2};${chip.row + 1}M\x1b[<0;${chip.col + 2};${chip.row + 1}m`)
   const peekVisible = () => screen.text().split('\n').some(line => line.includes('╭') && line.includes('Image #1'))
   check('chat dialog: clicking the draft image opens its caret preview', await settled(peekVisible), screen.text())
