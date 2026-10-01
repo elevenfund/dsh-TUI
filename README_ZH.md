@@ -21,6 +21,29 @@
 > 面向 DeepSeek Harness 的交互式终端界面插件：像素鲸鱼顶栏、实时工作状态、流式思考展示、双击 Esc 时间回溯、上下文进度条与 TPS 仪表。
 > 零核心改动，纯插件挂载。安装即启用，卸载不留核心补丁。
 
+## 关于这条演进线
+
+本仓库是 [ccch1mneyyy/dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI) 的个人维护 fork，独立演进；上游功能保持完整，以下新增均为本线自己的工作。
+
+**背景**。有人说：如果你没办法用 300 行代码实现一个自己的 agent，那你就还不会用 agent。但当你真的去读 grok、opencode、zcode 这些相对成熟的 agent 源码，会发现代码量根本不在一个量级——每个 agent 的架构、细节与使用体验各不相同，而编排体验又极其主观。pi 用极简的方式实现了一个 agent，但极简并不意味着好的体验。在对比过一批主流 agent 之后，grok 是我最喜欢的交互，dsh 是我最欣赏的架构，于是有了这个项目：**在 dsh 的"万物皆插件"架构上，复刻 grok 的交互与可视化，融合 claude code 的操作习惯**。
+
+原版 fork 的代码库结构与模块拆分起初给开发效率带来很大阻力，于是花了相当一部分时间做适应性重构：主屏组件从巨石单文件拆出 21 个领域模块（hooks、面板、键位编排分层），测试体系收敛为 341 项分层门禁（30 项历史 known-fail 全部根因清零而非断言豁免）。这些投入换来了后半程明显更快的迭代速度。
+
+这个项目在下班后的有限时间里完成——本线 92 个提交里 40% 产生于凌晨 0–6 点，commit history 可以作证。因个人精力有限，**维护随缘**，欢迎 fork 自取。
+
+**本线主要新增**（相对上游）：
+
+| 方向 | 内容 |
+|---|---|
+| 统一任务中心 | Ctrl+G 一屏分类 jobs + subagents：transcript 详情、agent strip、vim 键位（j/k/g/G、PgUp/PgDn） |
+| grok 风格工具调用块 | intent 标题、折叠行、零距 fallback、步进 narration 标题 |
+| 实时思考尾流 | 工作行流式显示 thinking 尾部 + 裸思考流 |
+| bg_task 任务卡 | grok 形态卡片、ack 门控三层、淘汰记忆、结构化 stopReason 结算 |
+| subagent 管理 | follow-up 编写、状态 chip、结算 toast、多父级停靠 |
+| 选择模式增强 | 全局 Ctrl+C 中断、Ctrl+F/B 翻页、markdown 详情卡、完整展开语义 |
+| /migrate 迁移器 | 多源 SQLite→JSONL 会话迁移 + dry-run 预览 |
+| 工程化 | 341 项分层门禁（t0/t1/t2 停级级联）、watch 模式、CHANNEL_UI 单源 codegen |
+
 ## 功能亮点
 
 - **像素鲸鱼娘** — 开屏三选一动画，点击唤醒；开始第一个任务后定格。

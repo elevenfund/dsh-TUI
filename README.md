@@ -22,6 +22,50 @@
 > rewind, a context progress bar, and a TPS gauge. It mounts as a pure plugin,
 > with no core changes. Install to enable; uninstall leaves no patches behind.
 
+## About this fork
+
+This is a personally maintained, independently evolved fork of
+[ccch1mneyyy/dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI). Upstream
+features remain intact; everything below is this line's own work.
+
+**Background.** People say that if you cannot build your own agent in 300
+lines of code, you do not really know how to use agents. But when you
+actually read the source of mature agents — grok, opencode, zcode — the code
+volume is not even in the same order of magnitude. Every agent's
+architecture, details, and experience differ, and orchestration feel is
+deeply subjective. pi builds an agent the minimalist way, and minimalism
+does not imply a good experience. After comparing a batch of mainstream
+agents, grok became my favorite interaction and dsh my favorite
+architecture. Hence this project: **the grok interaction and visualization
+recreated on dsh's everything-is-a-plugin architecture, with claude code's
+key bindings mixed in**.
+
+The original fork's structure and module split fought my productivity hard,
+so a large share of the work went into adaptive refactoring: the main
+screen broke out of its monolith into 21 focused modules (hooks, panels,
+key orchestration), and the test rig converged into 341 layered gates
+(with all 30 historical known-fail entries cleared at the root cause, not
+waived). That investment paid for itself in visibly faster iteration
+afterwards.
+
+The project was built in the limited hours after work — 40% of this line's
+92 commits landed between midnight and 6 a.m.; the commit history is the
+receipt. Energy is limited, so **this fork is maintained on a best-effort
+basis**. Forks welcome.
+
+**What this line adds** (over upstream):
+
+| Area | What |
+|---|---|
+| Unified task center | Ctrl+G panel classifying jobs + subagents: transcript detail, agent strip, vim keys (j/k/g/G, PgUp/PgDn) |
+| Grok-style tool-call blocks | Intent titles, fold rows, zero-gap fallback, step-level narration titles |
+| Live thinking tail | The working line streams the reasoning tail + bare thinking flow |
+| bg_task job cards | Grok-shaped cards, three-tier ack gating, eviction memory, structured stopReason settlement |
+| Subagent management | Follow-up composer, status chips, settle toasts, multi-parent docking |
+| Selection mode | Global Ctrl+C interrupt, Ctrl+F/B paging, markdown detail cards, full expand semantics |
+| /migrate | Multi-source SQLite→JSONL session migration with dry-run |
+| Engineering | 341 layered gates (t0/t1/t2 cascade), watch mode, single-source CHANNEL_UI codegen |
+
 ## Highlights
 
 - **Pixel whale pet** — three startup intros, click to wake; freezes after the first task.
