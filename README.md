@@ -76,6 +76,22 @@ non-serious tasks, may genuinely fall below that of hands-on maintenance.
 The conclusion does not extrapolate — for serious work, I still sit on
 the review seat.
 
+**Why down to the event loop.** When people talk about harnesses, the
+attention lands on skills, MCP, other people's open-sourced workflows,
+and plugins — few know how an agent's event loop is actually implemented,
+and fewer still tune it to personal taste. That is genuinely harder than
+plug-and-play: you have to read the kernel's scheduling, settlement, and
+rendering paths before you have standing to speak of "preference". This
+project is the homework for that course.
+
+One more observation, about noise: the feed keeps serving whatever the
+traffic prefers, yet most of it lacks real engineering practice — it is
+anxiety manufacturing and attention farming. Real experience has to be
+tried yourself; in the AI era, judgment cannot be outsourced. **Your
+life trajectory is your model's training trajectory — its weights are
+continuous and self-consistent.** No universal prompt bypasses your
+training to upgrade the model of your thinking.
+
 **What this line adds** (over upstream):
 
 | Area | What |
