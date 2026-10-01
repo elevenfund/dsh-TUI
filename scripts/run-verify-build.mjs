@@ -98,6 +98,7 @@ const GATES = [
   'verify:fixed-window',
   'verify:source-hygiene',
   'verify:renderer-primitives',
+  'verify:terminal-size-source',
   'verify:product-migration',
   'verify:spinner-identity',
   'verify:table-layout',
