@@ -53,6 +53,29 @@ The project was built in the limited hours after work — 40% of this line's
 receipt. Energy is limited, so **this fork is maintained on a best-effort
 basis**. Forks welcome.
 
+**Method: a controlled vibe-coding experiment.** I have always been against
+vibe coding: in serious programming, direction, architecture, and
+acceptance criteria must be strictly human-reviewed, and that line has not
+moved. The granularity of agent feedback this project surfaces — tool
+cards, settlement rows, the live thinking tail, the task center — is itself
+a product of that preference: I want to watch the agent work, not open a
+blind box. It is also why I left claude code after more than a year and a
+half: its opacity and its often-awkward task scheduling confirmed that it
+was not the experience I wanted.
+
+This project happened to be a valid test field for the opposite approach:
+a non-serious testbed with effectively unlimited tokens. I planned with
+nothing but engineering taste, a feel for test-case decomposition, and a
+long-term-maintenance sense, handed implementation to agents, and leaned
+on multi-agent / multi-role / multi-model cross-review — precisely the
+"wish machine" behavior I had always objected to, this time driven by
+intuition from a project-management and acceptance standpoint, with the
+results observed. The observation so far: as model capability rises and
+agent orchestration stabilizes, the total cost of the wish machine, on
+non-serious tasks, may genuinely fall below that of hands-on maintenance.
+The conclusion does not extrapolate — for serious work, I still sit on
+the review seat.
+
 **What this line adds** (over upstream):
 
 | Area | What |
