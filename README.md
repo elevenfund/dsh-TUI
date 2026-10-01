@@ -165,7 +165,12 @@ IDs. It requires matching profile dependencies with `@deepseek-ai/schemastery`
 instead of showing an uneditable settings page. Older hosts keep their legacy settings scope.
 
 ```sh
-# Install the CLI and this plugin globally (ships the dsh-tui command)
+# Install THIS fork globally (ships the dsh-tui command)
+# The release tgz is the complete package — pure JavaScript, one artifact
+# for every platform, one line to install
+npm install -g @deepseek-ai/dsh https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/elevenfund-dsh-tui-0.12.0.tgz
+
+# Or install the upstream registry build
 npm install -g @deepseek-ai/dsh @deepseek-harness-tui/dsh-tui
 
 # Start (first run auto-initializes the profile; needs pnpm)

@@ -115,7 +115,11 @@ Schema 不兼容时，TUI 在启动阶段报错并提示修复安装，不再显
 旧 host 继续使用原有设置 scope。
 
 ```sh
-# 安装（全局，自带 dsh-tui 命令）
+# 安装本 fork（全局，自带 dsh-tui 命令）
+# Release 里的 tgz 即完整安装包，纯 JavaScript、全平台通用，一行即装
+npm install -g @deepseek-ai/dsh https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/elevenfund-dsh-tui-0.12.0.tgz
+
+# 或安装上游 registry 版本
 npm install -g @deepseek-ai/dsh @deepseek-harness-tui/dsh-tui
 
 # 启动（首次运行自动初始化 profile，需要 pnpm）
