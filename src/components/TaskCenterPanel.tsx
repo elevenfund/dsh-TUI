@@ -10,6 +10,7 @@ import { isPlainReturnInput } from '../utils/modifiers.js'
 import { FollowUpLine, useFollowUpInput } from './SubagentFollowUpInput.js'
 import { isMinimalUiMode } from '../minimalUiMode.js'
 import { MULTIPLICATION_X, BLACK_CIRCLE } from '../terminal-utils/figures.js'
+import { focusJumpOrPage } from './focusPaging.js'
 import { clipLineToWidth } from '../ink/truncateToWidth.js'
 
 export interface TaskCenterPanelProps {
@@ -206,26 +207,17 @@ export function TaskCenterPanel({
       return
     }
     // g / G jump to the first / last row; PgUp/PgDn page the focus by half
-    // a viewport (the same jump/paging rule the unified pickers use).
-    if (input === 'g' && !key.ctrl && !key.meta && !key.super) {
+    // a viewport (the shared list-panel rule in focusPaging.ts).
+    const move = focusJumpOrPage(input, key, entries.length, scrollRef.current?.getViewportHeight())
+    if (move !== undefined) {
       event.stopImmediatePropagation()
-      setFocusIndex(0)
-      scrollRef.current?.scrollTo(0)
-      return
-    }
-    if (input === 'G' && !key.ctrl && !key.meta && !key.super) {
-      event.stopImmediatePropagation()
-      setFocusIndex(entries.length - 1)
-      scrollRef.current?.scrollTo(Number.MAX_SAFE_INTEGER)
-      return
-    }
-    if (key.pageUp || key.pageDown) {
-      event.stopImmediatePropagation()
-      const page = Math.max(1, Math.floor((scrollRef.current?.getViewportHeight() ?? 12) / 2))
-      setFocusIndex(i => key.pageDown
-        ? Math.min(entries.length - 1, Math.max(0, i) + page)
-        : Math.max(0, Math.min(entries.length - 1, i) - page))
-      scrollRef.current?.scrollBy(key.pageDown ? page : -page)
+      if (move.kind === 'jump') {
+        setFocusIndex(move.index)
+        scrollRef.current?.scrollTo(move.scrollTo)
+      } else {
+        setFocusIndex(i => Math.min(entries.length - 1, Math.max(0, i) + move.by))
+        scrollRef.current?.scrollBy(move.by)
+      }
       return
     }
     if (isPlainReturnInput(input, key)) {

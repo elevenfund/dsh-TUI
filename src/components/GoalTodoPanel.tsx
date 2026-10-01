@@ -32,8 +32,6 @@ function phaseColor(phase: ChannelGoal['phase']): 'success' | 'warning' | 'error
   return undefined
 }
 
-/** Duration shape comes from the shared formatDuration (subagent cards, tool cards). */
-
 /**
  * Compact goal chip for the status footer: phase glyph + rounds, colored by
  * phase. `minimal` swaps the glyph for a text form, per the minimal-mode

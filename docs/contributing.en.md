@@ -409,6 +409,35 @@ Regression scripts take their wait primitives from `scripts/lib/term-test.mjs`:
 - After clearing a site, run `--write-baseline` and commit the rewritten
   baseline alongside. It must not appear in new code.
 
+### Non-tree gate inputs and two renderer contract traps
+
+Gate red/green is not a pure function of the dev-tui tree; three external
+quantities flip results on an unchanged commit:
+
+- **Parent repo `lib/` freshness**: kernel-side dependencies resolve against
+  the main repo's compiled output; without `~/harness/rebuild.sh lib` after a
+  main-repo src change, gates run against the stale contract.
+- **`TSX_TSCONFIG_PATH` resolution routing**: when it points at the main
+  repo's `tsconfig.base.json`, its workspace `paths` remap the bare
+  specifiers inside `vendor/sqlite-island/` onto main-repo sources, breaking
+  the island's 0.1.1-rc.2 resolution contract (`verify:migrate-sessions`
+  flips red; the island self-check reports a directed error).
+- **Host tmux session**: a leaked `$TMUX` makes ink's terminal-graphics probe
+  skip itself and clamps chalk to 256 colors. `run-verify-build.mjs` and
+  `run-ci-group.mjs` delete the variable in child environments; invoke single
+  scripts with `env -u TMUX`.
+
+Two renderer contract traps (read the in-place comments before touching them):
+
+- **MessageList memo pass-through alias**: a live session's projection
+  replaces row objects **in place** (same array reference), which is why the
+  `thinkingVisible` branch uses the incoming array directly as the memo key;
+  only a frozen replay array needs the defensive copy. Adding a copy or cache
+  here stalls streaming updates.
+- **`useInput` dispatch is registration-order FIFO**: the guard chain in
+  `src/screens/chat/input-guard.ts` depends on handler registration order;
+  reordering component mounts changes key priority.
+
 Some scripts are forensic or interactive tools, not bounded tests. In
 particular, heap/leak scripts, PTY probes, replay capture, performance probes,
 and `scripts/run.ts` can require a specific OS, terminal, native dependency,

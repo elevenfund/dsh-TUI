@@ -1,7 +1,6 @@
 import React from 'react'
 import { Box, Text, useTerminalSize } from '../ui.js'
-import { formatTokens } from '../terminal-utils/format.js'
-import { formatDuration } from '../terminal-utils/format.js'
+import { formatTokens, formatDuration } from '../terminal-utils/format.js'
 import { t } from '../i18n.js'
 import { formatContextUsage, DEFAULT_STATUS_BAR, normalizeStatusBar, type StatusBarConfig } from '../tuiDisplayPrefs.js'
 import { estimateSessionCostSnapshotCny, isDeepSeekOfficialProvider, isPeakHour } from '../deepseekPricing.js'

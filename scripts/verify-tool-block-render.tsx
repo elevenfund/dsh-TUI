@@ -66,6 +66,7 @@ async function withMessageList(
   const lines = (): string[] =>
     Array.from({ length: ROWS }, (_, y) => rig.term.buffer.active.getLine(y)?.translateToString(true) ?? '')
   try {
+    // 固定窗:pacing 等挂载首帧落地后再跑断言集
     await sleep(250)
     await run({ lines, term: rig.term, stdin: rig.stdin })
   } finally {

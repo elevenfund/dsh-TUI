@@ -132,8 +132,14 @@ try {
       stdio: 'inherit',
       shell: true,
       // HOME on POSIX, USERPROFILE on Windows: DATA_DIR resolves from
-      // `os.homedir()`, so both have to move together.
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      // `os.homedir()`, so both have to move together. Drop the host tmux
+      // session too: ink's terminal-graphics probe skips itself under $TMUX
+      // (and colorize clamps truecolor there), which silently flips the
+      // image gates red when the chain runs from inside a tmux pane.
+      env: (() => {
+        const { TMUX: _hostTmux, ...rest } = process.env
+        return { ...rest, HOME: home, USERPROFILE: home }
+      })(),
     })
     results.push({ name, status: r.status ?? 1, seconds: (performance.now() - startedAt) / 1000 })
   }

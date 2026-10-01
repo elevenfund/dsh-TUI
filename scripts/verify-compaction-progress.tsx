@@ -289,6 +289,7 @@ async function renderRow(compaction, cols, activityPreset) {
   // One layout beat after the label settles: under CI concurrency the first
   // paint can sample mid-reflow (the elapsed column lands on its own wrap
   // line). A frame-sized window lets Ink commit the final row geometry.
+  // 固定窗:pacing 一帧布局窗让 Ink 提交最终行几何（见上方注释）
   await sleep(160)
   const lines = []
   for (let y = 0; y < 6; y++) lines.push(term.buffer.active.getLine(y)?.translateToString(true) ?? '')

@@ -306,6 +306,27 @@ TypeScript 源的脚本在头部声明 `node --import tsx/esm <script>` 形式�
   `scripts/fixed-window.baseline.json`：任一文件增加即失败，旧债减少不能抵消。
 - 清掉一处后用 `--write-baseline` 重写基线并一起提交。新代码不得使用。
 
+### gate 结果的非树依赖与两大渲染契约坑
+
+门禁红绿不是 dev-tui 树的纯函数，三个外部量会让同一提交翻转结果：
+
+- **父仓 `lib/` 新鲜度**：`dsh`/内核侧依赖按主仓编译产物解析，主仓 src 改动未
+  `~/harness/rebuild.sh lib` 时门禁跑在旧契约上。
+- **`TSX_TSCONFIG_PATH` 解析路由**：指向主仓 `tsconfig.base.json` 时其 workspace
+  `paths` 会把 `vendor/sqlite-island/` 内的裸说明符重映射到主仓源，破坏岛的
+  0.1.1-rc.2 解析契约（`verify:migrate-sessions` 翻红；岛自检会报定向错误）。
+- **宿主 tmux 会话**：`$TMUX` 泄漏会让 ink 的终端图片探测自我跳过、chalk 钳到
+  256 色。`run-verify-build.mjs` 与 `run-ci-group.mjs` 已在子进程环境删除该变量；
+  直跑单脚本一律 `env -u TMUX`。
+
+渲染层的两条契约坑（改动前先读现场注释）：
+
+- **MessageList memo 直通别名**：活会话的投影**原地替换** row 对象（保持同一数组
+  引用），`thinkingVisible` 分支因此把传入数组直接作为 memo 键；只有冻结的 replay
+  数组才需要防御性复制。在此处加复制/缓存会让流式帧停更。
+- **`useInput` 键派发按注册序（FIFO）**：`src/screens/chat/input-guard.ts` 的守卫链
+  依赖 handler 注册顺序，调整组件挂载顺序等于改键优先级。
+
 部分脚本是取证/交互工具而非有界测试：堆/泄漏脚本、PTY 探针、回放捕获、
 性能探针与 `scripts/run.ts` 可能依赖特定 OS、终端、原生依赖、DSH 检出或长时
 进程。读头部与前置条件，不要把 `scripts/` 当套件全跑。

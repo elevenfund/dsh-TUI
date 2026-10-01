@@ -725,6 +725,7 @@ function screenOf(terminal: InstanceType<typeof XTerm>, rows: number): Screen {
   const oldBottom = before.findIndex((line, i) => i > oldTop && line.includes('╰'))
   app.rerender(tree(wide))
   await settled(() => screen.text().includes('wide.png'))
+  // 固定窗:pacing 等宽屏 rerender 后的布局帧落地，无可轮询锚点
   await sleep(200)
   const lines = screen.text().split('\n')
   const top = lines.findIndex(line => line.includes('╭'))
@@ -751,11 +752,13 @@ function screenOf(terminal: InstanceType<typeof XTerm>, rows: number): Screen {
     <TranscriptImages images={[image]} suppressGraphics />,
     { stdin: stdin as never, stdout: stdout as never, stderr: new FakeStderr() as never, exitOnCtrlC: false, patchConsole: false },
   )
+  // 固定窗:探针 断言 suppression 期间不发生缩略图读取
   await sleep(100)
   check('transcript: modal suppression performs no thumbnail read',
     (readCounts.get(image.id) ?? 0) === 0,
     `reads=${readCounts.get(image.id) ?? 0}`)
   app.rerender(<TranscriptImages images={[image]} />)
+  // 固定窗:探针 断言 suppression 结束后缩略图仍保持懒读
   await sleep(100)
   check('transcript: graphics-disabled thumbnails stay lazy after suppression ends',
     (readCounts.get(image.id) ?? 0) === 0,
@@ -917,6 +920,7 @@ function makeChannel() {
       await settled(() => screen.text().includes('unstable.png')), screen.text())
     // The loop tears the tree down within a few ms of opening (React #185);
     // a preview still standing after the commits settle is the assertion.
+    // 固定窗:探针 断言嵌套更新循环未撕掉已成立的预览
     await sleep(300)
     check('unstable facade: the preview survives the settled commits (no nested-update loop)',
       screen.text().includes('unstable.png'), screen.text())
@@ -999,8 +1003,7 @@ for (const columns of [32, 80]) {
     { stdin: stdin as never, stdout: stdout as never, stderr: new FakeStderr() as never, exitOnCtrlC: false, patchConsole: false },
   )
   const screen = screenOf(terminal, ROWS)
-  // 首帧挂载 pacing：同 verify-extension-ui,等 React 树与输入监听落地。
-  await sleep(600)
+  await sleep(600) // 固定窗:pacing 首帧挂载：同 verify-extension-ui,等 React 树与输入监听落地。
   check('chat: rich status graphics surface is mounted without a preview',
     screen.text().includes('RICH-BUDGET-PROBE'), screen.text())
 
@@ -1087,6 +1090,7 @@ for (const columns of [32, 80]) {
     // rows, the cells left of its border still carry the logo/banner glyphs.
     // (A dirty absolute node clears its whole rect before repainting; the
     // layer keeps its transparent catcher childless so that never fires.)
+    // 固定窗:pacing 等脏区清除重绘后的帧，glyph 残留检查无可轮询锚点
     await sleep(300)
     const lines = screen.text().split('\n')
     const top = lines.findIndex(line => line.includes('╭'))
@@ -1121,6 +1125,7 @@ for (const columns of [32, 80]) {
   check('gallery: right arrow selects the next image without editing the prompt',
     await settled(() => screen.text().includes('2/2') && screen.text().includes('— PNG · 20×16 · next.png')), screen.text())
   stdin.write('\x1b[C')
+  // 固定窗:pacing 方向键步间节奏
   await sleep(80)
   check('gallery: right at the end does not wrap', screen.text().includes('2/2'))
   const previousImage = screen.find('‹')!
@@ -1147,6 +1152,7 @@ for (const columns of [32, 80]) {
     await settled(() => screen.find('[Image #1]') !== null), screen.text())
   const rawToken = screen.find('[Image #1]')!
   click(rawToken.col + 2, rawToken.row)
+  // 固定窗:探针 断言无 sidecar 能力的 raw token 点击不打开预览
   await sleep(150)
   check('chat: a raw token without sidecar capability does not open preview',
     !screen.text().includes(OVERLAY_HINT), screen.text())
@@ -1222,6 +1228,7 @@ for (const columns of [32, 80]) {
 
   // A plain text click (no token, no thumbnail) must not open anything.
   click(COLS - 3, 0)
+  // 固定窗:探针 断言空白点击从不打开预览
   await sleep(200)
   check('chat: clicks elsewhere never open the preview',
     !screen.text().includes(OVERLAY_HINT))
@@ -1293,6 +1300,7 @@ for (const columns of [32, 80]) {
     { stdin: stdin as never, stdout: stdout as never, stderr: new FakeStderr() as never, exitOnCtrlC: false, patchConsole: false },
   )
   const screen = screenOf(terminal, ROWS)
+  // 固定窗:pacing 等挂载与注入控制器就绪，无单一可观测锚点
   await sleep(500)
   const injector = injectControllerRef.current
   check('chat dialog: external injection controller is published while the prompt is visible',
@@ -1311,12 +1319,14 @@ for (const columns of [32, 80]) {
       && !screen.text().includes('/vision-dialog'),
     `calls=${commandCalls}, images=${commandImageCount}\n${screen.text()}`)
   stdin.write('LEAK-SENTINEL')
+  // 固定窗:探针 断言普通对话框输入不能改动或释放隐藏草稿
   await sleep(150)
   check('chat dialog: ordinary dialog input cannot mutate or release the hidden draft',
     dialogStore.getSnapshot()?.kind === 'confirm' && !discarded.includes('stage-1'),
     JSON.stringify(discarded))
   injector?.append('INJECT-SENTINEL')
   injector?.submit()
+  // 固定窗:探针 断言外部注入不能提交或清空隐藏草稿
   await sleep(150)
   check('chat dialog: external injection cannot submit or clear the hidden draft',
     submitted.length === 0 && !discarded.includes('stage-1'),
@@ -1438,6 +1448,7 @@ for (const columns of [32, 80]) {
     { stdin: stdin as never, stdout: stdout as never, stderr: new FakeStderr() as never, exitOnCtrlC: false, patchConsole: false },
   )
   const screen = screenOf(terminal, ROWS)
+  // 固定窗:pacing 等首帧挂载
   await sleep(300)
 
   stdin.write('/vision first')
@@ -1446,8 +1457,10 @@ for (const columns of [32, 80]) {
   check('prompt: async registry command keeps its submitted draft visible',
     await settled(() => invocations === 1) && screen.text().includes('/vision first'),
     screen.text())
+  // 固定窗:pacing Enter 前的节奏步
   await sleep(100)
   stdin.write('\r')
+  // 固定窗:探针 断言重复 Enter 不会二次调用同一 pending attempt
   await sleep(100)
   check('prompt: duplicate Enter does not invoke the same pending attempt twice',
     invocations === 1, `invocations=${invocations}`)
@@ -1455,12 +1468,14 @@ for (const columns of [32, 80]) {
   controllerRef.current?.append(' edited')
   check('prompt: host injection edits the pending draft synchronously',
     await settled(() => screen.text().includes('/vision first edited')), screen.text())
+  // 固定窗:pacing Enter 前的节奏步
   await sleep(100)
   stdin.write('\r')
   check('prompt: an edited pending draft may start a distinct command attempt',
     await settled(() => invocations === 2), `invocations=${invocations}`)
 
   attempts[0]!.resolve(true)
+  // 固定窗:探针 断言迟到 success 不能清除快照后追加的文本
   await sleep(100)
   check('prompt: late success cannot clear text appended after its snapshot',
     screen.text().includes('/vision first edited'), screen.text())
@@ -1473,6 +1488,7 @@ for (const columns of [32, 80]) {
   stdin.write('\r')
   await settled(() => invocations === 3)
   attempts[2]!.resolve(false)
+  // 固定窗:探针 断言被拒的 stale token 保持可编辑
   await sleep(100)
   check('prompt: a rejected stale image token remains editable',
     screen.text().includes('/vision [Image #99]'), screen.text())
@@ -1486,6 +1502,7 @@ for (const columns of [32, 80]) {
   generation += 1
   app.rerender(promptTree())
   attempts[3]!.resolve(true)
+  // 固定窗:探针 断言上一会话的 success 不能吃掉保留草稿
   await sleep(100)
   check('prompt: a previous-session success cannot consume the retained draft',
     screen.text().includes('/vision session-bound'), screen.text())
@@ -1580,6 +1597,7 @@ for (const columns of [32, 80]) {
     { stdin: stdin as never, stdout: stdout as never, stderr: new FakeStderr() as never, exitOnCtrlC: false, patchConsole: false },
   )
   const screen = screenOf(terminal, ROWS)
+  // 固定窗:pacing 等首帧挂载
   await sleep(500)
 
   // The prompt wraps long pasted paths across lines, and the expand glyph
@@ -1628,6 +1646,7 @@ for (const columns of [32, 80]) {
     await settled(() => submitted[0] === 'old draft'))
   stdin.write('fresh draft')
   resolveStage({ stageId: 'old-draft-stage' })
+  // 固定窗:探针 断言旧粘贴续传不能改动下一同会话草稿
   await sleep(150)
   check('chat: old paste continuation cannot mutate the next same-session draft',
     screen.text().includes('fresh draft') &&
@@ -1660,6 +1679,7 @@ for (const columns of [32, 80]) {
   check('chat: command-image token bound before admission',
     await settled(() => screen.text().includes('/status') && screen.text().includes('[Image #2]')), screen.text())
   stdin.write('\r')
+  // 固定窗:探针 断言不接受图片的本地命令不被执行
   await sleep(150)
   check('chat: a local command that does not accept images is not executed',
     localCommandCalls === 0, String(localCommandCalls))

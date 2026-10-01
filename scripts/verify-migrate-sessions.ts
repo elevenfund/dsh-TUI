@@ -13,6 +13,30 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SqliteSessionPersistence, { Context as LegacyContext, SessionStore, Session as LegacySession } from '../vendor/sqlite-island/index.js'
 import { settled } from './lib/term-test.mjs'
 
+// Island self-check: the vendor island must resolve @deepseek-ai/dsh-session to
+// its own pinned 0.1.1-rc.2 tree so LegacySession.create accepts the legacy v0
+// header this fixture intentionally builds. A loader that remaps the island's
+// bare specifier (e.g. TSX_TSCONFIG_PATH pointing at the parent repo's
+// tsconfig.base.json with workspace paths) silently swaps in the 0.2.x core,
+// whose validateSessionHeader rejects version 0 — that failure masquerades as a
+// product contract drift. Fail here with a directed message instead.
+{
+  const readVersion = (p: string) => {
+    try { return JSON.parse(readFileSync(p, 'utf8')).version } catch { return null }
+  }
+  const islandPkg = new URL('../vendor/sqlite-island/node_modules/@deepseek-ai/dsh-session/package.json', import.meta.url)
+  const want = readVersion(islandPkg)
+  if (want === null) {
+    throw new Error('sqlite-island node_modules missing; run pnpm install in dev-tui (vendor/sqlite-island pins @deepseek-ai/dsh-session 0.1.1-rc.2)')
+  }
+  try {
+    LegacySession.create('island-selfcheck' as never, [], { id: 'island-selfcheck' as never, version: 0, createdAt: 1, cwd: '/tmp', agentPreset: 'selfcheck' })
+  } catch (error) {
+    const got = readVersion(new URL('../node_modules/@deepseek-ai/dsh-session/package.json', import.meta.url)) ?? 'unknown'
+    throw new Error(`sqlite-island resolution mismatch (got ${got}, want ${want}); check island node_modules and loader mode — a TSX_TSCONFIG_PATH pointing at the parent repo's tsconfig.base.json remaps the island's bare specifiers onto 0.2.x. Original error: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 const root = mkdtempSync(join(tmpdir(), 'dsh-tui-migrate-test-'))
 const from = join(root, 'source.sqlite')
 const to = join(root, 'sessions')
