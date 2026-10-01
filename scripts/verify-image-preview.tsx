@@ -519,12 +519,16 @@ type Screen = {
  * later), and clicking a stale coordinate silently misses. */
 async function settleFind(screen: Screen, needle: string): Promise<{ row: number; col: number }> {
   let found: { row: number; col: number } | null = null
-  await settled(() => {
+  const ok = await settled(() => {
     const hit = screen.find(needle)
     if (hit === null) return false
     found = hit
     return true
   })
+  // settled() times out silently; without this check the null would escape and
+  // crash far away as a TypeError — the exact unreadable failure this helper
+  // exists to prevent.
+  if (ok === false) throw new Error(`settleFind timeout: ${JSON.stringify(needle)} not found within the settled window`)
   return found!
 }
 function screenOf(terminal: InstanceType<typeof XTerm>, rows: number): Screen {
