@@ -181,23 +181,33 @@ IDs. It requires matching profile dependencies with `@deepseek-ai/schemastery`
 instead of showing an uneditable settings page. Older hosts keep their legacy settings scope.
 
 ```sh
-# Install THIS fork globally (ships the dsh-tui command)
-# The release tgz is the complete package — pure JavaScript, one artifact
-# for every platform, one line to install
-npm install -g @deepseek-ai/dsh https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/elevenfund-dsh-tui-0.12.0.tgz
+# One-shot install (recommended): engine + TUI + profile setup in one go
+# Windows (PowerShell)
+irm https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.ps1 | iex
+# macOS / Linux
+curl -fsSL https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.sh | bash
 
-# Or install the upstream registry build
-npm install -g @deepseek-ai/dsh @deepseek-harness-tui/dsh-tui
-
-# Start (first run auto-initializes the profile; needs pnpm)
+# Start
 dsh-tui
 # Both `dsh-tui` and the short `dst` alias start the same TUI.
 dst
 ```
 
-Manual alternative: `dsh plugin --profile dsh-tui add @deepseek-harness-tui/dsh-tui`.
-The repo's `sh install.sh` runs that step and checks the required commands.
-Afterwards `dsh-tui` and `dsh --profile dsh-tui` are equivalent.
+> **Why the installer script**: this fork shares its name and version with
+> the upstream npm package (`@deepseek-harness-tui/dsh-tui@0.12.0`). With a
+> bare `npm install -g`, the first profile initialization pulls the
+> **upstream** build from the registry, and npm may nest stale engine-line
+> dependencies inside the TUI package, breaking module loading. The script
+> installs the pinned engine plus this fork, strips those nested copies, and
+> pins the profile dependency and package body to this fork's release tarball
+> (so `/update` never drifts back to the registry build).
+
+Manual alternative (equivalent to the script's three steps):
+`npm install -g @deepseek-ai/dsh@0.2.0-rc.2 <release tarball URL>` →
+remove the nested `node_modules/@deepseek-ai` inside the TUI package →
+point the profile (`~/.dsh/profiles/dsh-tui`) dependency and package body at
+that tarball. The upstream registry build also works:
+`npm install -g @deepseek-ai/dsh @deepseek-harness-tui/dsh-tui`.
 
 > **New-user note**: pnpm ≥11 blocks dependencies with install scripts by
 > default and reports `ERR_PNPM_IGNORED_BUILDS`. Updates skip foreign-platform
