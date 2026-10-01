@@ -64,7 +64,7 @@ half: its opacity and its often-awkward task scheduling confirmed that it
 was not the experience I wanted.
 
 This project happened to be a valid test field for the opposite approach:
-a non-serious testbed with effectively unlimited tokens. I planned with
+a non-serious testbed with no token budget cap. I planned with
 nothing but engineering taste, a feel for test-case decomposition, and a
 long-term-maintenance sense, handed implementation to agents, and leaned
 on multi-agent / multi-role / multi-model cross-review — precisely the
