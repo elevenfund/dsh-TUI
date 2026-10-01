@@ -36,6 +36,10 @@ type Entry =
   | { section: 'tasks'; job: BackgroundJobState }
   | { section: 'subagents'; subagent: SubagentState }
 
+// Deliberate divergence from JobsPanel.statusInfo: settled states use
+// semantic glyphs (✓/×/·) here, while the jobs panel keeps the dot glyph and
+// lets colour carry the state. Do not "unify" the two — that changes one
+// panel's rendering.
 function jobStatusInfo(status: BackgroundJobState['status']): { glyph: string; color: 'warning' | 'success' | 'error' | undefined; label: string } {
   // Minimal mode drops the color (JobsPanel symmetry): the glyphs alone
   // carry the state, so a monochrome terminal reads the same panel.

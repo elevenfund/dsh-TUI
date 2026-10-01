@@ -22,6 +22,10 @@ export interface JobsPanelProps {
   onKill: (id: string) => void
 }
 
+// Deliberate divergence from TaskCenterPanel.jobStatusInfo: THIS panel keeps
+// the dot glyph for every settled state (colour carries the state), while the
+// task center uses semantic glyphs (✓/×/·). Do not "unify" the two — that
+// changes one panel's rendering.
 function statusInfo(status: BackgroundJobStatus): { glyph: string; label: string; color: keyof Theme | undefined } {
   const minimalUi = isMinimalUiMode()
   switch (status) {

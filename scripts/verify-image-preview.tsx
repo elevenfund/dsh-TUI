@@ -1172,13 +1172,19 @@ for (const columns of [32, 80]) {
   // The expanded editor stays mounted below the shared preview. The preview
   // must be visible, then one Esc closes ONLY it and reveals the same draft.
   stdin.write(CTRL_SHIFT_E)
+  // Capture the token INSIDE the settled predicate: re-finding after settle
+  // races one repaint (the token row can shift a frame later), and clicking a
+  // stale coordinate silently misses.
+  let editorToken: { col: number; row: number } | null = null
   check('chat: staged token remains visible in the expanded editor',
-    await settled(() =>
-      screen.text().includes('Draft editor') &&
-      screen.find('[Image #2]') !== null),
+    await settled(() => {
+      const found = screen.find('[Image #2]')
+      if (found === null) return false
+      editorToken = found
+      return screen.text().includes('Draft editor')
+    }),
     screen.text())
-  const editorToken = screen.find('[Image #2]')!
-  click(editorToken.col + 2, editorToken.row)
+  click(editorToken!.col + 2, editorToken!.row)
   // The card is a bounded layer (about 90% of the available region), so editor
   // chrome outside it stays visible; what matters is that the card paints
   // above the editor and its image box is present.

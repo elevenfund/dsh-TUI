@@ -54,7 +54,6 @@ import type { WhaleCouponStore } from '../dsh-adapter/oauth/bonus.js'
 import { dueStarModal, markStarAsked, STAR_MILESTONES } from '../usageStats.js'
 import { TimelineRail } from '../components/TimelineRail.js'
 import { ScrollbarGutter } from '../components/ScrollbarGutter.js'
-import type { TimelineSnapshot } from '../ink/timeline-rail.js'
 import { normalizeScrollGutter } from '../tuiDisplayPrefs.js'
 import { OverlayAbove } from '../components/OverlayAbove.js'
 import { TooltipLayer } from '../components/Tooltip.js'
@@ -79,7 +78,10 @@ import { ImagePreviewOverlay } from '../components/ImagePreviewOverlay.js'
 import { RowDetailOverlay } from '../components/RowDetailOverlay.js'
 import { SkillsPicker, SkillsPickerLoading } from '../components/SkillsPicker.js'
 import { MigrateConfirm, MigratePicker } from '../components/MigratePicker.js'
-import { collectMigratePickerRows, MIGRATE_SCAN_SPECS, parseImportSummary, resolveMigrateCommand, type MigratePickerRow } from '../dsh-adapter/migrate/picker.js'
+import { MIGRATE_SCAN_SPECS } from '../dsh-adapter/migrate/picker.js'
+import { useMigratePicker } from './chat/use-migrate.js'
+import { usePanelVisibility } from './chat/use-panel-visibility.js'
+import { useTranscriptBrowsing } from './chat/use-transcript-browsing.js'
 import { collectActivitySamples, recentAgentsFrom, type ActivitySample } from '../dsh-adapter/migrate/recent-agents.js'
 import { MIGRATION_ADAPTERS } from '../dsh-adapter/migrate/index.js'
 import { SessionSupervisor } from './SessionSupervisor.js'
@@ -197,11 +199,6 @@ const STATUS_VIEW_UI = Object.freeze({
 /** Shared empty snapshot for hosts whose channel has no event log. */
 
 const COMMAND_RESULT_CELLS = 200
-
-/** Ceiling for one `dsh-tui migrate` child run. Discovery parses every source
- *  file, but a healthy import of thousands of conversations finishes well
- *  inside this; without a cap a wedged child would hang the loop forever. */
-const MIGRATE_CHILD_TIMEOUT_MS = 30 * 60 * 1000
 
 function cleanCommandError(error: unknown): string {
   try {
@@ -453,33 +450,16 @@ export function Chat({
   const [handle, setHandle] = React.useState<ScrollBoxHandle | null>(null)
   /** ScrollBox of the open row-detail card (key routing lives in Chat's input chain). */
   const rowDetailScrollRef = React.useRef<ScrollBoxHandle | null>(null)
-  /**
-   * Conversation timeline snapshot (reported by MessageList): one entry
-   * per user turn plus the viewport-derived navigation targets. The
-   * ACTIVE turn — the one whose content owns the viewport top row — pins
-   * the sticky prompt header AND highlights the transcript rail's tick,
-   * from one report so the two can never disagree; upId/downId drive the
-   * rail's ▲/▼. Null activeId while pinned to the bottom only when there
-   * are no turns (header hidden there anyway).
-   */
-  const [timeline, setTimeline] = React.useState<TimelineSnapshot>({
-    turns: [],
-    activeId: null,
-    pinnedId: null,
-    upId: null,
-    downId: null,
-  })
-  const [selectionActive, setSelectionActive] = React.useState(false)
-  const [selectedId, setSelectedId] = React.useState<number | null>(null)
-  const [expandedRows, setExpandedRows] = React.useState<ReadonlySet<number>>(
-    () => new Set(),
-  )
-  /** 流式 reasoning 行相对 thinkingFold 默认值的用户切换。与
-   *  expandedRows 分开：preview 默认三行、full 默认全文，点击在两者间
-   *  翻转；落定后自动回到普通行的折叠语义。 */
-  const [streamViewToggledRows, setStreamViewToggledRows] = React.useState<ReadonlySet<number>>(
-    () => new Set(),
-  )
+  // Transcript browsing state (timeline snapshot, selection cursor, fold
+  // toggles) lives in useTranscriptBrowsing; the session-switch reset and
+  // key routing stay in this function's orchestration.
+  const {
+    timeline, setTimeline,
+    selectionActive, setSelectionActive,
+    selectedId, setSelectedId,
+    expandedRows, setExpandedRows,
+    streamViewToggledRows, setStreamViewToggledRows,
+  } = useTranscriptBrowsing()
   /**
    * The transient-dialog layer (every picker/dialog `<OverlayAbove>` hosts,
    * plus /tips) as ONE value: mutual exclusion between the panels is
@@ -491,17 +471,15 @@ export function Chat({
    * list while the fresh one loads, exactly as the boolean era did.
    */
   const [overlay, dispatchOverlay] = React.useReducer(chatOverlayReducer, NO_OVERLAY)
-  // `/migrate` picker rows (null = collecting in the background; the picker
-  // shows its empty state until the sub-second scan lands).
-  const [migrateRows, setMigrateRows] = React.useState<MigratePickerRow[] | null>(null)
-  // Multi-select state (PRD): checked agent ids + the confirmation layer's
-  // frozen snapshot of the checked rows.
-  const [migrateChecked, setMigrateChecked] = React.useState<ReadonlySet<string>>(new Set())
-  const [migratePending, setMigratePending] = React.useState<readonly MigratePickerRow[]>([])
-  // Smart-hint arming: while the migration hint notification is up, a bare
-  // Enter (empty prompt, no overlay) jumps straight into the picker with
-  // that source pre-checked (PRD #4). Any other key disarms.
-  const [migrateHintAgent, setMigrateHintAgent] = React.useState<string | null>(null)
+  // `/migrate` picker rows, multi-select, the confirmation layer's frozen
+  // snapshot, and the smart-hint arming all live in useMigratePicker.
+  const {
+    migrateRows, setMigrateRows,
+    migrateChecked, setMigrateChecked,
+    migratePending, setMigratePending,
+    migrateHintAgent, setMigrateHintAgent,
+    collectMigrateRows, spawnMigrateSources,
+  } = useMigratePicker(channel)
   // Chat and PromptInput both receive one parsed stdin batch. Keep the
   // permission focus synchronous so arrow+Enter in the same batch uses the
   // post-arrow row rather than the previous render's index.
@@ -548,16 +526,23 @@ export function Chat({
    * on" has not been answered yet. Every later launch starts on the chat
    * screen, and the screen stays reachable.
    */
-  const [supervisorOpen, setSupervisorOpen] = React.useState(openHomeOnBoot === true)
-  /** `/tree` opens the session family tree (pi's Session Tree): every rewind
-   *  fork stitched back onto the message it diverged from, hover previews,
-   *  and per-node rewind/fork/adopt actions. Like the supervisor, a screen. */
-  const [treeOpen, setTreeOpen] = React.useState(false)
-  /**
-   * The session backgrounded when the screen opened via ←/`/bg` (the "Esc
-   *  returns to that conversation" return target), cleared on close.
-   */
-  const [agentViewReturnId, setAgentViewReturnId] = React.useState<string | undefined>(undefined)
+  // Every full-screen surface's open/close state lives in usePanelVisibility;
+  // Chat only opens and closes these, each screen owns its own focus.
+  const {
+    supervisorOpen, setSupervisorOpen,
+    treeOpen, setTreeOpen,
+    agentViewReturnId, setAgentViewReturnId,
+    settingsOpen, setSettingsOpen,
+    subagentDashboardOpen, setSubagentDashboardOpen,
+    jobsPanelOpen, setJobsPanelOpen,
+    jobsPanelFocusId, setJobsPanelFocusId,
+    subagentDetailId, setSubagentDetailId,
+    subagentDetailFromDashboard, setSubagentDetailFromDashboard,
+    taskCenterOpen, setTaskCenterOpen,
+    taskCenterDetailId, setTaskCenterDetailId,
+    taskCenterDetailFromPanel, setTaskCenterDetailFromPanel,
+    openJobsPanel, openSubagentDashboard, openTaskCenter, openSubagentDetailFromTranscript,
+  } = usePanelVisibility(openHomeOnBoot)
   /** Live agent-view rows: the prompt footer's "← N agents" hint reads the
    *  needs-input count from here (cached snapshot in the channel). The
    *  `?.()` fallbacks keep pre-agent-view test stubs (channel facades in
@@ -583,10 +568,6 @@ export function Chat({
       }
     })
   }, [channel])
-  /** `/settings` opens the plugin settings screen (issue #165) — like the
-   *  browser, a screen rather than a panel: it owns its own focus, staged
-   *  drafts and keyboard; Chat only opens it. */
-  const [settingsOpen, setSettingsOpen] = React.useState(false)
   /** 99h / 999 次的"求 star"开屏弹窗（`usageStats` 记账，一档只弹一次）：
    * 只在启动时判定一次——回合进行中、或已有整屏界面在开（如开机首页），
    * 这一轮不弹也**不记账**，留给下一次启动。`starPrompt` 是测试缝：传
@@ -788,45 +769,6 @@ export function Chat({
    * Suppress the intro on those remounts; `/deepseek` re-enables it.
    */
   const suppressLogoIntroRef = React.useRef(false)
-  /** Subagent dashboard (Ctrl+A): displays active/completed subagents. */
-  const [subagentDashboardOpen, setSubagentDashboardOpen] = React.useState(false)
-  const [jobsPanelOpen, setJobsPanelOpen] = React.useState(false)
-  /** Job id the panel should focus on open: set by a transcript card click
-   *  (open the panel AT that job), cleared on close so the keyboard/command
-   *  path reopens at the top. */
-  const [jobsPanelFocusId, setJobsPanelFocusId] = React.useState<string | null>(null)
-  // MessageList forwards these open handlers to every memoized row. Their
-  // identities must survive token/metrics updates, including for tool rows.
-  const openJobsPanel = React.useCallback((focusId?: string) => {
-    if (typeof focusId === 'string' && focusId !== '') setJobsPanelFocusId(focusId)
-    setJobsPanelOpen(true)
-  }, [])
-  // Stable identity for the StatusLine subagents chip's click target.
-  const openSubagentDashboard = React.useCallback(() => setSubagentDashboardOpen(true), [])
-  // The strip and the status chips open the unified task center (Ctrl+G).
-  const openTaskCenter = React.useCallback(() => setTaskCenterOpen(true), [])
-  /** Detail view for a specific subagent (opened from dashboard). */
-  const [subagentDetailId, setSubagentDetailId] = React.useState<string | null>(null)
-  /** Where the open subagent detail was entered from: the Ctrl+A dashboard
-   *  returns there on Esc; a transcript card returns to the transcript
-   *  (Esc must not summon a dashboard the user never opened). */
-  const [subagentDetailFromDashboard, setSubagentDetailFromDashboard] = React.useState(true)
-  // Stable identity: MessageList forwards this into every memoized row —
-  // an inline closure here re-renders ALL settled tool cards on each
-  // channel version (verify-tool-history-window).
-  const openSubagentDetailFromTranscript = React.useCallback((id: string) => {
-    // From a transcript card: Esc closes back into the transcript.
-    setSubagentDetailFromDashboard(false)
-    setSubagentDetailId(id)
-  }, [])
-  /** Task center (Ctrl+G): the unified classified panel over jobs +
-   * subagents. Legacy Ctrl+A dashboard and /jobs panel stay untouched. */
-  const [taskCenterOpen, setTaskCenterOpen] = React.useState(false)
-  const [taskCenterDetailId, setTaskCenterDetailId] = React.useState<string | null>(null)
-  /** Where the open detail scene was entered from: the panel (Enter on a
-   * row) returns to the panel on Esc, the agent strip returns to the main
-   * session. */
-  const [taskCenterDetailFromPanel, setTaskCenterDetailFromPanel] = React.useState(true)
   /** Continuable child ids from the host catalog: the follow-up composer is
    * offered only on these rows (one-shot children dispose at settlement).
    * Re-read when the child set changes or the channel is replaced. */
@@ -1344,90 +1286,6 @@ ing registered by a DSH
     onRewound: () => { setSelectedId(null); setSelectionActive(false) },
   })
   const { forceMountRowId, seekRow, seekRowIntoView, revealAndSeekRow } = useSeek(handle, rowRefsRef, showAllMessages, setShowAllMessages)
-  const collectMigrateRows = (): Promise<MigratePickerRow[]> => new Promise(resolve => {
-    setImmediate(() => resolve(collectMigratePickerRows(Date.now())))
-  })
-
-  /** Run `dsh-tui migrate <args>` in a child process through the package
-   *  bin; resolves with the exit code and the combined output. Uses the
-   *  shared no-throw runner (bounded capture, timeout, windowsHide): a wedged
-   *  child would otherwise hang the sequential per-source loop forever. */
-  const runMigrateChild = async (parts: readonly string[]): Promise<{ code: number | null, out: string }> => {
-    const { dirname } = await import('node:path')
-    const { fileURLToPath } = await import('node:url')
-    const { resolveOwnBin } = await import('../dsh-adapter/migrate/bin-path.js')
-    // This file sits at a different depth per layout (src/screens vs
-    // lib/types/screens), so the bin resolves by upward probe — see
-    // bin-path.ts; a fixed dirname count fails on real installs.
-    const bin = resolveOwnBin(dirname(fileURLToPath(import.meta.url)))
-    if (bin === undefined) {
-      channel.notify(t('migrate-spawn-failed'), { color: 'error', timeoutMs: 8000 })
-      return { code: -1, out: '' }
-    }
-    const result = await execFileNoThrow(process.execPath, [bin, 'migrate', ...parts], {
-      timeout: MIGRATE_CHILD_TIMEOUT_MS,
-    })
-    // A killed child reports `code: null` and whatever it managed to print; put
-    // the reason on the record so the transcript does not read as a silent
-    // failure. Nothing at all (no code, no output) means it never really ran.
-    if (result.code === null) {
-      return {
-        code: null,
-        out: `${result.stdout}${result.stderr}${t('migrate-child-timeout', { minutes: MIGRATE_CHILD_TIMEOUT_MS / 60_000 })}\n`,
-      }
-    }
-    if (result.code === 1 && result.stdout === '' && result.stderr === '') {
-      channel.notify(t('migrate-spawn-failed'), { color: 'error', timeoutMs: 8000 })
-    }
-    // stdout carries the per-source report, stderr the usage/error lines;
-    // both belong in the /migrate transcript row.
-    return { code: result.code, out: `${result.stdout}${result.stderr}` }
-  }
-
-  /** Orchestrate the confirmation layer's confirmed rows (PRD #3): one child
-   *  per source, sequential; per-source progress notifications (throttled by
-   *  the source boundary — no intra-source spam), real per-source counters
-   *  parsed from each child's report, and a final summary that NEVER claims
-   *  success for a source that did not run (the P2 fix). */
-  const spawnMigrateSources = (rows: readonly MigratePickerRow[], dryRun: boolean): void => {
-    const allOut: string[] = []
-    let failures = 0
-    void (async () => {
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i]!
-        channel.notify(
-          t(dryRun ? 'migrate-previewing-source' : 'migrate-importing-source', { label: row.label, i: i + 1, n: rows.length }),
-          { timeoutMs: 4000 },
-        )
-        const { code, out } = await runMigrateChild(dryRun ? [row.agentId, '--dry-run'] : [row.agentId])
-        allOut.push(...out.split('\n').map(line => cleanRenderText(line, 400)).filter(Boolean))
-        if (code !== 0) failures += 1
-        // Per-source real counters straight from the child's report line.
-        const summary = parseImportSummary(out).find(entry => entry.agentId === row.agentId)
-        if (!dryRun && summary !== undefined) {
-          channel.notify(
-            t('migrate-source-done', { label: row.label, imported: summary.imported, existing: summary.existing }),
-            { timeoutMs: 6000 },
-          )
-        }
-      }
-      // The transcript row is this run's record. When a source failed AND no
-      // child output was captured at all (killed by the timeout, or never
-      // spawned), the success wording would contradict the notification right
-      // above it — report the failure here too.
-      const fallbackLine = failures > 0
-        ? t('migrate-failed', { n: failures })
-        : t(dryRun ? 'migrate-all-previewed' : 'migrate-all-done', { n: rows.length })
-      channel.pushLocal('/migrate', allOut.length > 0 ? allOut : [fallbackLine])
-      channel.notify(
-        failures === 0
-          ? t(dryRun ? 'migrate-all-previewed' : 'migrate-all-done', { n: rows.length })
-          : t('migrate-failed', { n: failures }),
-        failures === 0 ? { timeoutMs: 6000 } : { color: 'error', timeoutMs: 10000 },
-      )
-    })()
-  }
-
   const runCommand = createRunCommand({
     channel, t, dispatchOverlay, handle, expanded, models,
     applyLang, backgroundToAgentView, btwAbortRef, handleWorkspaceResult, questionStore,
